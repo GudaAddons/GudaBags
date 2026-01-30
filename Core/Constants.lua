@@ -1,0 +1,331 @@
+local addonName, ns = ...
+
+local Constants = {}
+ns.Constants = Constants
+
+-- Feature flags (enable/disable features during development)
+Constants.FEATURES = {
+    BANK = true,
+    GUILD_BANK = false,
+    MAIL = false,
+    CHARACTERS = true,
+    SEARCH = true,
+    SORT = true,
+    KEYRING = true,
+}
+
+-- Bag ID Ranges
+Constants.PLAYER_BAG_MIN = 0
+Constants.PLAYER_BAG_MAX = 4
+Constants.BANK_BAG_MIN = 5
+Constants.BANK_BAG_MAX = 11
+Constants.BANK_MAIN_BAG = -1
+Constants.KEYRING_BAG = -2
+
+-- Bag ID Arrays (derived from ranges for convenience)
+Constants.BAG_IDS = {0, 1, 2, 3, 4}
+Constants.BANK_BAG_ID = -1
+Constants.BANK_BAG_IDS = {-1, 5, 6, 7, 8, 9, 10, 11}
+Constants.KEYRING_BAG_ID = -2
+
+Constants.HEARTHSTONE_ID = 6948
+
+-- Item IDs to ignore for quest item indicator
+-- These items have itemType="Quest" but shouldn't show quest borders/icons
+Constants.QUEST_INDICATOR_IGNORE = {
+    -- Hakkari Bijou (Zul'Gurub reputation items)
+    [19707] = true,  -- Blue Hakkari Bijou
+    [19708] = true,  -- Bronze Hakkari Bijou
+    [19709] = true,  -- Gold Hakkari Bijou
+    [19710] = true,  -- Green Hakkari Bijou
+    [19711] = true,  -- Orange Hakkari Bijou
+    [19712] = true,  -- Purple Hakkari Bijou
+    [19713] = true,  -- Red Hakkari Bijou
+    [19714] = true,  -- Silver Hakkari Bijou
+    [19715] = true,  -- Yellow Hakkari Bijou
+}
+
+Constants.QUALITY_COLORS = {
+    [0] = {0.62, 0.62, 0.62},  -- Poor (gray)
+    [1] = {1.00, 1.00, 1.00},  -- Common (white)
+    [2] = {0.12, 1.00, 0.00},  -- Uncommon (green)
+    [3] = {0.00, 0.44, 0.87},  -- Rare (blue)
+    [4] = {0.64, 0.21, 0.93},  -- Epic (purple)
+    [5] = {1.00, 0.50, 0.00},  -- Legendary (orange)
+    [6] = {0.90, 0.80, 0.50},  -- Artifact (light gold)
+    [7] = {0.00, 0.80, 1.00},  -- Heirloom (light blue)
+}
+
+Constants.COLORS = {
+    GOLD = {1.00, 0.82, 0.00},
+    SILVER = {0.75, 0.75, 0.75},
+    COPPER = {0.72, 0.45, 0.20},
+    RED = {1.00, 0.20, 0.20},
+    GREEN = {0.20, 1.00, 0.20},
+    CYAN = {0.00, 0.80, 1.00},
+    GRAY = {0.50, 0.50, 0.50},
+    WHITE = {1.00, 1.00, 1.00},
+    QUEST = {1.00, 0.80, 0.00},  -- Quest item golden yellow
+    QUEST_STARTER = {1.00, 0.60, 0.00},  -- Quest starter orange
+}
+
+Constants.FRAME = {
+    TITLE_HEIGHT = 24,
+    SEARCH_BAR_HEIGHT = 20,
+    FOOTER_HEIGHT = 32,
+    PADDING = 8,
+    BORDER_SIZE = 2,
+    MIN_WIDTH = 200,
+    MAX_WIDTH = 800,
+    MIN_HEIGHT = 150,
+    MAX_HEIGHT = 600,
+}
+
+Constants.BAG_SLOT_SIZE = 20
+Constants.FLYOUT_BAG_SIZE = 32
+Constants.BANK_BAG_SLOT_SIZE = 24
+Constants.BANK_BAG_COUNT = 7
+Constants.SECTION_SPACING = 6
+
+-- Category view settings
+Constants.CATEGORY_GAP_SMALL_ICONS = 20  -- Gap when icon size < threshold
+Constants.CATEGORY_GAP_LARGE_ICONS = 18  -- Gap when icon size >= threshold
+Constants.CATEGORY_FONT_SMALL = 9        -- Font size when icon size < threshold
+Constants.CATEGORY_FONT_LARGE = 10       -- Font size when icon size >= threshold
+Constants.CATEGORY_ICON_SIZE_THRESHOLD = 28
+
+Constants.DEFAULTS = {
+    -- General
+    bagColumns = 10,
+    bankColumns = 10,
+    bgAlpha = 85,
+    locked = false,
+    showBorders = true,
+    showSearchBar = true,
+    showQuestBar = true,
+    hoverBagline = false,
+    showFooter = true,
+    showTooltipCounts = true,
+    bagViewType = "single",
+    bankViewType = "single",
+    showCategoryCount = true,
+    groupIdenticalItems = true,  -- Group identical items into single slot in category view
+    mergedGroups = {},  -- Per-group merge settings: { ["Main"] = true, ["Other"] = false }
+    recentDuration = 15,  -- Minutes items stay in Recent category
+
+    -- Icons
+    iconSize = 37,
+    iconFontSize = 12,
+    iconSpacing = 4,
+    questBarSize = 44,
+    trackedBarSize = 36,
+    trackedBarColumns = 3,
+    grayoutJunk = true,
+    whiteItemsJunk = false,  -- Treat white equippable items as junk (off by default)
+    equipmentBorders = true,
+    otherBorders = true,
+    markUnusableItems = true,
+    reverseStackSort = false,
+    sortRightToLeft = false,
+
+    -- Bag frame position
+    framePoint = nil,
+    frameRelativePoint = nil,
+    frameX = nil,
+    frameY = nil,
+
+    -- Bank frame position
+    bankFramePoint = nil,
+    bankFrameRelativePoint = nil,
+    bankFrameX = nil,
+    bankFrameY = nil,
+}
+
+Constants.ICON = {
+    BORDER_THICKNESS = 2,
+}
+
+Constants.BACKDROP = {
+    bgFile = "Interface\\Buttons\\WHITE8x8",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeSize = 14,
+    insets = {left = 3, right = 3, top = 3, bottom = 3},
+}
+
+Constants.BACKDROP_SOLID = {
+    bgFile = "Interface\\Buttons\\WHITE8x8",
+    edgeFile = "Interface\\Buttons\\WHITE8x8",
+    edgeSize = 1,
+    insets = {left = 0, right = 0, top = 0, bottom = 0},
+}
+
+-------------------------------------------------
+-- Textures
+-------------------------------------------------
+Constants.TEXTURES = {
+    WHITE_8x8 = "Interface\\Buttons\\WHITE8x8",
+    TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border",
+    CURSOR_MOVE = "Interface\\CURSOR\\UI-Cursor-Move",
+    GROUP_ICON = "Interface\\Icons\\INV_Misc_GroupLooking",
+    COLLAPSE_EXPAND = "Interface\\Buttons\\UI-PlusButton-Up",
+    COLLAPSE_EXPAND_MINUS = "Interface\\Buttons\\UI-MinusButton-Up",
+}
+
+-------------------------------------------------
+-- Category UI Constants
+-------------------------------------------------
+Constants.CATEGORY_UI = {
+    -- Row dimensions
+    ROW_HEIGHT = 28,
+    GROUP_HEADER_HEIGHT = 26,
+    DROP_ZONE_HEIGHT = 12,
+    HEADER_HEIGHT = 20,
+
+    -- Settings popup
+    POPUP_WIDTH = 388,
+    POPUP_HEIGHT = 440,
+    POPUP_PADDING = 12,
+
+    -- Editor
+    EDITOR_WIDTH = 420,
+    EDITOR_HEIGHT = 480,
+    EDITOR_PADDING = 12,
+    RULE_ROW_HEIGHT = 34,
+
+    -- Timing
+    SAVE_DEBOUNCE_TIME = 0.3,
+}
+
+-------------------------------------------------
+-- Category UI Colors
+-------------------------------------------------
+Constants.CATEGORY_COLORS = {
+    -- Drop indicator
+    DROP_INDICATOR = {0.2, 0.6, 1, 0.8},
+    DROP_ZONE_ACTIVE = {0.2, 0.5, 0.8, 0.3},
+
+    -- Group headers
+    GROUP_HEADER_BG = {0.15, 0.25, 0.4, 0.8},
+    GROUP_HEADER_HOVER = {0.2, 0.35, 0.5, 0.9},
+    GROUP_NAME_TEXT = {0.7, 0.9, 1, 1},
+
+    -- Category rows
+    ROW_EVEN = {0.12, 0.12, 0.12, 0.5},
+    ROW_ODD = {0.08, 0.08, 0.08, 0.5},
+    ROW_HOVER = {0.18, 0.18, 0.18, 0.7},
+    ROW_DISABLED = {0.5, 0.5, 0.5, 1},
+
+    -- Text
+    CATEGORY_NAME = {1, 1, 1, 1},
+    CATEGORY_NAME_DISABLED = {0.5, 0.5, 0.5, 1},
+    BUILTIN_BADGE = {0.6, 0.6, 0.6, 1},
+}
+
+-------------------------------------------------
+-- Category System Constants
+-------------------------------------------------
+Constants.CATEGORY = {
+    -- Default priorities
+    PRIORITY_HOME = 100,
+    PRIORITY_CUSTOM = 95,
+    PRIORITY_CLASS_ITEMS = 90,
+    PRIORITY_JUNK = 85,
+    PRIORITY_QUEST = 80,
+    PRIORITY_BOE = 75,
+    PRIORITY_EQUIPMENT = 70,
+    PRIORITY_TOOLS = 60,
+    PRIORITY_CONSUMABLE = 50,
+    PRIORITY_CONTAINER = 45,
+    PRIORITY_TRADE_GOODS = 40,
+    PRIORITY_FALLBACK = 0,
+
+    -- Default groups
+    GROUP_MAIN = "Main",
+    GROUP_OTHER = "Other",
+    GROUP_CLASS = "Class",
+
+    -- Match modes
+    MATCH_ANY = "any",
+    MATCH_ALL = "all",
+}
+
+-------------------------------------------------
+-- Profession Tool Item IDs
+-------------------------------------------------
+Constants.PROFESSION_TOOL_IDS = {
+    -- Mining
+    [2901] = true,   -- Mining Pick
+    [778] = true,    -- Kobold Mining Shovel
+    -- Skinning
+    [7005] = true,   -- Skinning Knife
+    [12709] = true,  -- Finkle's Skinner
+    -- Herbalism
+    [19727] = true,  -- Blood Scythe
+    -- Blacksmithing
+    [5956] = true,   -- Blacksmith Hammer
+    -- Engineering
+    [6219] = true,   -- Arclight Spanner
+    [10498] = true,  -- Gyromatic Micro-Adjustor
+    -- Alchemy
+    [9149] = true,   -- Philosopher's Stone
+    [13503] = true,  -- Alchemist's Stone
+    -- Jewelcrafting
+    [20815] = true,  -- Jeweler's Kit
+    [20824] = true,  -- Simple Grinder
+    -- Enchanting Rods
+    [6218] = true,   -- Runed Copper Rod
+    [6339] = true,   -- Runed Silver Rod
+    [11130] = true,  -- Runed Golden Rod
+    [11145] = true,  -- Runed Truesilver Rod
+    [16207] = true,  -- Runed Arcanite Rod
+    [22461] = true,  -- Runed Fel Iron Rod
+    [22462] = true,  -- Runed Adamantite Rod
+    [22463] = true,  -- Runed Eternium Rod
+}
+
+-------------------------------------------------
+-- Valuable Equip Slots (never considered junk)
+-------------------------------------------------
+Constants.VALUABLE_EQUIP_SLOTS = {
+    ["INVTYPE_TRINKET"] = true,
+    ["INVTYPE_FINGER"] = true,
+    ["INVTYPE_NECK"] = true,
+    ["INVTYPE_HOLDABLE"] = true,
+    ["INVTYPE_RELIC"] = true,
+    ["INVTYPE_BODY"] = true,      -- Shirt
+    ["INVTYPE_TABARD"] = true,    -- Tabard
+}
+
+-------------------------------------------------
+-- Fonts
+-------------------------------------------------
+Constants.FONTS = {
+    DEFAULT = "Fonts\\FRIZQT__.TTF",
+}
+
+-------------------------------------------------
+-- Color Thresholds (for tooltip text analysis)
+-------------------------------------------------
+Constants.COLOR_THRESHOLDS = {
+    RED = { min_r = 0.85, max_g = 0.3, max_b = 0.3 },
+    GREEN = { max_r = 0.2, min_g = 0.9, max_b = 0.2 },
+    YELLOW = { min_r = 0.9, min_g = 0.7, max_b = 0.2 },
+}
+
+-------------------------------------------------
+-- Pickup Sound IDs (muted during sorting)
+-------------------------------------------------
+Constants.PICKUP_SOUND_IDS = {
+    -- Standard pickup sounds
+    567542, 567543, 567544, 567545, 567546, 567547, 567548, 567549,
+    567550, 567551, 567552, 567553, 567554, 567555, 567556, 567557,
+    567558, 567559, 567560, 567561, 567562, 567563, 567564, 567565,
+    567566, 567567, 567568, 567569, 567570, 567571, 567572, 567573,
+    567574, 567575, 567576, 567577,
+    -- Additional pickup sounds
+    2308876, 2308881, 2308889, 2308894, 2308901, 2308907, 2308914, 2308920,
+    2308925, 2308930, 2308935, 2308942, 2308948, 2308956, 2308962, 2308968,
+    2308974, 2308985, 2308992, 2309001, 2309006, 2309013, 2309025, 2309036,
+    2309051, 2309057, 2309070, 2309078, 2309089, 2309100, 2309109, 2309120,
+    2309126, 2309132, 2309137, 2309141
+}

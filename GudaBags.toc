@@ -1,0 +1,104 @@
+## Interface: 20505
+## Title: GudaBags
+## Notes: Clean, unified bag management for TBC Anniversary
+## Author: Vati
+## Version: 1.0.0
+## SavedVariables: GudaBags_DB
+## SavedVariablesPerCharacter: GudaBags_CharDB
+## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png
+
+## Category: Guda
+
+# Localization (load first)
+Locales.lua
+Core\Locales.lua
+
+# Bindings
+Bindings.xml
+
+# Core modules (load order matters)
+Core\Init.lua
+Core\Constants.lua
+Core\Utils.lua
+Core\Events.lua
+Core\Database.lua
+Core\Bindings.lua
+Core\SlashCommands.lua
+
+# Category System
+DB\DefaultCategories.lua
+Core\TooltipScanner.lua
+Core\RuleEngine.lua
+Core\Rules\ItemTypeRule.lua
+Core\Rules\ItemIDRule.lua
+Core\Rules\QualityRule.lua
+Core\Rules\TooltipRule.lua
+Core\Rules\PatternRule.lua
+Core\Rules\BooleanRule.lua
+Core\Rules\RecentRule.lua
+Core\CategoryManager.lua
+Core\CategoryService.lua
+
+# Config
+Config\SettingsSchema.lua
+
+# Data modules
+Data\ItemScanner.lua
+Data\ScannerBase.lua
+Data\BagScanner.lua
+Data\BankScanner.lua
+
+# Sorting
+Sorting\SortEngine.lua
+
+# UI Controls
+UI\Controls\Slider.lua
+UI\Controls\Checkbox.lua
+UI\Controls\ToggleButton.lua
+UI\Controls\Select.lua
+
+# UI Components (Reusable)
+UI\Components\DragDropManager.lua
+UI\Components\CategoryDropIndicator.lua
+
+# UI Layout
+UI\Layout\VerticalStack.lua
+UI\Layout\HorizontalRow.lua
+
+# UI Components
+UI\TabPanel.lua
+UI\IconButton.lua
+UI\Tooltip.lua
+UI\CategoryHeaderPool.lua
+UI\ItemButton.lua
+
+# Header Components
+UI\Header\Characters.lua
+
+# Footer Components
+UI\Footer\BagSlots.lua
+UI\Footer\Keyring.lua
+UI\Footer\Hearthstone.lua
+UI\Footer\Money.lua
+UI\Footer.lua
+UI\SearchBar.lua
+UI\Header.lua
+UI\SettingsPopup.lua
+UI\CategoryEditor.lua
+
+# BagFrame Components
+UI\BagFrame\BagClassifier.lua
+UI\BagFrame\LayoutEngine.lua
+UI\BagFrame.lua
+
+# BankFrame Components
+UI\BankFrame\BankCharacters.lua
+UI\BankFrame\BankHeader.lua
+UI\BankFrame\BankFooter.lua
+UI\BankFrame.lua
+
+# Tracked Item Bar
+UI\TrackedBar.lua
+
+# Quest Item Bar
+UI\QuestBar.lua

@@ -1,0 +1,201 @@
+local addonName, ns = ...
+
+local BankHeader = {}
+ns:RegisterModule("BankFrame.BankHeader", BankHeader)
+
+local Constants = ns.Constants
+local L = ns.L
+local Database = ns:GetModule("Database")
+local IconButton = ns:GetModule("IconButton")
+
+local frame = nil
+local onDragStop = nil
+local viewingCharacterData = nil
+
+local BankCharacters = nil
+
+-- Debounce for sort/restack button
+local lastSortTime = 0
+local SORT_DEBOUNCE = 0.5  -- 500ms debounce
+
+local function LoadComponents()
+    BankCharacters = ns:GetModule("BankFrame.BankCharacters")
+end
+
+local function CreateHeader(parent)
+    local titleBar = CreateFrame("Frame", "GudaBankHeader", parent, "BackdropTemplate")
+    titleBar:SetHeight(Constants.FRAME.TITLE_HEIGHT)
+    titleBar:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, -4)
+    titleBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, -4)
+    titleBar:EnableMouse(true)
+    titleBar:RegisterForDrag("LeftButton")
+
+    titleBar:SetScript("OnDragStart", function()
+        if not Database:GetSetting("locked") then
+            parent:StartMoving()
+        end
+    end)
+
+    titleBar:SetScript("OnDragStop", function()
+        parent:StopMovingOrSizing()
+        if onDragStop then
+            onDragStop()
+        end
+    end)
+
+    local bgAlpha = Database:GetSetting("bgAlpha") / 100
+    titleBar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+    })
+    titleBar:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
+
+    local lastLeftButton = nil
+
+    if Constants.FEATURES.CHARACTERS then
+        local charactersButton = IconButton:Create(titleBar, "characters", {
+            tooltip = L["TOOLTIP_CHARACTERS_BANK"],
+            onClick = function(self)
+                BankCharacters:Toggle(self)
+            end,
+        })
+        charactersButton:SetPoint("LEFT", titleBar, "LEFT", 6, 0)
+        titleBar.charactersButton = charactersButton
+        lastLeftButton = charactersButton
+    end
+
+    local playerName = UnitName("player")
+    local title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
+    title:SetText(playerName .. L["TITLE_BANK"])
+    title:SetTextColor(1, 0.82, 0)
+    title:SetShadowOffset(1, -1)
+    title:SetShadowColor(0, 0, 0, 1)
+    titleBar.title = title
+
+    local closeButton = IconButton:CreateCloseButton(titleBar, {
+        onClick = function()
+            parent:Hide()
+        end,
+        point = "RIGHT",
+        offsetX = 0,
+        offsetY = 0,
+    })
+    titleBar.closeButton = closeButton
+    local lastRightButton = closeButton
+
+    local settingsButton = IconButton:Create(titleBar, "settings", {
+        tooltip = L["TOOLTIP_SETTINGS"],
+        onClick = function()
+            local SettingsPopup = ns:GetModule("SettingsPopup")
+            SettingsPopup:Toggle()
+        end,
+    })
+    settingsButton:SetPoint("RIGHT", lastRightButton, "LEFT", -4, 0)
+    titleBar.settingsButton = settingsButton
+    lastRightButton = settingsButton
+
+    if Constants.FEATURES.SORT then
+        local sortButton = IconButton:Create(titleBar, "sort", {
+            onClick = function()
+                -- Debounce protection
+                local now = GetTime()
+                if now - lastSortTime < SORT_DEBOUNCE then
+                    return
+                end
+                lastSortTime = now
+
+                local BankFrameModule = ns:GetModule("BankFrame")
+                local viewType = Database:GetSetting("bankViewType") or "single"
+
+                if viewType == "category" then
+                    BankFrameModule:RestackAndClean()
+                else
+                    BankFrameModule:SortBank()
+                end
+            end,
+        })
+        -- Dynamic tooltip based on view type
+        sortButton:SetScript("OnEnter", function(self)
+            local viewType = Database:GetSetting("bankViewType") or "single"
+            local tooltip = viewType == "category" and L["TOOLTIP_RESTACK_CLEAN"] or L["TOOLTIP_SORT_BANK"]
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(tooltip)
+            GameTooltip:Show()
+        end)
+        sortButton:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        sortButton:SetPoint("RIGHT", lastRightButton, "LEFT", -4, 0)
+        titleBar.sortButton = sortButton
+        lastRightButton = sortButton
+    end
+
+    return titleBar
+end
+
+function BankHeader:Init(parent)
+    LoadComponents()
+    frame = CreateHeader(parent)
+    return frame
+end
+
+function BankHeader:GetFrame()
+    return frame
+end
+
+function BankHeader:SetDragCallback(callback)
+    onDragStop = callback
+end
+
+function BankHeader:SetBackdropAlpha(alpha)
+    if not frame then return end
+    frame:SetBackdropColor(0.08, 0.08, 0.08, alpha)
+end
+
+function BankHeader:SetViewingCharacter(fullName, charData)
+    viewingCharacterData = charData
+    if not frame or not frame.title then return end
+
+    if charData then
+        local classColor = RAID_CLASS_COLORS[charData.class]
+        local r, g, b = 0.7, 0.7, 0.7
+        if classColor then
+            r, g, b = classColor.r, classColor.g, classColor.b
+        end
+        frame.title:SetText(charData.name .. L["TITLE_BANK"])
+        frame.title:SetTextColor(r, g, b)
+    else
+        local playerName = UnitName("player")
+        frame.title:SetText(playerName .. L["TITLE_BANK"])
+        frame.title:SetTextColor(1, 0.82, 0)
+    end
+end
+
+function BankHeader:GetCharactersButton()
+    if frame then
+        return frame.charactersButton
+    end
+    return nil
+end
+
+function BankHeader:IsViewingOther()
+    return viewingCharacterData ~= nil
+end
+
+function BankHeader:SetCharacterCallback(callback)
+    if BankCharacters then
+        BankCharacters:SetCallback(callback)
+    end
+end
+
+function BankHeader:SetSortEnabled(enabled)
+    if frame and frame.sortButton then
+        if enabled then
+            frame.sortButton:Enable()
+            frame.sortButton:SetAlpha(1)
+        else
+            frame.sortButton:Disable()
+            frame.sortButton:SetAlpha(0.4)
+        end
+    end
+end

@@ -1,0 +1,227 @@
+local addonName, ns = ...
+
+local SlashCommands = {}
+ns:RegisterModule("SlashCommands", SlashCommands)
+
+local L = ns.L
+
+-------------------------------------------------
+-- Module Getters (lazy loading)
+-------------------------------------------------
+
+local function GetBagFrame()
+    return ns:GetModule("BagFrame")
+end
+
+local function GetBankFrame()
+    return ns:GetModule("BankFrame")
+end
+
+local function GetSettingsPopup()
+    return ns:GetModule("SettingsPopup")
+end
+
+local function GetDatabase()
+    return ns:GetModule("Database")
+end
+
+local function GetBagScanner()
+    return ns:GetModule("BagScanner")
+end
+
+-------------------------------------------------
+-- Command Handlers
+-------------------------------------------------
+
+local commandHandlers = {}
+
+-- Default: Toggle bag frame
+commandHandlers[""] = function()
+    GetBagFrame():Toggle()
+end
+
+-- Settings/Config/Options
+commandHandlers["settings"] = function()
+    GetSettingsPopup():Toggle()
+end
+commandHandlers["config"] = commandHandlers["settings"]
+commandHandlers["options"] = commandHandlers["settings"]
+
+-- Sort bags
+commandHandlers["sort"] = function()
+    GetBagFrame():SortBags()
+end
+
+-- Toggle bank
+commandHandlers["bank"] = function()
+    GetBankFrame():Toggle()
+end
+
+-- Debug mode toggle
+commandHandlers["debug"] = function()
+    ns.debugMode = not ns.debugMode
+    ns:Print(L["CMD_DEBUG_MODE"], ns.debugMode and L["CMD_ON"] or L["CMD_OFF"])
+end
+
+-- List saved characters
+commandHandlers["chars"] = function()
+    local Database = GetDatabase()
+    ns:Print(L["CMD_SAVED_CHARACTERS"])
+
+    local characters = Database:GetAllCharacterData()
+    if characters and next(characters) then
+        local currentFullName = Database:GetPlayerFullName()
+        for fullName, data in pairs(characters) do
+            local bagCount = 0
+            local bagItemCount = 0
+            local bankCount = 0
+            local bankItemCount = 0
+
+            if data.bags then
+                for _, bagData in pairs(data.bags) do
+                    bagCount = bagCount + 1
+                    if bagData.slots then
+                        for _ in pairs(bagData.slots) do
+                            bagItemCount = bagItemCount + 1
+                        end
+                    end
+                end
+            end
+
+            if data.bank then
+                for _, bagData in pairs(data.bank) do
+                    bankCount = bankCount + 1
+                    if bagData.slots then
+                        for _ in pairs(bagData.slots) do
+                            bankItemCount = bankItemCount + 1
+                        end
+                    end
+                end
+            end
+
+            local current = (fullName == currentFullName) and " " .. L["CMD_YOU"] or ""
+            ns:Print("  " .. fullName .. current)
+            ns:Print("    " .. L["CMD_BAGS"] .. bagCount .. L["CMD_CONTAINERS"] .. bagItemCount .. L["CMD_ITEMS"])
+            ns:Print("    " .. L["CMD_BANK"] .. bankCount .. L["CMD_CONTAINERS"] .. bankItemCount .. L["CMD_ITEMS"])
+        end
+    else
+        ns:Print("  " .. L["CMD_NO_DATA"])
+    end
+end
+
+-- Force save current character
+commandHandlers["save"] = function()
+    local BagScanner = GetBagScanner()
+    local Database = GetDatabase()
+
+    ns:Print(L["CMD_SCANNING"])
+    local bags = BagScanner:ScanAllBags()
+
+    local bagCount = 0
+    local itemCount = 0
+    for _, bagData in pairs(bags) do
+        bagCount = bagCount + 1
+        if bagData.slots then
+            for _ in pairs(bagData.slots) do
+                itemCount = itemCount + 1
+            end
+        end
+    end
+    ns:Print(string.format(L["CMD_SCANNED"], bagCount, itemCount))
+
+    ns:Print(L["CMD_SAVING_TO"] .. Database:GetPlayerFullName())
+    BagScanner:SaveToDatabase()
+    ns:Print(L["CMD_DONE"])
+end
+
+-- Show current locale info
+commandHandlers["locale"] = function()
+    local Database = GetDatabase()
+    local testLocale = Database:GetGlobalSetting("testLocale")
+
+    ns:Print("Current locale: " .. ns:GetCurrentLocale())
+    ns:Print("Game locale: " .. GetLocale())
+    if testLocale then
+        ns:Print("Test override: " .. testLocale)
+    else
+        ns:Print("Test override: none")
+    end
+    ns:Print("Available: " .. table.concat(ns:GetAvailableLocales(), ", "))
+end
+
+-- Help
+commandHandlers["help"] = function()
+    ns:Print(L["CMD_COMMANDS"])
+    ns:Print("  " .. L["CMD_HELP_TOGGLE"])
+    ns:Print("  " .. L["CMD_HELP_BANK"])
+    ns:Print("  " .. L["CMD_HELP_SETTINGS"])
+    ns:Print("  " .. L["CMD_HELP_SORT"])
+    ns:Print("  " .. L["CMD_HELP_CHARS"])
+    ns:Print("  " .. L["CMD_HELP_SAVE"])
+    ns:Print("  " .. L["CMD_HELP_COUNT"])
+    ns:Print("  " .. L["CMD_HELP_DEBUG"])
+    ns:Print("  " .. L["CMD_HELP_HELP"])
+    ns:Print("  /guda locale [code|reset] - Test locale")
+end
+
+-------------------------------------------------
+-- Pattern-based Command Handlers
+-------------------------------------------------
+
+local patternHandlers = {}
+
+-- Count item by ID across characters
+patternHandlers["^count%s+(%d+)$"] = function(itemID)
+    local Database = GetDatabase()
+    local total, chars = Database:CountItemAcrossCharacters(tonumber(itemID))
+    ns:Print(string.format(L["CMD_ITEM_COUNT"], itemID, total))
+    for _, c in ipairs(chars) do
+        local current = c.isCurrent and " " .. L["CMD_YOU"] or ""
+        ns:Print("  " .. c.name .. current .. ": " .. c.count)
+    end
+end
+
+-- Set locale (use original case)
+patternHandlers["^locale%s+(%S+)$"] = function(localeCode)
+    ns:SetLocale(localeCode)
+end
+
+-------------------------------------------------
+-- Main Command Dispatcher
+-------------------------------------------------
+
+local function HandleSlashCommand(msg)
+    local originalMsg = msg or ""
+    local cmd = string.lower(originalMsg)
+
+    -- Try exact match first
+    if commandHandlers[cmd] then
+        commandHandlers[cmd]()
+        return
+    end
+
+    -- Try pattern matches (use original message for case-sensitive patterns like locale)
+    for pattern, handler in pairs(patternHandlers) do
+        local capture = originalMsg:match(pattern)
+        if capture then
+            handler(capture)
+            return
+        end
+    end
+
+    -- Unknown command
+    ns:Print(L["CMD_UNKNOWN"])
+end
+
+-------------------------------------------------
+-- Registration
+-------------------------------------------------
+
+function SlashCommands:Register()
+    _G["SLASH_GUDABAGS1"] = "/guda"
+    _G["SLASH_GUDABAGS2"] = "/gb"
+    _G.SlashCmdList["GUDABAGS"] = HandleSlashCommand
+end
+
+-- Auto-register on load
+SlashCommands:Register()
