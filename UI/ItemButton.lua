@@ -181,12 +181,20 @@ local function CreateButton(parent)
         globalNormal:Hide()
     end
 
-    -- Custom slot background (template has its own, but we override)
+    -- Custom slot background (extended to match item icon visual size)
     local slotBackground = button:CreateTexture(nil, "BACKGROUND", nil, -1)
-    slotBackground:SetPoint("TOPLEFT", -1, 1)
-    slotBackground:SetPoint("BOTTOMRIGHT", 1, -1)
-    slotBackground:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
+    slotBackground:SetPoint("TOPLEFT", button, "TOPLEFT", -9, 9)
+    slotBackground:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 9, -9)
+    slotBackground:SetTexture("Interface\\Buttons\\UI-EmptySlot")
     button.slotBackground = slotBackground
+
+    -- Item icon fills button completely to match empty slot size
+    local icon = button.icon or button.Icon or _G[name .. "IconTexture"]
+    if icon then
+        icon:ClearAllPoints()
+        icon:SetAllPoints(button)
+        icon:SetTexCoord(0, 1, 0, 1)
+    end
 
     -- Quality border (our custom one, not template's)
     local border = CreateBorder(button)
