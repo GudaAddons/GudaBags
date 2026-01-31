@@ -76,7 +76,7 @@ end
 
 local moneyFrameCount = 0
 local ICON_SIZE = 11
-local FONT_SIZE = 12
+local FONT_SIZE = 14
 
 function Money:Init(parent)
     moneyFrameCount = moneyFrameCount + 1
