@@ -124,7 +124,7 @@ Constants.DEFAULTS = {
     -- Icons
     iconSize = 37,
     iconFontSize = 12,
-    iconSpacing = 4,
+    iconSpacing = 3,
     questBarSize = 44,
     trackedBarSize = 36,
     trackedBarColumns = 3,

@@ -31,6 +31,9 @@ local function ResetButton(pool, button)
     SetItemButtonCount(button, 0)
     SetItemButtonDesaturated(button, false)
     if button.border then button.border:Hide() end
+    if button.innerShadow then
+        for _, tex in pairs(button.innerShadow) do tex:Hide() end
+    end
     if button.lockOverlay then button.lockOverlay:Hide() end
     if button.unusableOverlay then button.unusableOverlay:Hide() end
     if button.junkOverlay then button.junkOverlay:Hide() end
@@ -199,6 +202,42 @@ local function CreateButton(parent)
     -- Quality border (our custom one, not template's)
     local border = CreateBorder(button)
     button.border = border
+
+    -- Inner shadow/glow for quality colors (inset effect)
+    local shadowSize = 4
+    local innerShadow = {
+        top = button:CreateTexture(nil, "ARTWORK", nil, 1),
+        bottom = button:CreateTexture(nil, "ARTWORK", nil, 1),
+        left = button:CreateTexture(nil, "ARTWORK", nil, 1),
+        right = button:CreateTexture(nil, "ARTWORK", nil, 1),
+    }
+    -- Top edge
+    innerShadow.top:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    innerShadow.top:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+    innerShadow.top:SetHeight(shadowSize)
+    innerShadow.top:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.top:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.6))
+    -- Bottom edge
+    innerShadow.bottom:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+    innerShadow.bottom:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    innerShadow.bottom:SetHeight(shadowSize)
+    innerShadow.bottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.bottom:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.6), CreateColor(0, 0, 0, 0))
+    -- Left edge
+    innerShadow.left:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    innerShadow.left:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+    innerShadow.left:SetWidth(shadowSize)
+    innerShadow.left:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.left:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0.6), CreateColor(0, 0, 0, 0))
+    -- Right edge
+    innerShadow.right:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+    innerShadow.right:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    innerShadow.right:SetWidth(shadowSize)
+    innerShadow.right:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.right:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.6))
+    -- Hide by default
+    for _, tex in pairs(innerShadow) do tex:Hide() end
+    button.innerShadow = innerShadow
 
     -- Custom highlight
     local highlight = button:CreateTexture(nil, "HIGHLIGHT")
@@ -620,6 +659,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- Hide all overlays
         button.border:Hide()
+        if button.innerShadow then
+            for _, tex in pairs(button.innerShadow) do tex:Hide() end
+        end
         button.unusableOverlay:Hide()
         button.junkOverlay:Hide()
         button.lockOverlay:Hide()
@@ -666,21 +708,42 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         local isEquipment = itemData.itemType == "Armor" or itemData.itemType == "Weapon"
         local showBorder = isEquipment and settings.equipmentBorders or (not isEquipment and settings.otherBorders)
 
+        -- Helper to show inner shadow with color
+        local function ShowInnerShadow(color)
+            if button.innerShadow then
+                local r, g, b = color[1], color[2], color[3]
+                button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+                button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
+                button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
+                button.innerShadow.right:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+                for _, tex in pairs(button.innerShadow) do tex:Show() end
+            end
+        end
+        local function HideInnerShadow()
+            if button.innerShadow then
+                for _, tex in pairs(button.innerShadow) do tex:Hide() end
+            end
+        end
+
         -- Quest items always show border with quest color
         if itemData.isQuestItem then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
             button.border:Show()
+            ShowInnerShadow(questColor)
         elseif showBorder and itemData.quality ~= nil then
             local color = Constants.QUALITY_COLORS[itemData.quality]
             if color then
                 button.border:SetVertexColor(color[1], color[2], color[3], 1)
                 button.border:Show()
+                ShowInnerShadow(color)
             else
                 button.border:Hide()
+                HideInnerShadow()
             end
         else
             button.border:Hide()
+            HideInnerShadow()
         end
 
         if itemData.locked then
@@ -756,6 +819,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         SetItemButtonCount(button, 0)
         button.icon:SetVertexColor(1, 1, 1, 1)
         button.border:Hide()
+        if button.innerShadow then
+            for _, tex in pairs(button.innerShadow) do tex:Hide() end
+        end
         button.lockOverlay:Hide()
         button.unusableOverlay:Hide()
         if button.junkOverlay then
@@ -811,6 +877,9 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly)
     SetItemButtonTexture(button, nil)
     SetItemButtonCount(button, 0)
     button.border:Hide()
+    if button.innerShadow then
+        for _, tex in pairs(button.innerShadow) do tex:Hide() end
+    end
     button.lockOverlay:Hide()
     button.unusableOverlay:Hide()
     if button.junkOverlay then
