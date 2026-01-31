@@ -623,6 +623,11 @@ end
 -- dirtyBags: optional table of {bagID = true} for bags that changed
 function BankFrame:IncrementalUpdate(dirtyBags)
     if not frame or not frame:IsShown() then return end
+
+    -- Never do incremental updates while viewing a cached character
+    -- Live bank events should not affect cached character display
+    if viewingCharacter then return end
+
     if not layoutCached then
         -- No cached layout, do full refresh
         self:Refresh()
@@ -1188,6 +1193,8 @@ end, BankFrame)
 
 -- Update item lock state (when picking up/putting down items)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
+    -- Skip when viewing cached character - lock state is for current character only
+    if viewingCharacter then return end
     if frame and frame:IsShown() and bagID and slotID then
         ItemButton:UpdateLockForItem(bagID, slotID)
     end
