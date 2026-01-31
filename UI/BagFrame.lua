@@ -641,6 +641,13 @@ function BagFrame:Toggle()
         frame:Hide()
     else
         BagScanner:ScanAllBags()
+        -- Clean up stale Recent items (items no longer in bags)
+        -- If items were removed, force full button release to prevent texture artifacts
+        local RecentItems = ns:GetModule("RecentItems")
+        if RecentItems and RecentItems:CleanupStale() then
+            ItemButton:ReleaseAll(frame.container)
+            buttonsByItemKey = {}
+        end
         self:Refresh()
         UpdateFrameAppearance()
         frame:Show()
@@ -654,6 +661,13 @@ function BagFrame:Show()
     end
 
     BagScanner:ScanAllBags()
+    -- Clean up stale Recent items (items no longer in bags)
+    -- If items were removed, force full button release to prevent texture artifacts
+    local RecentItems = ns:GetModule("RecentItems")
+    if RecentItems and RecentItems:CleanupStale() then
+        ItemButton:ReleaseAll(frame.container)
+        buttonsByItemKey = {}
+    end
     self:Refresh()
     UpdateFrameAppearance()
     frame:Show()
@@ -721,6 +735,31 @@ function BagFrame:IncrementalUpdate(dirtyBags)
     -- Never do incremental updates while viewing a cached character
     -- Live bag events should not affect cached character display
     if viewingCharacter then return end
+
+    -- If Recent items were removed, force full refresh to prevent texture artifacts
+    local RecentItems = ns:GetModule("RecentItems")
+    if RecentItems and RecentItems:WasItemRemoved() then
+        -- Release ALL buttons and headers for clean slate
+        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllCategoryHeaders()
+        buttonsByItemKey = {}
+        buttonsBySlot = {}
+        buttonsByBag = {}
+        cachedItemData = {}
+        cachedItemCount = {}
+        cachedItemCategory = {}
+        buttonPositions = {}
+        categoryViewItems = {}
+        lastCategoryLayout = nil
+        lastTotalItemCount = 0
+        for _, button in pairs(pseudoItemButtons) do
+            ItemButton:Release(button)
+        end
+        pseudoItemButtons = {}
+        layoutCached = false
+        self:Refresh()
+        return
+    end
 
     if not layoutCached then
         -- No cached layout, do full refresh

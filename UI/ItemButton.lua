@@ -11,7 +11,7 @@ local Tooltip = ns:GetModule("Tooltip")
 local buttonPool = nil  -- Lazy initialized
 local buttonIndex = 0
 
--- Minimal reset function for pool (called on Release)
+-- Full reset function for pool (called on Release)
 local function ResetButton(pool, button)
     button:Hide()
     button.wrapper:Hide()
@@ -25,6 +25,21 @@ local function ResetButton(pool, button)
     button.layoutY = nil
     button.layoutIndex = nil
     button.containerFrame = nil
+
+    -- Clear visual state to prevent texture bleeding
+    SetItemButtonTexture(button, nil)
+    SetItemButtonCount(button, 0)
+    SetItemButtonDesaturated(button, false)
+    if button.border then button.border:Hide() end
+    if button.lockOverlay then button.lockOverlay:Hide() end
+    if button.unusableOverlay then button.unusableOverlay:Hide() end
+    if button.junkOverlay then button.junkOverlay:Hide() end
+    if button.junkIcon then button.junkIcon:Hide() end
+    if button.trackedIcon then button.trackedIcon:Hide() end
+    if button.trackedIconShadow then button.trackedIconShadow:Hide() end
+    if button.questIcon then button.questIcon:Hide() end
+    if button.questStarterIcon then button.questStarterIcon:Hide() end
+    if button.cooldown then button.cooldown:Clear() end
 end
 
 local BASE_BUTTON_SIZE = 37

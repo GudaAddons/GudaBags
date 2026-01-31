@@ -11,6 +11,9 @@ local Database = ns:GetModule("Database")
 -- This is stored in character DB and persists across sessions
 local recentItems = nil  -- Lazy loaded from DB
 
+-- Flag to indicate Recent items were removed (for triggering full refresh)
+local recentItemsRemoved = false
+
 local function GetRecentItems()
     if recentItems == nil then
         -- Load from character DB
@@ -108,6 +111,15 @@ local function RemoveItemFromRecent(itemID)
     if items[itemID] then
         items[itemID] = nil
         SaveRecentItems()
+
+        -- Set flag to trigger full refresh in BagFrame
+        recentItemsRemoved = true
+
+        -- Invalidate category cache so item moves to proper category
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if CategoryManager then
+            CategoryManager:ClearCategoryCache()
+        end
     end
 end
 
@@ -184,8 +196,57 @@ function RecentItems:Cleanup()
     CleanupExpiredItems()
 end
 
+-- Remove Recent items that are no longer in bags
+-- Returns true if any items were removed
+function RecentItems:CleanupStale()
+    local BagScanner = ns:GetModule("BagScanner")
+    if not BagScanner then return false end
+
+    local bags = BagScanner:GetCachedBags()
+    if not bags then return false end
+
+    -- Build set of itemIDs currently in bags
+    local itemsInBags = {}
+    for bagID, bagData in pairs(bags) do
+        if bagData.slots then
+            for slot, itemData in pairs(bagData.slots) do
+                if itemData and itemData.itemID then
+                    itemsInBags[itemData.itemID] = true
+                end
+            end
+        end
+    end
+
+    -- Remove Recent items not in bags
+    local items = GetRecentItems()
+    local changed = false
+    for itemID in pairs(items) do
+        if not itemsInBags[itemID] then
+            items[itemID] = nil
+            changed = true
+        end
+    end
+
+    if changed then
+        SaveRecentItems()
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if CategoryManager then
+            CategoryManager:ClearCategoryCache()
+        end
+    end
+
+    return changed
+end
+
 function RecentItems:GetAll()
     return GetRecentItems()
+end
+
+-- Check if Recent items were removed (and clear the flag)
+function RecentItems:WasItemRemoved()
+    local removed = recentItemsRemoved
+    recentItemsRemoved = false
+    return removed
 end
 
 -------------------------------------------------
@@ -200,17 +261,23 @@ local function GetItemIDFromLink(itemLink)
 end
 
 -- Handle loot event - mark looted items as recent
-local function OnLootReceived(event, msg)
+local function OnLootReceived(event, msg, ...)
     if not msg then return end
 
-    -- Parse the loot message for item link
-    -- Format: "You receive loot: [Item Name]" or "You receive item: [Item Name]"
-    local itemLink = msg:match("|c%x+|Hitem:[^|]+|h%[.-%]|h|r")
-    if not itemLink then return end
+    -- CHAT_MSG_LOOT passes playerGUID as arg12 for self-loot in some versions
+    -- But more reliably, check if message matches SELF loot patterns
+    -- LOOT_ITEM_SELF = "You receive loot: %s."
+    -- LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %s x%d."
 
-    local itemID = GetItemIDFromLink(itemLink)
+    -- Only process YOUR loot - check for self-loot pattern
+    -- This works by checking if message does NOT contain another player's name before "receives"
+    local isOtherPlayer = msg:find(" receives loot:")
+    if isOtherPlayer then return end
+
+    -- Extract itemID directly from any item link in the message
+    local itemID = msg:match("|Hitem:(%d+)")
     if itemID then
-        MarkItemRecent(itemID)
+        MarkItemRecent(tonumber(itemID))
     end
 end
 

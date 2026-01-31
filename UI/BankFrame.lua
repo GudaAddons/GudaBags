@@ -628,6 +628,30 @@ function BankFrame:IncrementalUpdate(dirtyBags)
     -- Live bank events should not affect cached character display
     if viewingCharacter then return end
 
+    -- If Recent items were removed, force full refresh to prevent texture artifacts
+    local RecentItems = ns:GetModule("RecentItems")
+    if RecentItems and RecentItems:WasItemRemoved() then
+        -- Release ALL buttons and headers for clean slate
+        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllCategoryHeaders()
+        buttonsByItemKey = {}
+        buttonsBySlot = {}
+        buttonsByBag = {}
+        cachedItemData = {}
+        cachedItemCount = {}
+        cachedItemCategory = {}
+        categoryViewItems = {}
+        lastCategoryLayout = nil
+        lastTotalItemCount = 0
+        for _, button in pairs(pseudoItemButtons) do
+            ItemButton:Release(button)
+        end
+        pseudoItemButtons = {}
+        layoutCached = false
+        self:Refresh()
+        return
+    end
+
     if not layoutCached then
         -- No cached layout, do full refresh
         self:Refresh()

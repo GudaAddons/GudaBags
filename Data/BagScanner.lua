@@ -69,6 +69,11 @@ function BagScanner:ScanDirtyBags(bagIDs)
                         knownItemIDs[itemData.itemID] = (knownItemIDs[itemData.itemID] or 1) - 1
                         if knownItemIDs[itemData.itemID] <= 0 then
                             knownItemIDs[itemData.itemID] = nil
+                            -- Item completely removed from inventory - remove from Recent
+                            local RecentItems = ns:GetModule("RecentItems")
+                            if RecentItems then
+                                RecentItems:RemoveRecent(itemData.itemID)
+                            end
                         end
                     end
                 end
@@ -83,9 +88,15 @@ function BagScanner:ScanDirtyBags(bagIDs)
                     cachedBags[bagID] = bagData
                     -- Track item IDs from this bag
                     if bagData.slots then
+                        local RecentItems = ns:GetModule("RecentItems")
                         for slot, itemData in pairs(bagData.slots) do
                             if itemData and itemData.itemID then
+                                local wasNew = not knownItemIDs[itemData.itemID]
                                 knownItemIDs[itemData.itemID] = (knownItemIDs[itemData.itemID] or 0) + 1
+                                -- Mark truly new items as Recent
+                                if wasNew and RecentItems then
+                                    RecentItems:MarkRecent(itemData.itemID)
+                                end
                             end
                         end
                     end
@@ -107,13 +118,26 @@ function BagScanner:ScanDirtyBags(bagIDs)
                             knownItemIDs[cachedItemID] = (knownItemIDs[cachedItemID] or 1) - 1
                             if knownItemIDs[cachedItemID] <= 0 then
                                 knownItemIDs[cachedItemID] = nil
+                                -- Item completely removed from inventory - remove from Recent
+                                local RecentItems = ns:GetModule("RecentItems")
+                                if RecentItems then
+                                    RecentItems:RemoveRecent(cachedItemID)
+                                end
                             end
                         end
 
                         if itemInfo then
                             -- Update known count
                             if currentItemID then
+                                local wasNew = not knownItemIDs[currentItemID]
                                 knownItemIDs[currentItemID] = (knownItemIDs[currentItemID] or 0) + 1
+                                -- Mark truly new items as Recent (backup for loot detection)
+                                if wasNew then
+                                    local RecentItems = ns:GetModule("RecentItems")
+                                    if RecentItems then
+                                        RecentItems:MarkRecent(currentItemID)
+                                    end
+                                end
                             end
 
                             -- Try fast path first (uses cached tooltip data)
