@@ -661,10 +661,16 @@ function BagFrame:Show()
     end
 
     BagScanner:ScanAllBags()
-    -- Clean up stale Recent items (items no longer in bags)
-    -- If items were removed, force full button release to prevent texture artifacts
+    -- Clean up Recent items: both expired (time-based) and stale (no longer in bags)
+    -- If any items were removed, force full button release to prevent texture artifacts
     local RecentItems = ns:GetModule("RecentItems")
-    if RecentItems and RecentItems:CleanupStale() then
+    local needsFullRefresh = false
+    if RecentItems then
+        -- Pass true to skip event firing since we'll refresh manually
+        if RecentItems:Cleanup(true) then needsFullRefresh = true end
+        if RecentItems:CleanupStale() then needsFullRefresh = true end
+    end
+    if needsFullRefresh then
         ItemButton:ReleaseAll(frame.container)
         buttonsByItemKey = {}
     end
@@ -1042,15 +1048,14 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     end
                 end
             else
-                -- Slot is now empty - show ghost if it had an item
+                -- Slot is now empty - item was removed
                 if oldItemID then
-                    local bagID, slot = slotKey:match("(-?%d+):(%d+)")
-                    bagID = tonumber(bagID)
-                    slot = tonumber(slot)
-                    ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
-                    cachedItemData[slotKey] = nil
-                    cachedItemCount[slotKey] = nil
-                    ghostsCreated = ghostsCreated + 1
+                    -- In category view, item removal requires full layout reflow
+                    -- Ghost slots at fixed positions cause visual artifacts
+                    -- Force full refresh to properly reposition remaining items
+                    ns:Debug("CategoryView REFRESH: item removed at", slotKey)
+                    self:Refresh()
+                    return
                 end
             end
             end  -- end if not button.isEmptySlotButton
@@ -1385,6 +1390,35 @@ function BagFrame:RestackAndClean()
     end
 end
 
+-- Clean ghost slots without restacking (used when items are removed externally, e.g., leaving BG)
+function BagFrame:Clean()
+    if not frame then return end
+
+    -- Release all buttons (they would be orphaned otherwise)
+    ItemButton:ReleaseAll(frame.container)
+
+    -- Clear all layout caches (removes ghost slots)
+    buttonsBySlot = {}
+    buttonsByBag = {}
+    cachedItemData = {}
+    cachedItemCount = {}
+    cachedItemCategory = {}
+    buttonsByItemKey = {}
+    buttonPositions = {}
+    categoryViewItems = {}
+    lastCategoryLayout = nil
+    lastTotalItemCount = 0
+    pseudoItemButtons = {}
+    layoutCached = false
+    lastLayoutSettings = nil
+
+    -- Rescan and refresh
+    BagScanner:ScanAllBags()
+    if frame:IsShown() then
+        BagFrame:Refresh()
+    end
+end
+
 Events:Register("SETTING_CHANGED", OnSettingChanged, BagFrame)
 
 -- Refresh when categories are updated (reordered, grouped, etc.)
@@ -1420,6 +1454,15 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     if frame and frame:IsShown() and bagID and slotID then
         ItemButton:UpdateLockForItem(bagID, slotID)
     end
+end, BagFrame)
+
+-- Clean ghost slots when entering world (leaving BG, instance, etc.)
+-- This handles temporary items being removed (e.g., AV-only items when leaving AV)
+Events:Register("PLAYER_ENTERING_WORLD", function()
+    -- Small delay to let bag contents stabilize after zone transition
+    C_Timer.After(0.5, function()
+        BagFrame:Clean()
+    end)
 end, BagFrame)
 
 Events:OnPlayerLogin(function()

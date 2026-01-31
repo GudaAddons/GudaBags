@@ -124,7 +124,8 @@ local function RemoveItemFromRecent(itemID)
 end
 
 -- Clean up expired recent items
-local function CleanupExpiredItems()
+-- Returns true if any items were removed
+local function CleanupExpiredItems(skipEvent)
     local duration = GetRecentDuration()
     local items = GetRecentItems()
     local now = time()
@@ -146,12 +147,16 @@ local function CleanupExpiredItems()
             CategoryManager:ClearCategoryCache()
         end
 
-        -- Trigger refresh
-        local Events = ns:GetModule("Events")
-        if Events then
-            Events:Fire("CATEGORIES_UPDATED")
+        -- Trigger refresh (unless caller will handle it)
+        if not skipEvent then
+            local Events = ns:GetModule("Events")
+            if Events then
+                Events:Fire("CATEGORIES_UPDATED")
+            end
         end
     end
+
+    return changed
 end
 
 -------------------------------------------------
@@ -192,8 +197,8 @@ function RecentItems:IsRecent(itemID)
     return IsItemRecent(itemID)
 end
 
-function RecentItems:Cleanup()
-    CleanupExpiredItems()
+function RecentItems:Cleanup(skipEvent)
+    return CleanupExpiredItems(skipEvent)
 end
 
 -- Remove Recent items that are no longer in bags
@@ -264,15 +269,11 @@ end
 local function OnLootReceived(event, msg, ...)
     if not msg then return end
 
-    -- CHAT_MSG_LOOT passes playerGUID as arg12 for self-loot in some versions
-    -- But more reliably, check if message matches SELF loot patterns
-    -- LOOT_ITEM_SELF = "You receive loot: %s."
-    -- LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %s x%d."
-
-    -- Only process YOUR loot - check for self-loot pattern
-    -- This works by checking if message does NOT contain another player's name before "receives"
-    local isOtherPlayer = msg:find(" receives loot:")
-    if isOtherPlayer then return end
+    -- Only process YOUR loot - message must start with "You "
+    -- This filters out all other player messages like:
+    -- "PlayerName receives loot: ..."
+    -- "PlayerName creates ..." (conjured items)
+    if not msg:find("^You ") then return end
 
     -- Extract itemID directly from any item link in the message
     local itemID = msg:match("|Hitem:(%d+)")
