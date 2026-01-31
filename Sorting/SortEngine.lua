@@ -652,7 +652,8 @@ local function AddSortKeys(items)
             local isValuableSlot = Constants.VALUABLE_EQUIP_SLOTS and Constants.VALUABLE_EQUIP_SLOTS[item.equipLoc]
 
             if isGrayItem then
-                shouldBeJunk = not hasSpecial
+                -- Gray items are always junk (unless profession tools)
+                shouldBeJunk = not isTool
             elseif isWhiteEquip and whiteItemsJunk then
                 -- Only treat white equippable as junk if setting is enabled
                 -- Valuable slots (trinket, ring, neck, shirt, tabard) are never junk

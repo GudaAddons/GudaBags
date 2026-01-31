@@ -75,13 +75,13 @@ end
 local function IsJunkItem(itemData)
     if not itemData then return false end
 
-    -- Gray quality items
+    -- Profession tools are never junk
+    if IsTool(itemData.name) then
+        return false
+    end
+
+    -- Gray quality items are always junk (consistent with Category View isJunk rule)
     if itemData.quality == 0 then
-        -- Check if it has special properties (unique, use effects, etc.)
-        -- Use cached value from ItemScanner to avoid tooltip rescans
-        if itemData.hasSpecialProperties then
-            return false
-        end
         return true
     end
 

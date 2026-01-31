@@ -99,6 +99,7 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
     -- These are the only ones where junk detection matters
     local needSpecialPropertiesCheck = itemQuality and (itemQuality == 0 or itemQuality == 1)
 
+
     -- Check if item is in the quest indicator ignore list
     local isQuestIgnored = itemID and Constants.QUEST_INDICATOR_IGNORE and Constants.QUEST_INDICATOR_IGNORE[itemID]
 
@@ -151,8 +152,12 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
                         elseif IsGreenColor(r, g, b) then
                             hasSpecialProperties = true
                         -- Yellow/gold text (flavor text) - skip first line (item name)
+                        -- Also skip common non-special yellow text like "Crafting Reagent"
                         elseif i > 1 and IsYellowColor(r, g, b) then
-                            hasSpecialProperties = true
+                            -- Exclude common crafting/trade labels that aren't special
+                            if not textLower:find("crafting reagent") and not textLower:find("sell price") then
+                                hasSpecialProperties = true
+                            end
                         end
                     end
                 end
@@ -246,7 +251,6 @@ function ItemScanner:ScanSlot(bagID, slot)
     if not itemName then
         -- Fallback to basic info from container API
         itemName = ""
-        itemQuality = itemInfo.quality or 0
         itemLevel = 0
         itemMinLevel = 0
         itemType = ""
@@ -257,8 +261,9 @@ function ItemScanner:ScanSlot(bagID, slot)
         subClassID = 0
     end
 
-    -- Use quality from GetItemInfo, fallback to itemInfo.quality
-    local quality = itemQuality or itemInfo.quality or 0
+    -- Get quality from multiple sources (API differs between expansions)
+    -- C_Container.GetContainerItemInfo may return quality as 'quality' or 'itemQuality'
+    local quality = itemQuality or itemInfo.quality or itemInfo.itemQuality or 0
 
     -- Single optimized tooltip scan for all properties
     -- Pass quality so we only check hasSpecialProperties for gray/white items
