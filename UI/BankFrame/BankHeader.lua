@@ -30,6 +30,15 @@ local function CreateHeader(parent)
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
 
+    titleBar:SetScript("OnMouseDown", function(self, button)
+        -- Raise parent frame above other bag/bank frames when clicked
+        parent:SetFrameLevel(60)
+        local BagFrameModule = ns:GetModule("BagFrame")
+        if BagFrameModule and BagFrameModule:GetFrame() then
+            BagFrameModule:GetFrame():SetFrameLevel(50)
+        end
+    end)
+
     titleBar:SetScript("OnDragStart", function()
         if not Database:GetSetting("locked") then
             parent:StartMoving()

@@ -98,6 +98,15 @@ local function CreateBankFrame()
     f:SetFrameStrata("HIGH")
     f:SetFrameLevel(50)
     f:EnableMouse(true)
+
+    -- Raise frame above BagFrame when clicked
+    f:SetScript("OnMouseDown", function(self)
+        self:SetFrameLevel(60)
+        local BagFrameModule = ns:GetModule("BagFrame")
+        if BagFrameModule and BagFrameModule:GetFrame() then
+            BagFrameModule:GetFrame():SetFrameLevel(50)
+        end
+    end)
     f:SetBackdrop(Constants.BACKDROP)
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
     f:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
@@ -588,6 +597,10 @@ end
 
 function BankFrame:IsShown()
     return frame and frame:IsShown()
+end
+
+function BankFrame:GetFrame()
+    return frame
 end
 
 function BankFrame:GetViewingCharacter()
