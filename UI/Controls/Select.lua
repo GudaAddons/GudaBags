@@ -6,181 +6,119 @@ ns:RegisterModule("Controls.Select", Select)
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 
-local DEFAULT_HEIGHT = 45
-local DROPDOWN_ITEM_HEIGHT = 20
-local DROPDOWN_PADDING = 4
-
--- Track open dropdown to close when another opens
-local activeDropdown = nil
-
-local function CloseActiveDropdown()
-    if activeDropdown then
-        activeDropdown:Hide()
-        activeDropdown = nil
-    end
-end
+local DEFAULT_HEIGHT = 26
 
 function Select:Create(parent, config)
     -- config = { key, label, options = {{value, label}, ...}, tooltip, width }
     local container = CreateFrame("Frame", nil, parent)
     container:SetHeight(DEFAULT_HEIGHT)
-    if config.width then
-        container:SetWidth(config.width)
-    end
 
-    -- Label
-    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+    -- Label on the left, right-aligned to center
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT", container, "LEFT", 0, 0)
+    label:SetPoint("RIGHT", container, "CENTER", -60, 0)
+    label:SetJustifyH("RIGHT")
     label:SetText(config.label)
-    label:SetTextColor(1, 0.82, 0)
 
-    -- Main button
-    local button = CreateFrame("Button", nil, container, "BackdropTemplate")
-    button:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -4)
-    button:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, -18)
-    button:SetHeight(22)
-    button:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 1)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-
-    -- Button text (selected value)
-    local buttonText = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    buttonText:SetPoint("LEFT", button, "LEFT", 8, 0)
-    buttonText:SetPoint("RIGHT", button, "RIGHT", -20, 0)
-    buttonText:SetJustifyH("LEFT")
-
-    -- Arrow indicator
-    local arrow = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    arrow:SetPoint("RIGHT", button, "RIGHT", -6, 0)
-    arrow:SetText("v")
-    arrow:SetTextColor(0.7, 0.7, 0.7)
-
-    -- Dropdown frame
-    local dropdown = CreateFrame("Frame", nil, button, "BackdropTemplate")
-    dropdown:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 0, -2)
-    dropdown:SetPoint("TOPRIGHT", button, "BOTTOMRIGHT", 0, -2)
-    dropdown:SetFrameStrata("DIALOG")
-    dropdown:SetFrameLevel(300)
-    dropdown:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    dropdown:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    dropdown:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-    dropdown:Hide()
-
-    -- Create dropdown items
-    local items = {}
-    local dropdownHeight = DROPDOWN_PADDING * 2
-
-    for i, opt in ipairs(config.options) do
-        local item = CreateFrame("Button", nil, dropdown)
-        item:SetHeight(DROPDOWN_ITEM_HEIGHT)
-        item:SetPoint("TOPLEFT", dropdown, "TOPLEFT", DROPDOWN_PADDING, -DROPDOWN_PADDING - (i - 1) * DROPDOWN_ITEM_HEIGHT)
-        item:SetPoint("TOPRIGHT", dropdown, "TOPRIGHT", -DROPDOWN_PADDING, -DROPDOWN_PADDING - (i - 1) * DROPDOWN_ITEM_HEIGHT)
-
-        local itemBg = item:CreateTexture(nil, "BACKGROUND")
-        itemBg:SetAllPoints()
-        itemBg:SetTexture("Interface\\Buttons\\WHITE8x8")
-        itemBg:SetVertexColor(0.2, 0.2, 0.2, 0)
-        item.bg = itemBg
-
-        local itemText = item:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        itemText:SetPoint("LEFT", item, "LEFT", 6, 0)
-        itemText:SetPoint("RIGHT", item, "RIGHT", -6, 0)
-        itemText:SetJustifyH("LEFT")
-        itemText:SetText(opt.label)
-        item.text = itemText
-
-        item:SetScript("OnEnter", function(self)
-            self.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
-        end)
-
-        item:SetScript("OnLeave", function(self)
-            self.bg:SetVertexColor(0.2, 0.2, 0.2, 0)
-        end)
-
-        item:SetScript("OnClick", function()
-            Database:SetSetting(config.key, opt.value)
-            Events:Fire("SETTING_CHANGED", config.key, opt.value)
-            buttonText:SetText(opt.label)
-            dropdown:Hide()
-            activeDropdown = nil
-        end)
-
-        items[i] = item
-        dropdownHeight = dropdownHeight + DROPDOWN_ITEM_HEIGHT
-    end
-
-    dropdown:SetHeight(dropdownHeight)
-
-    -- Get current value and set button text
-    local currentValue = Database:GetSetting(config.key)
+    -- Build entries and values arrays
+    local entries = {}
+    local values = {}
     for _, opt in ipairs(config.options) do
-        if opt.value == currentValue then
-            buttonText:SetText(opt.label)
-            break
+        table.insert(entries, opt.label)
+        table.insert(values, opt.value)
+    end
+
+    local currentValue = Database:GetSetting(config.key)
+
+    -- Try to use WowStyle1DropdownTemplate if available
+    local dropdown
+    local useModernDropdown = DoesTemplateExist and DoesTemplateExist("WowStyle1DropdownTemplate")
+
+    if useModernDropdown then
+        dropdown = CreateFrame("DropdownButton", nil, container, "WowStyle1DropdownTemplate")
+        dropdown:SetPoint("LEFT", container, "CENTER", -50, 0)
+        dropdown:SetPoint("RIGHT", container, "RIGHT", -10, 0)
+
+        -- Build menu entries for MenuUtil
+        local menuEntries = {}
+        for i = 1, #entries do
+            table.insert(menuEntries, {entries[i], values[i]})
         end
-    end
-    if buttonText:GetText() == nil or buttonText:GetText() == "" then
-        buttonText:SetText(config.options[1] and config.options[1].label or "")
-    end
 
-    -- Button hover effect
-    button:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
-    end)
+        -- Use MenuUtil.CreateRadioMenu for radio-style selection
+        MenuUtil.CreateRadioMenu(dropdown, function(value)
+            return Database:GetSetting(config.key) == value
+        end, function(value)
+            Database:SetSetting(config.key, value)
+            Events:Fire("SETTING_CHANGED", config.key, value)
+        end, unpack(menuEntries))
 
-    button:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-    end)
-
-    -- Toggle dropdown on click
-    button:SetScript("OnClick", function()
-        if dropdown:IsShown() then
-            dropdown:Hide()
-            activeDropdown = nil
-        else
-            CloseActiveDropdown()
-            dropdown:Show()
-            activeDropdown = dropdown
+        -- Public API for modern dropdown
+        container.GetValue = function()
+            return Database:GetSetting(config.key)
         end
-    end)
+        container.SetValue = function(self, v)
+            dropdown:GenerateMenu()
+        end
+        container.Refresh = function(self)
+            dropdown:GenerateMenu()
+        end
+    else
+        -- Fallback to UIDropDownMenuTemplate
+        local dropdownName = "GudaBagsDropdown" .. tostring(config.key):gsub("%.", "_")
+        dropdown = CreateFrame("Frame", dropdownName, container, "UIDropDownMenuTemplate")
+        dropdown:SetPoint("LEFT", container, "CENTER", -70, 0)
+        UIDropDownMenu_SetWidth(dropdown, 140)
 
-    -- Close dropdown when clicking elsewhere
-    dropdown:SetScript("OnShow", function()
-        dropdown:SetPropagateKeyboardInput(true)
-    end)
+        local function InitializeDropdown(self, level)
+            level = level or 1
+            if level ~= 1 then return end
 
-    -- Tooltip
-    if config.tooltip then
-        button:SetScript("OnEnter", function(self)
-            self:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(config.tooltip, 1, 1, 1, 1, true)
-            GameTooltip:Show()
-        end)
-        button:SetScript("OnLeave", function(self)
-            self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-            GameTooltip:Hide()
-        end)
-    end
+            local currentVal = Database:GetSetting(config.key)
+            for i, opt in ipairs(config.options) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = opt.label
+                info.value = opt.value
+                info.checked = (opt.value == currentVal)
+                info.func = function()
+                    Database:SetSetting(config.key, opt.value)
+                    Events:Fire("SETTING_CHANGED", config.key, opt.value)
+                    UIDropDownMenu_SetText(dropdown, opt.label)
+                    CloseDropDownMenus()
+                end
+                UIDropDownMenu_AddButton(info, level)
+            end
+        end
 
-    -- Public API
-    container.GetValue = function()
-        return Database:GetSetting(config.key)
-    end
+        UIDropDownMenu_Initialize(dropdown, InitializeDropdown)
 
-    container.SetValue = function(self, v)
+        -- Set initial text
         for _, opt in ipairs(config.options) do
-            if opt.value == v then
-                buttonText:SetText(opt.label)
+            if opt.value == currentValue then
+                UIDropDownMenu_SetText(dropdown, opt.label)
                 break
+            end
+        end
+
+        -- Public API for classic dropdown
+        container.GetValue = function()
+            return Database:GetSetting(config.key)
+        end
+        container.SetValue = function(self, v)
+            for _, opt in ipairs(config.options) do
+                if opt.value == v then
+                    UIDropDownMenu_SetText(dropdown, opt.label)
+                    break
+                end
+            end
+        end
+        container.Refresh = function(self)
+            local v = Database:GetSetting(config.key)
+            for _, opt in ipairs(config.options) do
+                if opt.value == v then
+                    UIDropDownMenu_SetText(dropdown, opt.label)
+                    break
+                end
             end
         end
     end
@@ -188,19 +126,8 @@ function Select:Create(parent, config)
     container.GetSettingKey = function()
         return config.key
     end
-
-    container.Refresh = function(self)
-        local v = Database:GetSetting(config.key)
-        for _, opt in ipairs(config.options) do
-            if opt.value == v then
-                buttonText:SetText(opt.label)
-                break
-            end
-        end
-    end
-
     container.CloseDropdown = function()
-        dropdown:Hide()
+        CloseDropDownMenus()
     end
 
     return container
@@ -208,7 +135,7 @@ end
 
 -- Global function to close any open dropdown
 function Select:CloseAll()
-    CloseActiveDropdown()
+    CloseDropDownMenus()
 end
 
 return Select

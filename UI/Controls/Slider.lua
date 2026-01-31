@@ -6,49 +6,19 @@ ns:RegisterModule("Controls.Slider", Slider)
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 
-local DEFAULT_HEIGHT = 45
-local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF"
+local DEFAULT_HEIGHT = 26
 
 function Slider:Create(parent, config)
     -- config = { key, label, min, max, step, format, width }
     local container = CreateFrame("Frame", nil, parent)
     container:SetHeight(DEFAULT_HEIGHT)
-    if config.width then
-        container:SetWidth(config.width)
-    end
 
-    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+    -- Label on the left, right-aligned to center
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT", container, "LEFT", 0, 0)
+    label:SetPoint("RIGHT", container, "CENTER", -60, 0)
+    label:SetJustifyH("RIGHT")
     label:SetText(config.label)
-    label:SetTextColor(1, 0.82, 0)
-
-    local valueText = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    valueText:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, 0)
-
-    local slider = CreateFrame("Slider", nil, container, "OptionsSliderTemplate")
-    slider:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
-    slider:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, -18)
-    slider:SetMinMaxValues(config.min, config.max)
-    slider:SetValueStep(config.step)
-    slider:SetObeyStepOnDrag(true)
-    slider:SetHeight(20)
-
-    local track = slider:CreateTexture(nil, "BACKGROUND")
-    track:SetHeight(4)
-    track:SetPoint("LEFT", slider, "LEFT", 0, 0)
-    track:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
-    track:SetTexture("Interface\\Buttons\\WHITE8x8")
-    track:SetVertexColor(0.3, 0.3, 0.3, 1)
-
-    local trackFill = slider:CreateTexture(nil, "ARTWORK")
-    trackFill:SetHeight(4)
-    trackFill:SetPoint("LEFT", slider, "LEFT", 0, 0)
-    trackFill:SetTexture("Interface\\Buttons\\WHITE8x8")
-    trackFill:SetVertexColor(0.6, 0.5, 0.2, 1)
-
-    slider.Low:SetText(config.min)
-    slider.High:SetText(config.max)
-    slider.Text:SetText("")
 
     local function FormatValue(value)
         if config.format then
@@ -63,56 +33,106 @@ function Slider:Create(parent, config)
         return tostring(value)
     end
 
-    local function UpdateTrackFill()
-        local min, max = slider:GetMinMaxValues()
-        local val = slider:GetValue()
-        local pct = (val - min) / (max - min)
-        local width = slider:GetWidth() * pct
-        if width < 1 then width = 1 end
-        trackFill:SetWidth(width)
-    end
-
     local currentValue = Database:GetSetting(config.key) or config.min
-    slider:SetValue(currentValue)
-    valueText:SetText(FormatValue(currentValue))
 
-    -- Debounce timer for expensive updates
-    local debounceTimer = nil
-    local DEBOUNCE_DELAY = 0.1  -- 100ms delay
+    -- Try to use MinimalSliderWithSteppersTemplate if available
+    local slider
+    local useModernSlider = DoesTemplateExist and DoesTemplateExist("MinimalSliderWithSteppersTemplate")
 
-    slider:SetScript("OnValueChanged", function(self, value)
-        value = math.floor(value / config.step + 0.5) * config.step
-        valueText:SetText(FormatValue(value))
-        UpdateTrackFill()
+    if useModernSlider then
+        slider = CreateFrame("Slider", nil, container, "MinimalSliderWithSteppersTemplate")
+        slider:SetPoint("LEFT", container, "CENTER", -50, 0)
+        slider:SetPoint("RIGHT", container, "RIGHT", -50, 0)
+        slider:SetHeight(20)
 
-        -- Save setting immediately (cheap operation)
-        Database:SetSetting(config.key, value)
+        -- Initialize the modern slider
+        local steps = config.max - config.min
+        slider:Init(currentValue, config.min, config.max, steps, {
+            [MinimalSliderWithSteppersMixin.Label.Right] = CreateMinimalSliderFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
+                return WHITE_FONT_COLOR:WrapTextInColorCode(FormatValue(value))
+            end)
+        })
 
-        -- Debounce the event firing (expensive UI updates)
-        if debounceTimer then
-            debounceTimer:Cancel()
-        end
-        debounceTimer = C_Timer.NewTimer(DEBOUNCE_DELAY, function()
+        slider:RegisterCallback("OnValueChanged", function(_, value)
+            Database:SetSetting(config.key, value)
             Events:Fire("SETTING_CHANGED", config.key, value)
-            debounceTimer = nil
         end)
-    end)
 
-    slider:SetScript("OnShow", UpdateTrackFill)
-    C_Timer.After(0.1, UpdateTrackFill)
+        -- Public API for modern slider
+        container.GetValue = function() return slider.Slider:GetValue() end
+        container.SetValue = function(self, v)
+            slider:SetValue(v)
+        end
+        container.Refresh = function(self)
+            local v = Database:GetSetting(config.key) or config.min
+            slider:SetValue(v)
+        end
+    else
+        -- Fallback to OptionsSliderTemplate
+        slider = CreateFrame("Slider", nil, container, "OptionsSliderTemplate")
+        slider:SetPoint("LEFT", container, "CENTER", -50, 0)
+        slider:SetPoint("RIGHT", container, "RIGHT", -55, 0)
+        slider:SetMinMaxValues(config.min, config.max)
+        slider:SetValueStep(config.step)
+        slider:SetObeyStepOnDrag(true)
 
-    -- Public API
-    container.GetValue = function() return slider:GetValue() end
-    container.SetValue = function(self, v)
-        slider:SetValue(v)
-        valueText:SetText(FormatValue(v))
+        -- Hide template's text elements
+        slider.Text:SetText("")
+        slider.Low:SetText("")
+        slider.High:SetText("")
+
+        slider:SetValue(currentValue)
+
+        -- Value display on the right
+        local valueText = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        valueText:SetPoint("LEFT", slider, "RIGHT", 5, 0)
+        valueText:SetWidth(40)
+        valueText:SetJustifyH("LEFT")
+        valueText:SetText(FormatValue(currentValue))
+
+        -- Debounce timer for expensive updates
+        local debounceTimer = nil
+        local DEBOUNCE_DELAY = 0.1
+
+        slider:SetScript("OnValueChanged", function(self, value)
+            value = math.floor(value / config.step + 0.5) * config.step
+            valueText:SetText(FormatValue(value))
+            Database:SetSetting(config.key, value)
+
+            if debounceTimer then
+                debounceTimer:Cancel()
+            end
+            debounceTimer = C_Timer.NewTimer(DEBOUNCE_DELAY, function()
+                Events:Fire("SETTING_CHANGED", config.key, value)
+                debounceTimer = nil
+            end)
+        end)
+
+        -- Public API for classic slider
+        container.GetValue = function() return slider:GetValue() end
+        container.SetValue = function(self, v)
+            slider:SetValue(v)
+            valueText:SetText(FormatValue(v))
+        end
+        container.Refresh = function(self)
+            local v = Database:GetSetting(config.key) or config.min
+            slider:SetValue(v)
+            valueText:SetText(FormatValue(v))
+        end
     end
+
     container.GetSettingKey = function() return config.key end
-    container.Refresh = function(self)
-        local v = Database:GetSetting(config.key) or config.min
-        slider:SetValue(v)
-        valueText:SetText(FormatValue(v))
-    end
+
+    -- Mouse wheel support
+    container:EnableMouseWheel(true)
+    container:SetScript("OnMouseWheel", function(self, delta)
+        local current = container.GetValue()
+        local newValue = current + (delta * config.step)
+        newValue = math.max(config.min, math.min(config.max, newValue))
+        container:SetValue(newValue)
+        Database:SetSetting(config.key, newValue)
+        Events:Fire("SETTING_CHANGED", config.key, newValue)
+    end)
 
     return container
 end

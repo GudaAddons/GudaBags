@@ -92,7 +92,7 @@ end
 -- Create Tab from Schema
 -------------------------------------------------
 local function CreateTabFromSchema(parent, schema)
-    local stack = VerticalStack:Create(parent, { spacing = 4 })
+    local stack = VerticalStack:Create(parent, { spacing = 10 })
 
     for _, item in ipairs(schema) do
         local control = CreateControl(stack, item)
@@ -1323,52 +1323,43 @@ end
 -- Create Main Settings Frame
 -------------------------------------------------
 local function CreateSettingsFrame()
-    local f = CreateFrame("Frame", "GudaBagsSettingsPopup", UIParent, "BackdropTemplate")
+    -- Use ButtonFrameTemplate for standard Blizzard look
+    local f = CreateFrame("Frame", "GudaBagsSettingsPopup", UIParent, "ButtonFrameTemplate")
     f:SetSize(POPUP_WIDTH, POPUP_HEIGHT)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:SetClampedToScreen(true)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
-    f:EnableMouse(true)
 
-    f:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = {left = 3, right = 3, top = 3, bottom = 3},
-    })
-    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    -- Hide portrait and button bar
+    ButtonFrameTemplate_HidePortrait(f)
+    ButtonFrameTemplate_HideButtonBar(f)
+    if f.Inset then
+        f.Inset:Hide()
+    end
 
-    -- Title bar for dragging
-    local titleBar = CreateFrame("Frame", nil, f)
-    titleBar:SetHeight(20)
-    titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-    titleBar:SetScript("OnDragStart", function() f:StartMoving() end)
-    titleBar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    -- Set title
+    f:SetTitle(L["SETTINGS_TITLE"])
 
-    -- Close button
-    IconButton:CreateCloseButton(titleBar, {
-        onClick = function() f:Hide() end,
-        point = "TOPRIGHT",
-        offsetX = -4,
-        offsetY = -4,
-    })
+    -- Make draggable
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+        self:SetUserPlaced(false)
+    end)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
 
-    -- Title text
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, -8)
-    title:SetText(L["SETTINGS_TITLE"])
-    title:SetTextColor(1, 0.82, 0)
+    -- Store Tabs array for PanelTemplates
+    f.Tabs = {}
 
     -- Create TabPanel
     tabPanel = TabPanel:Create(f, {
         tabs = GetTabList(),
-        topMargin = 32,
+        topMargin = 4,
         padding = PADDING,
         onSelect = function(tabId)
             if tabId == "categories" then
@@ -1376,8 +1367,8 @@ local function CreateSettingsFrame()
             end
         end,
     })
-    tabPanel:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    tabPanel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    tabPanel:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -20)
+    tabPanel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 8)
 
     -- Create tab contents
     tabPanel:SetContent("general", CreateTabFromSchema(f, SettingsSchema.GetGeneral()))

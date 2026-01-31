@@ -3,51 +3,43 @@ local addonName, ns = ...
 local TabPanel = {}
 ns:RegisterModule("TabPanel", TabPanel)
 
-local DEFAULT_TAB_HEIGHT = 24
+-- Global counter for unique tab names
+local tabCounter = 0
 
 function TabPanel:Create(parent, config)
     -- config = { tabs = {{id, label}, ...}, tabHeight, topMargin, padding, onSelect }
     local container = CreateFrame("Frame", nil, parent)
     local tabs = {}
+    local tabButtons = {}
     local tabContents = {}
     local activeTab = nil
 
-    local tabHeight = config.tabHeight or DEFAULT_TAB_HEIGHT
     local topMargin = config.topMargin or 0
     local padding = config.padding or 12
 
-    -- Tab bar container (full width, no padding)
-    local tabBar = CreateFrame("Frame", nil, container)
-    tabBar:SetHeight(tabHeight)
-    tabBar:SetPoint("TOPLEFT", container, "TOPLEFT", 4, -topMargin)
-    tabBar:SetPoint("TOPRIGHT", container, "TOPRIGHT", -4, -topMargin)
+    container.Tabs = tabButtons
 
-    -- Separator line (full width)
-    local separator = container:CreateTexture(nil, "ARTWORK")
-    separator:SetHeight(1)
-    separator:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, 0)
-    separator:SetPoint("TOPRIGHT", tabBar, "BOTTOMRIGHT", 0, 0)
-    separator:SetTexture("Interface\\Buttons\\WHITE8x8")
-    separator:SetVertexColor(0.3, 0.3, 0.3, 1)
-
-    -- Content area
+    -- Content area (positioned below tabs)
     local contentArea = CreateFrame("Frame", nil, container)
-    contentArea:SetPoint("TOPLEFT", separator, "BOTTOMLEFT", padding, -6)
+    contentArea:SetPoint("TOPLEFT", container, "TOPLEFT", padding, -topMargin - 50)
     contentArea:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -padding, padding)
 
     local function SelectTab(tabId)
         activeTab = tabId
 
-        for id, btn in pairs(tabs) do
-            if id == tabId then
-                btn:SetBackdropColor(0.3, 0.3, 0.3, 1)
-                btn.text:SetTextColor(1, 0.82, 0)
-            else
-                btn:SetBackdropColor(0.15, 0.15, 0.15, 1)
-                btn.text:SetTextColor(0.7, 0.7, 0.7)
+        -- Find tab index
+        local tabIndex = 1
+        for i, tabInfo in ipairs(config.tabs) do
+            if tabInfo.id == tabId then
+                tabIndex = i
+                break
             end
         end
 
+        -- Update tab visuals using PanelTemplates
+        PanelTemplates_SetTab(container, tabIndex)
+
+        -- Show/hide content
         for id, content in pairs(tabContents) do
             if id == tabId then
                 content:Show()
@@ -61,56 +53,49 @@ function TabPanel:Create(parent, config)
         end
     end
 
-    local function CreateTabButton(tabInfo, index, totalTabs)
-        local tabWidth = (tabBar:GetWidth() > 0 and tabBar:GetWidth() or 380) / totalTabs
+    local function CreateTabButton(tabInfo, index)
+        tabCounter = tabCounter + 1
+        local tabName = "GudaBagsSettingsTab" .. tabCounter
 
-        local btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-        btn:SetSize(tabWidth, tabHeight)
-        btn:SetPoint("TOPLEFT", tabBar, "TOPLEFT", (index - 1) * tabWidth, 0)
-
-        btn:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = 12,
-            insets = { left = 2, right = 2, top = 2, bottom = 0 },
-        })
-        btn:SetBackdropColor(0.15, 0.15, 0.15, 1)
-        btn:SetBackdropBorderColor(0, 0, 0, 0)
-
-        -- Store functions for color changes
-        btn.SetBgColor = function(self, r, g, b, a)
-            self:SetBackdropColor(r, g, b, a)
+        -- Use TabButtonTemplate (works in Classic)
+        local tab
+        if DoesTemplateExist and DoesTemplateExist("PanelTopTabButtonTemplate") then
+            tab = CreateFrame("Button", tabName, container, "PanelTopTabButtonTemplate")
+        else
+            tab = CreateFrame("Button", tabName, container, "TabButtonTemplate")
         end
 
-        local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        text:SetPoint("CENTER", btn, "CENTER", 0, 0)
-        text:SetText(tabInfo.label)
-        text:SetTextColor(0.7, 0.7, 0.7)
-        btn.text = text
+        -- Position tabs at the top left
+        if index == 1 then
+            tab:SetPoint("TOPLEFT", container, "TOPLEFT", 5, -topMargin)
+        else
+            tab:SetPoint("TOPLEFT", tabButtons[index - 1], "TOPRIGHT", 4, 0)
+        end
 
-        btn:SetScript("OnClick", function()
+        tab:SetText(tabInfo.label)
+        tab:SetID(index)
+
+        tab:SetScript("OnShow", function(self)
+            PanelTemplates_TabResize(self, 10, nil, 10)
+            PanelTemplates_DeselectTab(self)
+        end)
+
+        tab:SetScript("OnClick", function()
             SelectTab(tabInfo.id)
         end)
 
-        btn:SetScript("OnEnter", function(self)
-            if activeTab ~= tabInfo.id then
-                self:SetBackdropColor(0.25, 0.25, 0.25, 1)
-            end
-        end)
-
-        btn:SetScript("OnLeave", function(self)
-            if activeTab ~= tabInfo.id then
-                self:SetBackdropColor(0.15, 0.15, 0.15, 1)
-            end
-        end)
-
-        return btn
+        return tab
     end
 
     -- Create tab buttons
     for i, tabInfo in ipairs(config.tabs) do
-        tabs[tabInfo.id] = CreateTabButton(tabInfo, i, #config.tabs)
+        local tab = CreateTabButton(tabInfo, i)
+        tabButtons[i] = tab
+        tabs[tabInfo.id] = tab
     end
+
+    -- Set up PanelTemplates
+    PanelTemplates_SetNumTabs(container, #config.tabs)
 
     -- Public API
     container.SelectTab = SelectTab

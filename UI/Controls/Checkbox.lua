@@ -6,27 +6,34 @@ ns:RegisterModule("Controls.Checkbox", Checkbox)
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 
-local DEFAULT_HEIGHT = 22
+local DEFAULT_HEIGHT = 26
 
 function Checkbox:Create(parent, config)
     -- config = { key, label, tooltip, width }
     local container = CreateFrame("Frame", nil, parent)
     container:SetHeight(DEFAULT_HEIGHT)
-    if config.width then
-        container:SetWidth(config.width)
+
+    -- Use modern SettingsCheckboxTemplate (check both capitalizations)
+    local checkbox
+    if DoesTemplateExist and DoesTemplateExist("SettingsCheckBoxTemplate") then
+        checkbox = CreateFrame("CheckButton", nil, container, "SettingsCheckBoxTemplate")
+    elseif DoesTemplateExist and DoesTemplateExist("SettingsCheckboxTemplate") then
+        checkbox = CreateFrame("CheckButton", nil, container, "SettingsCheckboxTemplate")
+    else
+        -- Fallback for older versions
+        checkbox = CreateFrame("CheckButton", nil, container, "InterfaceOptionsCheckButtonTemplate")
     end
 
-    local checkbox = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
-    checkbox:SetPoint("LEFT", container, "LEFT", -4, 0)
-    checkbox:SetSize(24, 24)
+    -- Position checkbox on the left
+    checkbox:SetPoint("LEFT", container, "LEFT", 0, 0)
 
-    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("LEFT", checkbox, "RIGHT", 2, 0)
-    label:SetPoint("RIGHT", container, "RIGHT", 0, 0)
+    -- Clear any existing text from template
+    checkbox:SetText("")
+
+    -- Create separate label to the right of checkbox
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT", checkbox, "RIGHT", 4, 0)
     label:SetText(config.label)
-    label:SetTextColor(1, 1, 1)
-    label:SetJustifyH("LEFT")
-    label:SetWordWrap(false)
 
     local currentValue = Database:GetSetting(config.key)
     checkbox:SetChecked(currentValue)
@@ -37,13 +44,15 @@ function Checkbox:Create(parent, config)
         Events:Fire("SETTING_CHANGED", config.key, checked)
     end)
 
+    -- Make the whole row clickable
+    container:EnableMouse(true)
+    container:SetScript("OnMouseUp", function()
+        checkbox:Click()
+    end)
+
     if config.tooltip then
-        checkbox:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(config.tooltip, 1, 1, 1, 1, true)
-            GameTooltip:Show()
-        end)
-        checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        checkbox.tooltipText = config.label
+        checkbox.tooltipRequirement = config.tooltip
     end
 
     -- Public API
