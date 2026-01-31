@@ -605,7 +605,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.currentSize = size
     end
 
-    button.slotBackground:SetVertexColor(1, 1, 1, settings.bgAlpha)
+    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, settings.bgAlpha)
 
     ApplyFontSize(button, settings.iconFontSize)
 
@@ -806,7 +806,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly)
         button.currentSize = size
     end
 
-    button.slotBackground:SetVertexColor(1, 1, 1, settings.bgAlpha)
+    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, settings.bgAlpha)
 
     SetItemButtonTexture(button, nil)
     SetItemButtonCount(button, 0)
@@ -840,7 +840,7 @@ function ItemButton:UpdateSlotAlpha(alpha)
     if not buttonPool then return end
     for button in buttonPool:EnumerateActive() do
         if button.slotBackground then
-            button.slotBackground:SetVertexColor(1, 1, 1, alpha)
+            button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, alpha)
         end
     end
 end
@@ -866,12 +866,12 @@ function ItemButton:HighlightBagSlots(bagID)
         if button.itemData and button.itemData.bagID == bagID then
             button:SetAlpha(1.0)
             if button.slotBackground then
-                button.slotBackground:SetVertexColor(1, 1, 1, bgAlpha)
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
             end
         else
             button:SetAlpha(0.25)
             if button.slotBackground then
-                button.slotBackground:SetVertexColor(1, 1, 1, bgAlpha * 0.25)
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.25)
             end
         end
     end
@@ -889,18 +889,18 @@ function ItemButton:ClearHighlightedSlots(parentFrame)
             if button.itemData and SearchBar:ItemMatchesSearch(button.itemData, searchText) then
                 button:SetAlpha(1.0)
                 if button.slotBackground then
-                    button.slotBackground:SetVertexColor(1, 1, 1, bgAlpha)
+                    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
                 end
             else
                 button:SetAlpha(0.3)
                 if button.slotBackground then
-                    button.slotBackground:SetVertexColor(1, 1, 1, bgAlpha * 0.3)
+                    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.3)
                 end
             end
         else
             button:SetAlpha(1.0)
             if button.slotBackground then
-                button.slotBackground:SetVertexColor(1, 1, 1, bgAlpha)
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
             end
         end
     end
