@@ -509,6 +509,16 @@ end
 function ItemButton:Release(button)
     if not buttonPool then return end
 
+    -- Check if button is active before releasing (avoid double-release error)
+    local isActive = false
+    for activeButton in buttonPool:EnumerateActive() do
+        if activeButton == button then
+            isActive = true
+            break
+        end
+    end
+    if not isActive then return end
+
     -- Minimal cleanup - visual reset happens in SetItem (lazy cleanup)
     button.currentSize = nil
 
