@@ -6,42 +6,29 @@
         GudaBags_ToggleBank()
     </Binding>
     <Binding name="CLICK GudaQuestBarMainButton:RightButton" category="GudaBags">
-        <!-- Use Quest Item -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem1:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 1 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem2:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 2 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem3:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 3 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem4:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 4 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem5:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 5 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem6:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 6 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem7:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 7 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem8:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 8 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem9:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 9 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem10:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 10 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem11:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 11 -->
     </Binding>
     <Binding name="CLICK GudaTrackedItem12:RightButton" category="GudaBags">
-        <!-- Use Tracked Item 12 -->
     </Binding>
 </Bindings>
