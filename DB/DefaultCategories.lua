@@ -427,10 +427,18 @@ DefaultCategories.DEFINITIONS = {
     },
 }
 
--- Remove TBC-specific categories for non-TBC expansions
-if not Expansion.IsTBC then
+-- Remove expansion-specific categories based on feature availability
+if not Expansion.Features.HasKeyring then
     DefaultCategories.DEFINITIONS["Keyring"] = nil
+end
+if not Expansion.Features.HasQuiverBags then
     DefaultCategories.DEFINITIONS["Quiver"] = nil
+end
+
+-- Class Items category only enabled by default for Hunters and Warlocks
+local _, playerClass = UnitClass("player")
+if playerClass ~= "HUNTER" and playerClass ~= "WARLOCK" then
+    DefaultCategories.DEFINITIONS["Class Items"].enabled = false
 end
 
 -- Order matching original Guda addon
@@ -448,8 +456,8 @@ DefaultCategories.ORDER = {
     "Recipe",
 }
 
--- TBC-specific categories in order
-if Expansion.IsTBC then
+-- Quiver category for expansions that have it
+if Expansion.Features.HasQuiverBags then
     table.insert(DefaultCategories.ORDER, "Quiver")
 end
 
@@ -470,8 +478,8 @@ for _, cat in ipairs(commonOrderContinued) do
     table.insert(DefaultCategories.ORDER, cat)
 end
 
--- TBC-specific: Keyring at end
-if Expansion.IsTBC then
+-- Keyring category for expansions that have it
+if Expansion.Features.HasKeyring then
     table.insert(DefaultCategories.ORDER, "Keyring")
 end
 

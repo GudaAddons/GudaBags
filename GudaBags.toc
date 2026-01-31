@@ -1,8 +1,8 @@
-## Interface: 20505, 50503
+## Interface: 11508, 20505, 50503
 ## Title: GudaBags
 ## Notes: Clean, unified bag management for Classic expansions
 ## Author: Vati
-## Version: 1.0.1
+## Version: 1.0.3
 ## SavedVariables: GudaBags_DB
 ## SavedVariablesPerCharacter: GudaBags_CharDB
 ## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png

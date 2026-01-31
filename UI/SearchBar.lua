@@ -19,6 +19,18 @@ local function CreateSearchOverlay()
     overlay:EnableMouse(true)
     overlay:Hide()
 
+    -- Allow mouse motion events (hover) to pass through to frames below
+    -- This enables tooltips on items while search is active
+    if overlay.SetPropagateMouseMotion then
+        overlay:SetPropagateMouseMotion(true)
+    else
+        -- Fallback for older clients: disable mouse motion events
+        -- by using SetMouseMotionEnabled if available
+        if overlay.SetMouseMotionEnabled then
+            overlay:SetMouseMotionEnabled(false)
+        end
+    end
+
     overlay:SetScript("OnClick", function()
         for _, instance in pairs(instances) do
             if instance.searchBox then
