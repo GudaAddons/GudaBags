@@ -13,8 +13,7 @@
 Locales.lua
 Core\Locales.lua
 
-# Bindings
-Bindings.xml
+# Note: Bindings.xml is auto-detected by WoW, do not list here
 
 # Core modules (load order matters)
 Core\Init.lua

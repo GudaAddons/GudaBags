@@ -33,10 +33,12 @@ function BagScanner:ScanAllBags()
         end
     end
 
-    -- Also scan keyring
-    local keyringData = ItemScanner:ScanContainer(Constants.KEYRING_BAG_ID)
-    if keyringData then
-        allBags[Constants.KEYRING_BAG_ID] = keyringData
+    -- Also scan keyring (TBC only)
+    if Constants.KEYRING_BAG_ID then
+        local keyringData = ItemScanner:ScanContainer(Constants.KEYRING_BAG_ID)
+        if keyringData then
+            allBags[Constants.KEYRING_BAG_ID] = keyringData
+        end
     end
 
     cachedBags = allBags
