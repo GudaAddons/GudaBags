@@ -53,9 +53,20 @@ function Slider:Create(parent, config)
             end)
         })
 
+        -- Debounce timer for expensive updates
+        local debounceTimer = nil
+        local DEBOUNCE_DELAY = 0.1
+
         slider:RegisterCallback("OnValueChanged", function(_, value)
-            Database:SetSetting(config.key, value)
-            Events:Fire("SETTING_CHANGED", config.key, value)
+            Database:SetSetting(config.key, value)  -- Save immediately for visual feedback
+
+            if debounceTimer then
+                debounceTimer:Cancel()
+            end
+            debounceTimer = C_Timer.NewTimer(DEBOUNCE_DELAY, function()
+                Events:Fire("SETTING_CHANGED", config.key, value)
+                debounceTimer = nil
+            end)
         end)
 
         -- Public API for modern slider
