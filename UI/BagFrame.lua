@@ -318,16 +318,8 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, searchText, is
     -- Collect items and count empty slots (including soul bag slots)
     local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCached)
 
-    -- Filter by search if active
-    if searchText ~= "" then
-        local filteredItems = {}
-        for _, item in ipairs(items) do
-            if SearchBar:ItemMatchesSearch(item.itemData, searchText) then
-                table.insert(filteredItems, item)
-            end
-        end
-        items = filteredItems
-    end
+    -- Note: Search filtering removed - now uses alpha dimming like Single View
+    -- Items stay in layout, non-matching items are dimmed to 0.3 alpha
 
     -- Phase 4: Key-based button reuse
     -- Build map of new items by key
@@ -546,7 +538,13 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, searchText, is
         button.categoryId = itemInfo.categoryId
 
         ItemButton:SetItem(button, itemData, iconSize, isViewingCached)
-        button:SetAlpha(1)
+
+        -- Apply search highlighting (dim non-matching items)
+        if searchText ~= "" and not SearchBar:ItemMatchesSearch(itemData, searchText) then
+            button:SetAlpha(0.3)
+        else
+            button:SetAlpha(1)
+        end
 
         -- Store layout position for drag-drop indicator
         button.iconSize = iconSize
