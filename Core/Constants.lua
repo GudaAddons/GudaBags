@@ -25,16 +25,16 @@ Constants.BANK_BAG_MIN = 5
 Constants.BANK_BAG_MAX = 11
 Constants.BANK_MAIN_BAG = -1
 
--- Keyring bag ID (TBC only, nil for other expansions)
-Constants.KEYRING_BAG = Expansion and Expansion.IsTBC and -2 or nil
+-- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
+Constants.KEYRING_BAG = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 
 -- Bag ID Arrays (derived from ranges for convenience)
 Constants.BAG_IDS = {0, 1, 2, 3, 4}
 Constants.BANK_BAG_ID = -1
 Constants.BANK_BAG_IDS = {-1, 5, 6, 7, 8, 9, 10, 11}
 
--- Keyring bag ID (TBC only, nil for other expansions)
-Constants.KEYRING_BAG_ID = Expansion and Expansion.IsTBC and -2 or nil
+-- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
+Constants.KEYRING_BAG_ID = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 
 Constants.HEARTHSTONE_ID = 6948
 
