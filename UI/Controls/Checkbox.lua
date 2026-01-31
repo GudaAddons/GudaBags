@@ -51,8 +51,12 @@ function Checkbox:Create(parent, config)
     end)
 
     if config.tooltip then
-        checkbox.tooltipText = config.label
-        checkbox.tooltipRequirement = config.tooltip
+        checkbox:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(config.tooltip, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
 
     -- Public API
