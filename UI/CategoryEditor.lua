@@ -5,7 +5,6 @@ ns:RegisterModule("CategoryEditor", CategoryEditor)
 
 local Constants = ns.Constants
 local Events = ns:GetModule("Events")
-local IconButton = ns:GetModule("IconButton")
 
 local frame
 local currentCategoryId
@@ -19,7 +18,6 @@ local EDITOR_WIDTH = Constants.CATEGORY_UI.EDITOR_WIDTH
 local EDITOR_HEIGHT = Constants.CATEGORY_UI.EDITOR_HEIGHT
 local PADDING = Constants.CATEGORY_UI.EDITOR_PADDING
 local ROW_HEIGHT = Constants.CATEGORY_UI.RULE_ROW_HEIGHT
-local MAX_VISIBLE_RULES = 8
 
 local RULE_TYPES
 
@@ -478,53 +476,43 @@ local function UpdateRuleRowValue(row, ruleType, ruleValue)
 end
 
 -------------------------------------------------
--- Main Frame
+-- Main Frame (Modern Blizzard UI)
 -------------------------------------------------
 
 local function CreateEditorFrame()
-    local f = CreateFrame("Frame", "GudaBagsCategoryEditor", UIParent, "BackdropTemplate")
+    -- Use ButtonFrameTemplate for standard Blizzard look (same as SettingsPopup)
+    local f = CreateFrame("Frame", "GudaBagsCategoryEditor", UIParent, "ButtonFrameTemplate")
     f:SetSize(EDITOR_WIDTH, EDITOR_HEIGHT)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:SetClampedToScreen(true)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(250)
-    f:EnableMouse(true)
 
-    f:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    f:SetBackdropColor(0.08, 0.08, 0.08, 0.98)
-    f:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    -- Hide portrait and button bar for clean look
+    ButtonFrameTemplate_HidePortrait(f)
+    ButtonFrameTemplate_HideButtonBar(f)
+    if f.Inset then
+        f.Inset:Hide()
+    end
 
-    -- Title bar
-    local titleBar = CreateFrame("Frame", nil, f)
-    titleBar:SetHeight(24)
-    titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    titleBar:EnableMouse(true)
-    titleBar:RegisterForDrag("LeftButton")
-    titleBar:SetScript("OnDragStart", function() f:StartMoving() end)
-    titleBar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+    -- Set title (will be updated when opening)
+    f:SetTitle(ns.L["EDIT_CATEGORY"])
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, -8)
-    title:SetText(ns.L["EDIT_CATEGORY"])
-    title:SetTextColor(1, 0.82, 0)
-    f.title = title
+    -- Make draggable via title bar
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+        self:SetUserPlaced(false)
+    end)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
 
-    -- Close button (use IconButton for consistent positioning)
-    IconButton:CreateCloseButton(titleBar, {
-        onClick = function() f:Hide() end,
-        point = "TOPRIGHT",
-        offsetX = -4,
-        offsetY = -4,
-    })
-
-    local yOffset = -36
+    -- Content area starts below title
+    local contentTop = -30
+    local yOffset = contentTop
 
     -- Category Name
     local nameLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -635,7 +623,7 @@ local function CreateEditorFrame()
     -- Bottom buttons
     local saveBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     saveBtn:SetSize(100, 26)
-    saveBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING - 110, PADDING)
+    saveBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING - 110, PADDING + 8)
     saveBtn:SetText(ns.L["SAVE"])
     saveBtn:SetScript("OnClick", function()
         CategoryEditor:Save()
@@ -643,7 +631,7 @@ local function CreateEditorFrame()
 
     local cancelBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     cancelBtn:SetSize(100, 26)
-    cancelBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING)
+    cancelBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING + 8)
     cancelBtn:SetText(ns.L["CANCEL"])
     cancelBtn:SetScript("OnClick", function()
         f:Hide()
@@ -698,7 +686,7 @@ function CategoryEditor:Open(categoryId)
     local displayName = categoryDef.isBuiltIn
         and ns.DefaultCategories:GetLocalizedName(categoryId, categoryDef.name)
         or (categoryDef.name or categoryId)
-    frame.title:SetText(string.format(ns.L["EDIT_CATEGORY_NAME"], displayName))
+    frame:SetTitle(string.format(ns.L["EDIT_CATEGORY_NAME"], displayName))
     frame.nameBox:SetText(displayName)
     frame.nameBox:SetEnabled(not categoryDef.isBuiltIn)
     -- Display localized group name
@@ -851,7 +839,7 @@ function CategoryEditor:CreateNew()
     currentGroup = ""
 
     -- Update UI for new category
-    frame.title:SetText(ns.L["CREATE_NEW_CATEGORY"])
+    frame:SetTitle(ns.L["CREATE_NEW_CATEGORY"])
     frame.nameBox:SetText("")
     frame.nameBox:SetEnabled(true)
     frame.nameBox:SetTextColor(1, 1, 1)
