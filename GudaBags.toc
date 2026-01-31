@@ -1,6 +1,6 @@
-## Interface: 20505
+## Interface: 20505, 50503
 ## Title: GudaBags
-## Notes: Clean, unified bag management for TBC Anniversary
+## Notes: Clean, unified bag management for Classic expansions
 ## Author: Vati
 ## Version: 1.0.0
 ## SavedVariables: GudaBags_DB
@@ -18,12 +18,17 @@ Bindings.xml
 
 # Core modules (load order matters)
 Core\Init.lua
+Core\Expansion.lua
 Core\Constants.lua
 Core\Utils.lua
 Core\Events.lua
 Core\Database.lua
 Core\Bindings.lua
 Core\SlashCommands.lua
+
+# Compatibility Layer
+Compatibility\API.lua
+Compatibility\Features.lua
 
 # Category System
 DB\DefaultCategories.lua

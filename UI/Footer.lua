@@ -36,11 +36,19 @@ function Footer:Init(parent)
 
     -- Initialize components
     frame.bagSlotsFrame = BagSlots:Init(frame)
-    frame.keyringButton = Keyring:Init(frame)
 
-    -- Slot counter after keyring (with tooltip frame for hover)
+    -- Initialize keyring (TBC only - returns nil for other expansions)
+    frame.keyringButton = Keyring:Init(frame)
+    local keyringButton = Keyring:GetButton()
+
+    -- Slot counter after keyring or bag slots (with tooltip frame for hover)
     local slotInfoFrame = CreateFrame("Frame", nil, frame)
-    slotInfoFrame:SetPoint("LEFT", Keyring:GetButton(), "RIGHT", 32, 0)
+    -- Anchor to keyring button if available (TBC), otherwise to bag slots
+    if keyringButton then
+        slotInfoFrame:SetPoint("LEFT", keyringButton, "RIGHT", 32, 0)
+    else
+        slotInfoFrame:SetPoint("LEFT", BagSlots:GetAnchor(), "RIGHT", 32, 0)
+    end
     slotInfoFrame:SetSize(60, 16)
 
     local slotInfo = slotInfoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -126,12 +134,17 @@ function Footer:Show()
     BagSlots:Show()
     local bagAnchor = BagSlots:GetAnchor()
 
-    -- Position keyring relative to bag anchor
-    Keyring:SetAnchor(bagAnchor)
-    Keyring:Show()
-
-    -- Position hearthstone relative to keyring
-    Hearthstone:SetAnchor(Keyring:GetButton())
+    -- Position keyring relative to bag anchor (TBC only)
+    local keyringButton = Keyring:GetButton()
+    if keyringButton then
+        Keyring:SetAnchor(bagAnchor)
+        Keyring:Show()
+        -- Position hearthstone relative to keyring
+        Hearthstone:SetAnchor(keyringButton)
+    else
+        -- No keyring - position hearthstone relative to bag slots
+        Hearthstone:SetAnchor(bagAnchor)
+    end
     Hearthstone:Update()
 
     -- Show money
@@ -145,7 +158,9 @@ function Footer:Hide()
     frame:Hide()
 
     BagSlots:Hide()
-    Keyring:Hide()
+    if Keyring:GetButton() then
+        Keyring:Hide()
+    end
     Hearthstone:Hide()
     Money:Hide()
     if backButton then
@@ -159,7 +174,9 @@ function Footer:Update()
     BagSlots:Update()
     Hearthstone:Update()
     Money:Update()
-    Keyring:UpdateState()
+    if Keyring:GetButton() then
+        Keyring:UpdateState()
+    end
 end
 
 function Footer:UpdateBagSlots()
@@ -239,9 +256,12 @@ function Footer:ShowCached(characterFullName)
     BagSlots:Show()
     local bagAnchor = BagSlots:GetAnchor()
 
-    -- Position and show keyring for toggle functionality
-    Keyring:SetAnchor(bagAnchor)
-    Keyring:Show()
+    -- Position and show keyring for toggle functionality (TBC only)
+    local keyringButton = Keyring:GetButton()
+    if keyringButton then
+        Keyring:SetAnchor(bagAnchor)
+        Keyring:Show()
+    end
 
     -- Hide hearthstone (not relevant for cached views)
     Hearthstone:Hide()
@@ -252,7 +272,9 @@ function Footer:ShowCached(characterFullName)
 
     -- Update bag slots and keyring state
     BagSlots:Update()
-    Keyring:UpdateState()
+    if keyringButton then
+        Keyring:UpdateState()
+    end
 end
 
 function Footer:SetBackCallback(callback)

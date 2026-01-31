@@ -1,5 +1,23 @@
 local addonName, ns = ...
 
+-- TBC-only feature guard
+-- Keyring was removed in expansions after TBC
+local Expansion = ns:GetModule("Expansion")
+if not Expansion.IsTBC then
+    -- Register empty stub module for non-TBC expansions
+    ns:RegisterModule("Footer.Keyring", {
+        Init = function() return nil end,
+        Show = function() end,
+        Hide = function() end,
+        SetAnchor = function() end,
+        SetCallback = function() end,
+        IsVisible = function() return false end,
+        GetButton = function() return nil end,
+        UpdateState = function() end,
+    })
+    return
+end
+
 local Keyring = {}
 ns:RegisterModule("Footer.Keyring", Keyring)
 

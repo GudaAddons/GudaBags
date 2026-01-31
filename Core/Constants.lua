@@ -3,7 +3,11 @@ local addonName, ns = ...
 local Constants = {}
 ns.Constants = Constants
 
+-- Get Expansion module (loaded before Constants)
+local Expansion = ns:GetModule("Expansion")
+
 -- Feature flags (enable/disable features during development)
+-- KEYRING is TBC-only (keyring was removed in later expansions)
 Constants.FEATURES = {
     BANK = true,
     GUILD_BANK = false,
@@ -11,7 +15,7 @@ Constants.FEATURES = {
     CHARACTERS = true,
     SEARCH = true,
     SORT = true,
-    KEYRING = true,
+    KEYRING = Expansion and Expansion.IsTBC or false,
 }
 
 -- Bag ID Ranges
@@ -20,13 +24,17 @@ Constants.PLAYER_BAG_MAX = 4
 Constants.BANK_BAG_MIN = 5
 Constants.BANK_BAG_MAX = 11
 Constants.BANK_MAIN_BAG = -1
-Constants.KEYRING_BAG = -2
+
+-- Keyring bag ID (TBC only, nil for other expansions)
+Constants.KEYRING_BAG = Expansion and Expansion.IsTBC and -2 or nil
 
 -- Bag ID Arrays (derived from ranges for convenience)
 Constants.BAG_IDS = {0, 1, 2, 3, 4}
 Constants.BANK_BAG_ID = -1
 Constants.BANK_BAG_IDS = {-1, 5, 6, 7, 8, 9, 10, 11}
-Constants.KEYRING_BAG_ID = -2
+
+-- Keyring bag ID (TBC only, nil for other expansions)
+Constants.KEYRING_BAG_ID = Expansion and Expansion.IsTBC and -2 or nil
 
 Constants.HEARTHSTONE_ID = 6948
 

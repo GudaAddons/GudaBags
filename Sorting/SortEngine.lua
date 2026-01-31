@@ -1,5 +1,5 @@
 -- GudaBags Sort Engine
--- Multi-phase sorting algorithm for TBC Anniversary
+-- Multi-phase sorting algorithm for Classic expansions
 
 local addonName, ns = ...
 
@@ -9,6 +9,7 @@ ns:RegisterModule("SortEngine", SortEngine)
 local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Expansion = ns:GetModule("Expansion")
 
 -- Sorting state
 local sortInProgress = false
@@ -311,17 +312,27 @@ end
 
 local function GetBagTypeFromFamily(bagFamily)
     if bagFamily == 0 then return nil end
-    -- Bag family values must match BagClassifier.lua
-    if bit.band(bagFamily, 1) ~= 0 then return "quiver" end
-    if bit.band(bagFamily, 2) ~= 0 then return "ammo" end
+
+    -- TBC-specific bag types (quiver/ammo only exist in TBC)
+    if Expansion.IsTBC then
+        if bit.band(bagFamily, 1) ~= 0 then return "quiver" end
+        if bit.band(bagFamily, 2) ~= 0 then return "ammo" end
+    end
+
+    -- Common bag types (all Classic expansions)
     if bit.band(bagFamily, 4) ~= 0 then return "soul" end
     if bit.band(bagFamily, 8) ~= 0 then return "leatherworking" end
-    if bit.band(bagFamily, 16) ~= 0 then return "inscription" end
     if bit.band(bagFamily, 32) ~= 0 then return "herb" end
     if bit.band(bagFamily, 64) ~= 0 then return "enchant" end
     if bit.band(bagFamily, 128) ~= 0 then return "engineering" end
-    if bit.band(bagFamily, 512) ~= 0 then return "gem" end
     if bit.band(bagFamily, 1024) ~= 0 then return "mining" end
+
+    -- MoP-specific bag types
+    if Expansion.IsMoP then
+        if bit.band(bagFamily, 16) ~= 0 then return "inscription" end
+        if bit.band(bagFamily, 512) ~= 0 then return "gem" end
+    end
+
     return "specialized"
 end
 
@@ -362,11 +373,26 @@ end
 --===========================================================================
 
 local function ClassifyBags(bagIDs)
+    -- Build container types based on expansion
     local containers = {
-        soul = {}, herb = {}, enchant = {}, quiver = {}, ammo = {},
-        engineering = {}, gem = {}, mining = {}, leatherworking = {}, inscription = {},
+        -- Common bag types (all Classic expansions)
+        soul = {}, herb = {}, enchant = {},
+        engineering = {}, mining = {}, leatherworking = {},
         specialized = {}, regular = {}
     }
+
+    -- TBC-specific bag types
+    if Expansion.IsTBC then
+        containers.quiver = {}
+        containers.ammo = {}
+    end
+
+    -- MoP-specific bag types
+    if Expansion.IsMoP then
+        containers.gem = {}
+        containers.inscription = {}
+    end
+
     local bagFamilies = {}
 
     for _, bagID in ipairs(bagIDs) do
@@ -965,7 +991,16 @@ local function ExecuteSortPass(bagIDs)
     totalMoves = totalMoves + ConsolidateStacks(bagIDs, bagFamilies)
 
     -- Phase 4: Sort specialized bags
-    local specializedTypes = {"soul", "herb", "enchant", "quiver", "ammo", "engineering", "gem", "mining", "leatherworking", "inscription"}
+    -- Build list based on expansion
+    local specializedTypes = {"soul", "herb", "enchant", "engineering", "mining", "leatherworking"}
+    if Expansion.IsTBC then
+        table.insert(specializedTypes, "quiver")
+        table.insert(specializedTypes, "ammo")
+    end
+    if Expansion.IsMoP then
+        table.insert(specializedTypes, "gem")
+        table.insert(specializedTypes, "inscription")
+    end
     for _, bagType in ipairs(specializedTypes) do
         local specialBags = containers[bagType]
         if specialBags then

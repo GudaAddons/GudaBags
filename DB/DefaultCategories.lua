@@ -3,6 +3,9 @@ local addonName, ns = ...
 local DefaultCategories = {}
 ns.DefaultCategories = DefaultCategories
 
+-- Get Expansion module for conditional category definitions
+local Expansion = ns:GetModule("Expansion")
+
 -- Rule Types:
 -- itemType: Match GetItemInfo itemType (Armor, Weapon, Consumable, Trade Goods, etc.)
 -- itemSubtype: Match GetItemInfo itemSubType
@@ -424,7 +427,14 @@ DefaultCategories.DEFINITIONS = {
     },
 }
 
+-- Remove TBC-specific categories for non-TBC expansions
+if not Expansion.IsTBC then
+    DefaultCategories.DEFINITIONS["Keyring"] = nil
+    DefaultCategories.DEFINITIONS["Quiver"] = nil
+end
+
 -- Order matching original Guda addon
+-- Built dynamically based on expansion
 DefaultCategories.ORDER = {
     "Recent",
     "BoE",
@@ -436,7 +446,15 @@ DefaultCategories.ORDER = {
     "Trade Goods",
     "Reagent",
     "Recipe",
-    "Quiver",
+}
+
+-- TBC-specific categories in order
+if Expansion.IsTBC then
+    table.insert(DefaultCategories.ORDER, "Quiver")
+end
+
+-- Continue with common categories
+local commonOrderContinued = {
     "Container",
     "Soul Bag",
     "Miscellaneous",
@@ -447,8 +465,15 @@ DefaultCategories.ORDER = {
     "Empty",
     "Soul",
     "Class Items",
-    "Keyring",
 }
+for _, cat in ipairs(commonOrderContinued) do
+    table.insert(DefaultCategories.ORDER, cat)
+end
+
+-- TBC-specific: Keyring at end
+if Expansion.IsTBC then
+    table.insert(DefaultCategories.ORDER, "Keyring")
+end
 
 -- Deep copy utility
 local function DeepCopy(orig)
