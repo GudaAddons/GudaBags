@@ -744,22 +744,6 @@ function BankFrame:Refresh()
         self:RefreshSingleView(bank, bagsToShow, settings, searchText, isReadOnly)
     end
 
-    -- Manage scrollbar visibility based on content height
-    if frame.scrollFrame then
-        local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
-        if scrollBar then
-            local containerHeight = frame.container:GetHeight() or 0
-            local scrollFrameHeight = frame.scrollFrame:GetHeight() or 0
-            if containerHeight > scrollFrameHeight + 5 then
-                scrollBar:Show()
-            else
-                scrollBar:Hide()
-                -- Reset scroll position when no scrolling needed
-                frame.scrollFrame:SetVerticalScroll(0)
-            end
-        end
-    end
-
     if isViewingCached or not isBankOpen or isWarbandView then
         local totalSlots = 0
         local usedSlots = 0
@@ -812,18 +796,74 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local unifiedOrder = ns.IsRetail and not isReadOnly
     local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bank, isReadOnly, unifiedOrder)
 
-    local frameWidth, frameHeight = LayoutEngine:CalculateFrameSize(allSlots, settings)
+    -- Calculate content dimensions
+    local numSlots = #allSlots
+    local rows = math.ceil(numSlots / columns)
+    local contentWidth = (iconSize * columns) + (spacing * (columns - 1))
+    local actualContentHeight = (iconSize * rows) + (spacing * math.max(0, rows - 1))
 
-    -- Limit frame height to screen height minus some margin
+    -- Calculate frame chrome heights (must match scroll frame positioning in UpdateFrameAppearance)
+    local showSearchBar = settings.showSearchBar
+    local showFooter = settings.showFooter
+    -- Top offset: same as scroll frame SetPoint TOPLEFT
+    local topOffset = showSearchBar
+        and (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6)
+        or (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2)
+    -- Bottom offset: same as scroll frame SetPoint BOTTOMRIGHT
+    local bottomOffset = showFooter
+        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+        or Constants.FRAME.PADDING
+    local chromeHeight = topOffset + bottomOffset
+
+    -- Calculate frame height needed to show all content without scroll
+    local frameWidth = math.max(contentWidth + (Constants.FRAME.PADDING * 2), Constants.FRAME.MIN_WIDTH)
+    local frameHeightNeeded = actualContentHeight + chromeHeight
+
+    -- Check if scroll is needed
     local screenHeight = UIParent:GetHeight()
     local maxFrameHeight = screenHeight - 100  -- Leave 100px margin
-    local actualFrameHeight = math.min(frameHeight, maxFrameHeight)
+    local needsScroll = frameHeightNeeded > maxFrameHeight
 
-    frame:SetSize(frameWidth + 20, actualFrameHeight)  -- +20 for scrollbar width
+    -- Set frame size (add scrollbar width only if needed)
+    local actualFrameHeight = needsScroll and maxFrameHeight or frameHeightNeeded
+    local scrollbarWidth = needsScroll and 20 or 0
+    frame:SetSize(frameWidth + scrollbarWidth, actualFrameHeight)
 
-    -- Set container (scroll child) size to full content height
-    local contentHeight = frameHeight - Constants.FRAME.TITLE_HEIGHT - Constants.FRAME.SEARCH_BAR_HEIGHT - Constants.FRAME.FOOTER_HEIGHT - Constants.FRAME.PADDING * 2 - 12
-    frame.container:SetSize(frameWidth - Constants.FRAME.PADDING * 2, math.max(contentHeight, 1))
+    -- Adjust scroll frame right edge based on whether scroll is needed
+    frame.scrollFrame:ClearAllPoints()
+    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -topOffset)
+    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING - scrollbarWidth, bottomOffset)
+
+    -- Set container size to match actual content
+    frame.container:SetSize(contentWidth, math.max(actualContentHeight, 1))
+
+    -- Force hide scrollbar and disable scrolling when not needed
+    local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+    if needsScroll then
+        if scrollBar then scrollBar:Show() end
+        frame.scrollFrame:EnableMouseWheel(true)
+    else
+        if scrollBar then scrollBar:Hide() end
+        frame.scrollFrame:SetVerticalScroll(0)
+        frame.scrollFrame:EnableMouseWheel(false)
+    end
+
+    -- Debug logging for scroll issue
+    ns:Debug("=== SingleView Scroll Debug ===")
+    ns:Debug("  numSlots:", numSlots, "rows:", rows, "columns:", columns)
+    ns:Debug("  iconSize:", iconSize, "spacing:", spacing)
+    ns:Debug("  actualContentHeight:", actualContentHeight)
+    ns:Debug("  chromeHeight:", chromeHeight, "(topOffset:", topOffset, "bottomOffset:", bottomOffset, ")")
+    ns:Debug("  frameHeightNeeded:", frameHeightNeeded, "maxFrameHeight:", maxFrameHeight)
+    ns:Debug("  needsScroll:", tostring(needsScroll), "actualFrameHeight:", actualFrameHeight)
+    ns:Debug("  containerSize:", contentWidth, "x", actualContentHeight)
+    C_Timer.After(0.1, function()
+        if frame and frame.scrollFrame and frame.container then
+            local scrollFrameH = frame.scrollFrame:GetHeight() or 0
+            local containerH = frame.container:GetHeight() or 0
+            ns:Debug("  [After layout] scrollFrameHeight:", scrollFrameH, "containerHeight:", containerH, "diff:", containerH - scrollFrameH)
+        end
+    end)
 
     local positions = LayoutEngine:CalculateButtonPositions(allSlots, settings)
 
@@ -933,19 +973,44 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, searchText, isReadO
         currentY = currentY - sectionHeight - TAB_SECTION_SPACING
     end
 
-    local totalHeight = -currentY + Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING * 2 + 12
+    local containerHeight = -currentY
     local frameWidth = contentWidth + Constants.FRAME.PADDING * 2
 
-    -- Limit frame height to screen height minus some margin
+    -- Calculate chrome heights (must match scroll frame positioning in UpdateFrameAppearance)
+    -- For tab sections view, search bar and footer are always shown
+    local topOffset = Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6
+    local bottomOffset = Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6
+    local chromeHeight = topOffset + bottomOffset
+    local frameHeightNeeded = containerHeight + chromeHeight
+
+    -- Check if scroll is needed
     local screenHeight = UIParent:GetHeight()
     local maxFrameHeight = screenHeight - 100
-    local actualFrameHeight = math.min(totalHeight, maxFrameHeight)
+    local needsScroll = frameHeightNeeded > maxFrameHeight
 
-    frame:SetSize(frameWidth + 20, actualFrameHeight)
+    -- Set frame size (add scrollbar width only if needed)
+    local actualFrameHeight = needsScroll and maxFrameHeight or frameHeightNeeded
+    local scrollbarWidth = needsScroll and 20 or 0
+    frame:SetSize(frameWidth + scrollbarWidth, actualFrameHeight)
+
+    -- Adjust scroll frame right edge based on whether scroll is needed
+    frame.scrollFrame:ClearAllPoints()
+    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -topOffset)
+    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING - scrollbarWidth, bottomOffset)
 
     -- Set container size
-    local containerHeight = -currentY
     frame.container:SetSize(contentWidth, math.max(containerHeight, 1))
+
+    -- Force hide scrollbar and disable scrolling when not needed
+    local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+    if needsScroll then
+        if scrollBar then scrollBar:Show() end
+        frame.scrollFrame:EnableMouseWheel(true)
+    else
+        if scrollBar then scrollBar:Hide() end
+        frame.scrollFrame:SetVerticalScroll(0)
+        frame.scrollFrame:EnableMouseWheel(false)
+    end
 
     -- Render tab sections
     for _, layout in ipairs(tabLayouts) do
@@ -1043,15 +1108,46 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
 
     local frameWidth, frameHeight = LayoutEngine:CalculateCategoryFrameSize(sections, settings)
 
-    -- Limit frame height to screen height minus some margin
+    -- Calculate chrome heights (must match scroll frame positioning)
+    local showSearchBar = settings.showSearchBar
+    local showFooter = settings.showFooter
+    local topOffset = showSearchBar
+        and (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6)
+        or (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2)
+    local bottomOffset = showFooter
+        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+        or Constants.FRAME.PADDING
+
+    -- Calculate content height for container
+    local contentHeight = frameHeight - topOffset - bottomOffset
+
+    -- Check if scroll is needed
     local screenHeight = UIParent:GetHeight()
     local maxFrameHeight = screenHeight - 100  -- Leave 100px margin
-    local actualFrameHeight = math.min(frameHeight, maxFrameHeight)
+    local needsScroll = frameHeight > maxFrameHeight
 
-    frame:SetSize(frameWidth + 20, actualFrameHeight)  -- +20 for scrollbar width
+    -- Set frame size (add scrollbar width only if needed)
+    local actualFrameHeight = needsScroll and maxFrameHeight or frameHeight
+    local scrollbarWidth = needsScroll and 20 or 0
+    frame:SetSize(frameWidth + scrollbarWidth, actualFrameHeight)
+
+    -- Adjust scroll frame right edge based on whether scroll is needed
+    frame.scrollFrame:ClearAllPoints()
+    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -topOffset)
+    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING - scrollbarWidth, bottomOffset)
+
+    -- Force hide scrollbar and disable scrolling when not needed
+    local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+    if needsScroll then
+        if scrollBar then scrollBar:Show() end
+        frame.scrollFrame:EnableMouseWheel(true)
+    else
+        if scrollBar then scrollBar:Hide() end
+        frame.scrollFrame:SetVerticalScroll(0)
+        frame.scrollFrame:EnableMouseWheel(false)
+    end
 
     -- Set container (scroll child) size to full content height
-    local contentHeight = frameHeight - Constants.FRAME.TITLE_HEIGHT - Constants.FRAME.SEARCH_BAR_HEIGHT - Constants.FRAME.FOOTER_HEIGHT - Constants.FRAME.PADDING * 2 - 12
     frame.container:SetSize(frameWidth - Constants.FRAME.PADDING * 2, math.max(contentHeight, 1))
 
     local layout = LayoutEngine:CalculateCategoryPositions(sections, settings)
