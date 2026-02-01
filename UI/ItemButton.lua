@@ -26,6 +26,14 @@ local function ResetButton(pool, button)
     button.layoutIndex = nil
     button.containerFrame = nil
 
+    -- Hide Blizzard template's built-in textures
+    if button.IconBorder then button.IconBorder:Hide() end
+    if button.IconOverlay then button.IconOverlay:Hide() end
+    if button.NewItemTexture then button.NewItemTexture:Hide() end
+    if button.BattlepayItemTexture then button.BattlepayItemTexture:Hide() end
+    local normalTex = button:GetNormalTexture()
+    if normalTex then normalTex:Hide() end
+
     -- Clear visual state to prevent texture bleeding
     SetItemButtonTexture(button, nil)
     SetItemButtonCount(button, 0)
@@ -634,6 +642,14 @@ function ItemButton:InvalidateSettingsCache()
 end
 
 function ItemButton:SetItem(button, itemData, size, isReadOnly)
+    -- Hide Blizzard template's built-in textures (they may re-show from events)
+    if button.IconBorder then button.IconBorder:Hide() end
+    if button.IconOverlay then button.IconOverlay:Hide() end
+    if button.NewItemTexture then button.NewItemTexture:Hide() end
+    if button.BattlepayItemTexture then button.BattlepayItemTexture:Hide() end
+    local normalTex = button:GetNormalTexture()
+    if normalTex then normalTex:Hide() end
+
     -- Reset visual state from previous item (lazy cleanup)
     -- These elements might not be explicitly set below
     if button.trackedIcon then button.trackedIcon:Hide() end
@@ -860,6 +876,14 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 end
 
 function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly)
+    -- Hide Blizzard template's built-in textures (they may re-show from events)
+    if button.IconBorder then button.IconBorder:Hide() end
+    if button.IconOverlay then button.IconOverlay:Hide() end
+    if button.NewItemTexture then button.NewItemTexture:Hide() end
+    if button.BattlepayItemTexture then button.BattlepayItemTexture:Hide() end
+    local normalTex = button:GetNormalTexture()
+    if normalTex then normalTex:Hide() end
+
     button.itemData = {bagID = bagID, slot = slot}
     button.isReadOnly = isReadOnly or false
 

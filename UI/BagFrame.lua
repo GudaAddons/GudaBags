@@ -638,7 +638,7 @@ function BagFrame:Toggle()
     end
 
     if frame:IsShown() then
-        frame:Hide()
+        self:Hide()  -- Use BagFrame:Hide() to properly release buttons
     else
         BagScanner:ScanAllBags()
         -- Clean up stale Recent items (items no longer in bags)
@@ -687,10 +687,9 @@ function BagFrame:Hide()
             viewingCharacter = nil
             Header:SetViewingCharacter(nil, nil)
         end
-        -- Release pseudo-item buttons before clearing
-        for _, button in pairs(pseudoItemButtons) do
-            ItemButton:Release(button)
-        end
+        -- Release ALL buttons (item buttons and pseudo-item buttons) to prevent stacking
+        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllCategoryHeaders()
         -- Clear layout cache so next open does full refresh
         buttonsBySlot = {}
         buttonsByBag = {}
@@ -704,6 +703,7 @@ function BagFrame:Hide()
         lastCategoryLayout = nil
         lastTotalItemCount = 0
         pseudoItemButtons = {}
+        itemButtons = {}
         layoutCached = false
         lastLayoutSettings = nil
     end

@@ -575,10 +575,9 @@ function BankFrame:Hide()
             viewingCharacter = nil
             BankHeader:SetViewingCharacter(nil, nil)
         end
-        -- Release pseudo-item buttons before clearing
-        for _, button in pairs(pseudoItemButtons) do
-            ItemButton:Release(button)
-        end
+        -- Release ALL buttons (item buttons and pseudo-item buttons) to prevent stacking
+        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllCategoryHeaders()
         -- Clear layout cache so next open does full refresh
         buttonsBySlot = {}
         buttonsByBag = {}
@@ -590,6 +589,7 @@ function BankFrame:Hide()
         lastCategoryLayout = nil
         lastTotalItemCount = 0
         pseudoItemButtons = {}
+        itemButtons = {}
         layoutCached = false
         lastLayoutSettings = nil
     end
