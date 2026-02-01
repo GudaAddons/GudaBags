@@ -170,7 +170,12 @@ function Database:GetSetting(key)
         -- Return default if DB not initialized yet
         return Constants.DEFAULTS and Constants.DEFAULTS[key] or nil
     end
-    return GudaBags_CharDB.settings[key]
+    local value = GudaBags_CharDB.settings[key]
+    -- Return default if value is nil (not explicitly set)
+    if value == nil and Constants.DEFAULTS then
+        return Constants.DEFAULTS[key]
+    end
+    return value
 end
 
 function Database:SetSetting(key, value)

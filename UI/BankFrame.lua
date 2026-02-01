@@ -1351,23 +1351,6 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     -- Need scroll only if content is taller than available scroll area
     local needsScroll = contentHeight > scrollAreaHeight + 5  -- 5px tolerance
 
-    -- Debug logging for Category View scroll issue
-    ns:Debug("=== CategoryView Scroll Debug ===")
-    ns:Debug("  frameHeight from LayoutEngine:", frameHeight)
-    ns:Debug("  layoutChrome:", layoutChrome, "chromeHeight:", chromeHeight)
-    ns:Debug("  contentHeight:", contentHeight)
-    ns:Debug("  correctFrameHeight:", correctFrameHeight, "minFrameHeight:", minFrameHeight)
-    ns:Debug("  adjustedFrameHeight:", adjustedFrameHeight, "actualFrameHeight:", actualFrameHeight)
-    ns:Debug("  scrollAreaHeight:", scrollAreaHeight)
-    ns:Debug("  needsScroll:", tostring(needsScroll), "(content", contentHeight, "> scrollArea", scrollAreaHeight, "+ 5)")
-    C_Timer.After(0.1, function()
-        if frame and frame.scrollFrame and frame.container then
-            local scrollFrameH = frame.scrollFrame:GetHeight() or 0
-            local containerH = frame.container:GetHeight() or 0
-            ns:Debug("  [After layout] scrollFrameHeight:", scrollFrameH, "containerHeight:", containerH, "diff:", containerH - scrollFrameH)
-        end
-    end)
-
     -- Set frame size (add scrollbar width only if needed)
     local scrollbarWidth = needsScroll and 20 or 0
     frame:SetSize(frameWidth + scrollbarWidth, actualFrameHeight)
@@ -2032,14 +2015,17 @@ ns.OnBankUpdated = function(dirtyBags)
         end
     end
 
-    -- Also refresh bag frame if open (items may have moved between bank and bags)
+    -- Also update bag frame if open (items may have moved between bank and bags)
     -- This is needed on Retail where BAG_UPDATE doesn't always fire for player bags
     -- when items are moved from Warband bank
+    -- Use IncrementalUpdate to preserve ghost slots instead of full Refresh
     local BagFrame = ns:GetModule("BagFrame")
     local BagScanner = ns:GetModule("BagScanner")
     if BagFrame and BagFrame:IsShown() then
         BagScanner:ScanAllBags()
-        BagFrame:Refresh()
+        -- Let IncrementalUpdate handle it (preserves ghost slots)
+        -- If layout isn't cached yet, IncrementalUpdate will call Refresh internally
+        BagFrame:IncrementalUpdate()
     end
 end
 
