@@ -223,8 +223,6 @@ local function CreateSideTab(parent, index, isAllTab)
     -- Use chest icon for "All" tab, lockbox for specific tabs
     if isAllTab then
         icon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\chest.png")
-    else
-        icon:SetTexture("Interface\\Icons\\INV_Misc_Lockbox_1")
     end
     button.icon = icon
 
@@ -527,17 +525,26 @@ end
 -- Filter bank data to only show containers from a specific tab (Retail only)
 -- In modern Retail (TWW+), each bank tab IS a separate container
 -- tabIndex: 1-based tab index (0 = all tabs)
-function BankFrame:FilterBankByTab(bank, tabIndex)
+-- isWarbandView: optional, if true use warband tab IDs
+function BankFrame:FilterBankByTab(bank, tabIndex, isWarbandView)
     if not bank or not tabIndex or tabIndex < 1 then
         return bank
     end
 
-    -- For modern Retail with container-based tabs
-    if Constants.CHARACTER_BANK_TABS_ACTIVE then
+    -- Determine which tab IDs to use based on bank type
+    local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+    local isWarband = isWarbandView or (currentBankType == "warband")
+
+    -- For modern Retail with container-based tabs (character or warband)
+    if Constants.CHARACTER_BANK_TABS_ACTIVE or isWarband then
         local filtered = {}
 
         -- Get the container ID for this specific tab
-        local tabContainerID = Constants.CHARACTER_BANK_TAB_IDS and Constants.CHARACTER_BANK_TAB_IDS[tabIndex]
+        local tabContainerIDs = isWarband and Constants.WARBAND_BANK_TAB_IDS or Constants.CHARACTER_BANK_TAB_IDS
+        local tabContainerID = tabContainerIDs and tabContainerIDs[tabIndex]
+
+        ns:Debug("FilterBankByTab: tabIndex=", tabIndex, "isWarband=", tostring(isWarband), "containerID=", tostring(tabContainerID))
+
         if not tabContainerID then
             return bank  -- No valid tab container, return all
         end
@@ -546,6 +553,7 @@ function BankFrame:FilterBankByTab(bank, tabIndex)
         for bagID, bagData in pairs(bank) do
             if bagID == tabContainerID then
                 filtered[bagID] = bagData
+                ns:Debug("FilterBankByTab: found matching container", bagID)
             end
         end
 
@@ -671,9 +679,9 @@ function BankFrame:Refresh()
         end
     end
 
-    -- Filter bank data by selected tab (Retail only, for cached viewing)
-    if selectedTab > 0 and (isViewingCached or not isBankOpen) then
-        bank = self:FilterBankByTab(bank, selectedTab)
+    -- Filter bank data by selected tab (Retail only, for cached viewing or warband)
+    if selectedTab > 0 and (isViewingCached or not isBankOpen or isWarbandView) then
+        bank = self:FilterBankByTab(bank, selectedTab, isWarbandView)
     end
 
     local hasBankData = isBankOpen or HasBankData(bank)
