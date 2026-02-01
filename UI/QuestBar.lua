@@ -448,18 +448,17 @@ local function UpdateButton(button, itemData)
         button.cooldown:Clear()
     end
 
-    -- Quest border color and inner shadow
-    local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
-    button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
+    -- Sunny yellow-gold color for border and inner shadow
+    local sunnyR, sunnyG, sunnyB = 1.0, 0.85, 0.2
+    button.border:SetVertexColor(sunnyR, sunnyG, sunnyB, 1)
     button.border:Show()
 
-    -- Show inner shadow with quest color
+    -- Show inner shadow with sunny color
     if button.innerShadow then
-        local r, g, b = questColor[1], questColor[2], questColor[3]
-        button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
-        button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
-        button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
-        button.innerShadow.right:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+        button.innerShadow.top:SetGradient("VERTICAL", CreateColor(sunnyR, sunnyG, sunnyB, 0), CreateColor(sunnyR, sunnyG, sunnyB, 0.6))
+        button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(sunnyR, sunnyG, sunnyB, 0.6), CreateColor(sunnyR, sunnyG, sunnyB, 0))
+        button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(sunnyR, sunnyG, sunnyB, 0.6), CreateColor(sunnyR, sunnyG, sunnyB, 0))
+        button.innerShadow.right:SetGradient("HORIZONTAL", CreateColor(sunnyR, sunnyG, sunnyB, 0), CreateColor(sunnyR, sunnyG, sunnyB, 0.6))
         for _, tex in pairs(button.innerShadow) do tex:Show() end
     end
 
