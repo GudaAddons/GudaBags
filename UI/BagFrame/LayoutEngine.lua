@@ -6,9 +6,10 @@ ns:RegisterModule("BagFrame.LayoutEngine", LayoutEngine)
 local Constants = ns.Constants
 
 -- Build display order from classified bags
--- Returns array of {bagID, needsSpacing, isKeyring}
+-- Returns array of {bagID, needsSpacing, isKeyring, isSoulBag}
 -- bags parameter is optional, used to check cached keyring data
-function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags)
+-- showSoulBag parameter controls whether soul bags are included (default true)
+function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag)
     local bagsToShow = {}
 
     -- Regular bags first (no spacing)
@@ -30,9 +31,11 @@ function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags)
         end
     end
 
-    -- Soul bags
-    for i, bagID in ipairs(classifiedBags.soul or {}) do
-        table.insert(bagsToShow, {bagID = bagID, needsSpacing = (i == 1), isSoulBag = true})
+    -- Soul bags (only if showSoulBag is true or not specified)
+    if showSoulBag ~= false then
+        for i, bagID in ipairs(classifiedBags.soul or {}) do
+            table.insert(bagsToShow, {bagID = bagID, needsSpacing = (i == 1), isSoulBag = true})
+        end
     end
 
     -- Quiver bags

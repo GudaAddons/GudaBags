@@ -135,6 +135,9 @@ local function CreateBagFrame()
     Footer:SetKeyringCallback(function(isVisible)
         BagFrame:Refresh()
     end)
+    Footer:SetSoulBagCallback(function(isVisible)
+        BagFrame:Refresh()
+    end)
     Footer:SetBackCallback(function()
         BagFrame:ViewCharacter(nil, nil)
     end)
@@ -234,7 +237,8 @@ function BagFrame:Refresh()
 
     -- Build display order
     local showKeyring = Footer:IsKeyringVisible()
-    local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags)
+    local showSoulBag = Footer:IsSoulBagVisible()
+    local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag)
 
     if viewType == "category" then
         self:RefreshCategoryView(bags, bagsToShow, settings, searchText, isViewingCached)

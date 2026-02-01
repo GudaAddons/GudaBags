@@ -83,6 +83,7 @@ UI\Header\Characters.lua
 # Footer Components
 UI\Footer\BagSlots.lua
 UI\Footer\Keyring.lua
+UI\Footer\SoulBag.lua
 UI\Footer\Hearthstone.lua
 UI\Footer\Money.lua
 UI\Footer.lua
