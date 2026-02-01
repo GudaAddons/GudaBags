@@ -742,29 +742,11 @@ function BagFrame:IncrementalUpdate(dirtyBags)
     -- Live bag events should not affect cached character display
     if viewingCharacter then return end
 
-    -- If Recent items were removed, force full refresh to prevent texture artifacts
+    -- Recent items removal is now handled by ghost slots in incremental update
+    -- Just clear the flag so it doesn't accumulate
     local RecentItems = ns:GetModule("RecentItems")
-    if RecentItems and RecentItems:WasItemRemoved() then
-        -- Release ALL buttons and headers for clean slate
-        ItemButton:ReleaseAll(frame.container)
-        ReleaseAllCategoryHeaders()
-        buttonsByItemKey = {}
-        buttonsBySlot = {}
-        buttonsByBag = {}
-        cachedItemData = {}
-        cachedItemCount = {}
-        cachedItemCategory = {}
-        buttonPositions = {}
-        categoryViewItems = {}
-        lastCategoryLayout = nil
-        lastTotalItemCount = 0
-        for _, button in pairs(pseudoItemButtons) do
-            ItemButton:Release(button)
-        end
-        pseudoItemButtons = {}
-        layoutCached = false
-        self:Refresh()
-        return
+    if RecentItems then
+        RecentItems:WasItemRemoved()  -- Clear the flag, but don't force refresh
     end
 
     if not layoutCached then
