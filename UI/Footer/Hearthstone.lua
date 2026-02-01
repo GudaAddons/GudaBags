@@ -31,11 +31,39 @@ function Hearthstone:Init(parent)
 
     wrapper = CreateFrame("Frame", "GudaBagsHearthstoneWrapper", parent)
     wrapper:SetSize(bagSlotSize, bagSlotSize)
+    wrapper:EnableMouse(false)  -- Wrapper should not intercept mouse
 
     button = CreateFrame("ItemButton", "GudaBagsHearthstoneButton", wrapper, "ContainerFrameItemButtonTemplate, BackdropTemplate")
     button:SetSize(bagSlotSize, bagSlotSize)
     button:SetAllPoints(wrapper)
     button.wrapper = wrapper
+
+    -- Disable mouse on all child frames from the template (retail has many overlays)
+    local function DisableChildMouse(frame)
+        for _, child in pairs({frame:GetChildren()}) do
+            if child.EnableMouse then
+                child:EnableMouse(false)
+            end
+            if child.SetHitRectInsets then
+                child:SetHitRectInsets(1000, 1000, 1000, 1000)
+            end
+            child:Hide()
+            if child.GetChildren then
+                DisableChildMouse(child)
+            end
+        end
+    end
+    DisableChildMouse(button)
+
+    -- Also check for and disable NineSlice (retail frame decoration)
+    if button.NineSlice then
+        button.NineSlice:Hide()
+        if button.NineSlice.EnableMouse then button.NineSlice:EnableMouse(false) end
+    end
+
+    -- Ensure button receives mouse input
+    button:EnableMouse(true)
+    button:RegisterForClicks("AnyUp", "AnyDown")
 
     -- Hide template's built-in visual elements
     for _, region in pairs({button:GetRegions()}) do
@@ -56,6 +84,45 @@ function Hearthstone:Init(parent)
         globalNormal:SetTexture(nil)
         globalNormal:Hide()
     end
+
+    -- Hide retail-specific template elements (Midnight/TWW)
+    -- Reparent overlays to remove from button hierarchy entirely
+    local function DisableOverlay(overlay)
+        if not overlay then return end
+        overlay:Hide()
+        overlay:SetAlpha(0)
+        overlay:ClearAllPoints()
+        if overlay.SetParent then overlay:SetParent(nil) end
+        if overlay.EnableMouse then overlay:EnableMouse(false) end
+        if overlay.SetHitRectInsets then overlay:SetHitRectInsets(1000, 1000, 1000, 1000) end
+        if overlay.SetScript then
+            overlay:SetScript("OnShow", function(self) self:Hide() end)
+            overlay:SetScript("OnEnter", nil)
+            overlay:SetScript("OnLeave", nil)
+            overlay:SetScript("OnMouseDown", nil)
+            overlay:SetScript("OnMouseUp", nil)
+        end
+    end
+
+    DisableOverlay(button.ItemContextOverlay)
+    DisableOverlay(button.SearchOverlay)
+    DisableOverlay(button.ExtendedSlot)
+    DisableOverlay(button.UpgradeIcon)
+    DisableOverlay(button.ItemSlotBackground)
+    DisableOverlay(button.JunkIcon)
+    DisableOverlay(button.flash)
+    DisableOverlay(button.NewItem)
+    DisableOverlay(button.Cooldown)  -- Template's cooldown
+    DisableOverlay(button.WidgetContainer)
+    DisableOverlay(button.LevelLinkLockIcon)
+    DisableOverlay(button.BagIndicator)
+    if button.IconBorder then button.IconBorder:Hide() end
+    if button.IconOverlay then button.IconOverlay:Hide() end
+
+    -- Reset hit rect and ensure mouse input works
+    button:SetHitRectInsets(0, 0, 0, 0)
+    if button.SetMouseClickEnabled then button:SetMouseClickEnabled(true) end
+    if button.SetMouseMotionEnabled then button:SetMouseMotionEnabled(true) end
 
     button:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",

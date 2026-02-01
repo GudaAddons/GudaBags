@@ -1176,6 +1176,17 @@ function SortEngine:SortBags()
         return false
     end
 
+    -- Use native Blizzard sort API on retail
+    if Expansion.IsRetail and C_Container and C_Container.SortBags then
+        C_Container.SortBags()
+        -- Fire event after a short delay to let the sort complete
+        C_Timer.After(0.5, function()
+            Events:Fire("BAGS_UPDATED")
+        end)
+        return true
+    end
+
+    -- Classic expansions use custom sort engine
     activeBagIDs = Constants.BAG_IDS
     self:ClearCache()
     soundsMuted = false
@@ -1216,6 +1227,21 @@ function SortEngine:SortBank()
         return false
     end
 
+    -- Use native Blizzard sort API on retail
+    if Expansion.IsRetail and C_Container and C_Container.SortBankBags then
+        C_Container.SortBankBags()
+        -- Fire event after a short delay to let the sort complete
+        C_Timer.After(0.5, function()
+            if ns.OnBankUpdated then
+                ns.OnBankUpdated()
+            else
+                Events:Fire("BAGS_UPDATED")
+            end
+        end)
+        return true
+    end
+
+    -- Classic expansions use custom sort engine
     activeBagIDs = Constants.BANK_BAG_IDS
     self:ClearCache()
     soundsMuted = false

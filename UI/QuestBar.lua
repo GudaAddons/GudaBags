@@ -643,7 +643,7 @@ function QuestBar:UseActiveItem()
 
     local bagID, slot = FindItemInBags(activeItem.itemID)
     if bagID and slot then
-        UseContainerItem(bagID, slot)
+        C_Container.UseContainerItem(bagID, slot)
     end
 end
 

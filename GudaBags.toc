@@ -1,6 +1,6 @@
-## Interface: 11508, 20505, 50503
+## Interface: 120000, 110207, 50503, 20505, 11508
 ## Title: GudaBags
-## Notes: Clean, unified bag management for Classic expansions
+## Notes: Clean, unified bag management for all WoW versions
 ## Author: Vati
 ## Version: 1.0.7
 ## SavedVariables: GudaBags_DB

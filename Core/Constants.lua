@@ -18,20 +18,36 @@ Constants.FEATURES = {
     KEYRING = Expansion and Expansion.IsTBC or false,
 }
 
--- Bag ID Ranges
+-- Bag ID Ranges (differ between retail and classic)
 Constants.PLAYER_BAG_MIN = 0
-Constants.PLAYER_BAG_MAX = 4
-Constants.BANK_BAG_MIN = 5
-Constants.BANK_BAG_MAX = 11
+if Expansion and Expansion.IsRetail then
+    -- Retail: bags 0-4 (backpack + 4 equipped bags) + reagent bag (5)
+    Constants.PLAYER_BAG_MAX = 4
+    Constants.REAGENT_BAG = 5  -- Retail only
+    Constants.BANK_BAG_MIN = 6
+    Constants.BANK_BAG_MAX = 12
+else
+    -- Classic: bags 0-4 (backpack + 4 equipped bags)
+    Constants.PLAYER_BAG_MAX = 4
+    Constants.BANK_BAG_MIN = 5
+    Constants.BANK_BAG_MAX = 11
+end
 Constants.BANK_MAIN_BAG = -1
 
 -- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
 Constants.KEYRING_BAG = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 
 -- Bag ID Arrays (derived from ranges for convenience)
-Constants.BAG_IDS = {0, 1, 2, 3, 4}
+if Expansion and Expansion.IsRetail then
+    -- Retail: include reagent bag in player bags
+    Constants.BAG_IDS = {0, 1, 2, 3, 4, 5}
+    Constants.BANK_BAG_IDS = {-1, 6, 7, 8, 9, 10, 11, 12}
+else
+    -- Classic
+    Constants.BAG_IDS = {0, 1, 2, 3, 4}
+    Constants.BANK_BAG_IDS = {-1, 5, 6, 7, 8, 9, 10, 11}
+end
 Constants.BANK_BAG_ID = -1
-Constants.BANK_BAG_IDS = {-1, 5, 6, 7, 8, 9, 10, 11}
 
 -- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
 Constants.KEYRING_BAG_ID = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil

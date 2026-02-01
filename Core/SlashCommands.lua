@@ -63,6 +63,54 @@ commandHandlers["debug"] = function()
     ns:Print(L["CMD_DEBUG_MODE"], ns.debugMode and L["CMD_ON"] or L["CMD_OFF"])
 end
 
+-- Debug item button frames (for retail overlay issues)
+commandHandlers["debugbutton"] = function()
+    local ItemButton = ns:GetModule("ItemButton")
+    ns:Print("Checking first item button structure...")
+
+    -- Get first active button
+    local firstButton = nil
+    for button in ItemButton:GetActiveButtons() do
+        firstButton = button
+        break
+    end
+
+    if not firstButton then
+        ns:Print("No active item buttons found. Open your bags first.")
+        return
+    end
+
+    ns:Print("Button: " .. (firstButton:GetName() or "unnamed"))
+    ns:Print("  Mouse enabled: " .. tostring(firstButton:IsMouseEnabled()))
+    ns:Print("  Shown: " .. tostring(firstButton:IsShown()))
+    ns:Print("  Frame level: " .. tostring(firstButton:GetFrameLevel()))
+
+    -- List children
+    local children = {firstButton:GetChildren()}
+    ns:Print("  Children (" .. #children .. "):")
+    for i, child in ipairs(children) do
+        local childName = child:GetName() or child:GetObjectType()
+        local mouseEnabled = child.IsMouseEnabled and child:IsMouseEnabled() or "N/A"
+        local shown = child:IsShown()
+        local level = child.GetFrameLevel and child:GetFrameLevel() or "N/A"
+        ns:Print("    " .. i .. ": " .. childName .. " mouse=" .. tostring(mouseEnabled) .. " shown=" .. tostring(shown) .. " level=" .. tostring(level))
+    end
+
+    -- Check specific overlays
+    local overlays = {"ItemContextOverlay", "SearchOverlay", "ExtendedSlot", "WidgetContainer", "Cooldown", "NineSlice"}
+    ns:Print("  Known overlays:")
+    for _, name in ipairs(overlays) do
+        local overlay = firstButton[name]
+        if overlay then
+            local shown = overlay.IsShown and overlay:IsShown() or "N/A"
+            local mouse = overlay.IsMouseEnabled and overlay:IsMouseEnabled() or "N/A"
+            ns:Print("    " .. name .. ": exists, shown=" .. tostring(shown) .. " mouse=" .. tostring(mouse))
+        else
+            ns:Print("    " .. name .. ": not found")
+        end
+    end
+end
+
 -- List saved characters
 commandHandlers["chars"] = function()
     local Database = GetDatabase()

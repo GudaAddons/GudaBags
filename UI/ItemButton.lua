@@ -158,6 +158,7 @@ local function CreateButton(parent)
     -- Wrapper frame holds bag ID for the template's click handler
     local wrapper = CreateFrame("Frame", name .. "Wrapper", parent)
     wrapper:SetSize(37, 37)
+    wrapper:EnableMouse(false)  -- Wrapper should not intercept mouse
 
     -- ContainerFrameItemButtonTemplate provides secure item click handling
     local button = CreateFrame("ItemButton", name, wrapper, "ContainerFrameItemButtonTemplate")
@@ -168,6 +169,36 @@ local function CreateButton(parent)
 
     -- Store reference to easily resize wrapper with button
     wrapper.button = button
+
+    -- Disable mouse on all child frames from the template (retail has many overlays)
+    -- This prevents them from intercepting mouse input meant for the button
+    local function DisableChildMouse(frame)
+        for _, child in pairs({frame:GetChildren()}) do
+            if child.EnableMouse then
+                child:EnableMouse(false)
+            end
+            if child.SetHitRectInsets then
+                child:SetHitRectInsets(1000, 1000, 1000, 1000)
+            end
+            child:Hide()
+            -- Recursively disable grandchildren
+            if child.GetChildren then
+                DisableChildMouse(child)
+            end
+        end
+    end
+    DisableChildMouse(button)
+
+    -- Also check for and disable NineSlice (retail frame decoration)
+    if button.NineSlice then
+        button.NineSlice:Hide()
+        if button.NineSlice.EnableMouse then button.NineSlice:EnableMouse(false) end
+    end
+
+    -- Disable button's built-in click handlers that might interfere
+    -- We'll set up our own handlers
+    button:EnableMouse(true)
+    button:RegisterForClicks("AnyUp", "AnyDown")
 
     -- Hide template's built-in visual elements (we use our own)
     local normalTex = button:GetNormalTexture()
@@ -184,6 +215,55 @@ local function CreateButton(parent)
     end
     if button.NewItemTexture then button.NewItemTexture:Hide() end
     if button.BattlepayItemTexture then button.BattlepayItemTexture:Hide() end
+
+    -- Hide retail-specific template elements (Midnight/TWW)
+    -- These overlays block mouse input - reparent them to remove completely
+    local function DisableOverlay(overlay)
+        if not overlay then return end
+        overlay:Hide()
+        overlay:SetAlpha(0)
+        overlay:ClearAllPoints()
+        -- Reparent to remove from button hierarchy entirely
+        if overlay.SetParent then
+            overlay:SetParent(nil)
+        end
+        if overlay.EnableMouse then overlay:EnableMouse(false) end
+        if overlay.SetHitRectInsets then overlay:SetHitRectInsets(1000, 1000, 1000, 1000) end
+        if overlay.SetScript then
+            overlay:SetScript("OnShow", function(self) self:Hide() end)
+            overlay:SetScript("OnEnter", nil)
+            overlay:SetScript("OnLeave", nil)
+            overlay:SetScript("OnMouseDown", nil)
+            overlay:SetScript("OnMouseUp", nil)
+        end
+    end
+
+    DisableOverlay(button.ItemContextOverlay)
+    DisableOverlay(button.SearchOverlay)
+    DisableOverlay(button.ExtendedSlot)
+    DisableOverlay(button.UpgradeIcon)
+    DisableOverlay(button.ItemSlotBackground)
+    DisableOverlay(button.JunkIcon)
+    DisableOverlay(button.flash)
+    DisableOverlay(button.NewItem)
+    DisableOverlay(button.Cooldown)  -- Template's cooldown (we create our own)
+    DisableOverlay(button.WidgetContainer)  -- Retail widget container
+    DisableOverlay(button.LevelLinkLockIcon)
+    DisableOverlay(button.BagIndicator)
+    DisableOverlay(button.StackSplitFrame)
+
+    -- Disable any mouse blocking on the icon texture layer
+    if button.icon then button.icon:SetDrawLayer("ARTWORK", 0) end
+
+    -- Ensure the button is the topmost interactive element
+    button:SetFrameLevel(button:GetParent():GetFrameLevel() + 5)
+
+    -- Reset hit rect to cover the full button (template might shrink it)
+    button:SetHitRectInsets(0, 0, 0, 0)
+
+    -- Ensure button receives all mouse events (check if methods exist)
+    if button.SetMouseClickEnabled then button:SetMouseClickEnabled(true) end
+    if button.SetMouseMotionEnabled then button:SetMouseMotionEnabled(true) end
 
     -- Hide global texture created by template XML
     local globalNormal = _G[name .. "NormalTexture"]

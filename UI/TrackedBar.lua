@@ -540,7 +540,7 @@ end
 function TrackedBar:UseItem(itemID)
     local bagID, slot = FindItemInBags(itemID)
     if bagID and slot then
-        UseContainerItem(bagID, slot)
+        C_Container.UseContainerItem(bagID, slot)
     end
 end
 
