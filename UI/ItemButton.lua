@@ -643,9 +643,13 @@ local function CreateButton(parent)
 
     -- Prevent swapping via click within the same category
     -- Also update pseudo-item slots to use current empty slot
+    -- NOTE: On Retail, skip these operations to avoid tainting the secure click handler
     button:HookScript("PreClick", function(self, mouseButton)
         -- Suppress spurious "Item isn't ready yet" errors on retail
         SuppressItemErrors()
+
+        -- On Retail, don't do anything that could taint the secure click path
+        if ns.IsRetail then return end
 
         -- For pseudo-item buttons, update to current empty slot BEFORE secure handler runs
         if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
@@ -663,40 +667,42 @@ local function CreateButton(parent)
 
     -- Custom OnReceiveDrag to prevent swapping items within the same category
     -- Also handles pseudo-item buttons to place items in current empty slot
-    -- Store original handler reference
-    local originalReceiveDrag = button:GetScript("OnReceiveDrag")
-    button:SetScript("OnReceiveDrag", function(self)
-        -- For pseudo-item buttons (Empty/Soul), find current empty slot
-        if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
-            local cursorType = GetCursorInfo()
-            if cursorType == "item" then
-                local newBagID, newSlotID = FindCurrentEmptySlot(self)
-                if newBagID and newSlotID then
-                    -- Place item in the current first empty slot
-                    C_Container.PickupContainerItem(newBagID, newSlotID)
+    -- NOTE: On Retail, don't replace the secure OnReceiveDrag handler
+    if not ns.IsRetail then
+        local originalReceiveDrag = button:GetScript("OnReceiveDrag")
+        button:SetScript("OnReceiveDrag", function(self)
+            -- For pseudo-item buttons (Empty/Soul), find current empty slot
+            if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
+                local cursorType = GetCursorInfo()
+                if cursorType == "item" then
+                    local newBagID, newSlotID = FindCurrentEmptySlot(self)
+                    if newBagID and newSlotID then
+                        -- Place item in the current first empty slot
+                        C_Container.PickupContainerItem(newBagID, newSlotID)
+                    end
+                end
+                return
+            end
+
+            -- If same category drop, prevent the swap
+            if IsSameCategoryDrop(self) then
+                ClearCursor()
+                return
+            end
+
+            -- Allow normal swap (different categories or non-category view)
+            if originalReceiveDrag then
+                originalReceiveDrag(self)
+            else
+                -- Fallback: manually do the pickup/place
+                local bagID = self:GetParent():GetID()
+                local slotID = self:GetID()
+                if bagID and slotID and bagID >= 0 then
+                    C_Container.PickupContainerItem(bagID, slotID)
                 end
             end
-            return
-        end
-
-        -- If same category drop, prevent the swap
-        if IsSameCategoryDrop(self) then
-            ClearCursor()
-            return
-        end
-
-        -- Allow normal swap (different categories or non-category view)
-        if originalReceiveDrag then
-            originalReceiveDrag(self)
-        else
-            -- Fallback: manually do the pickup/place
-            local bagID = self:GetParent():GetID()
-            local slotID = self:GetID()
-            if bagID and slotID and bagID >= 0 then
-                C_Container.PickupContainerItem(bagID, slotID)
-            end
-        end
-    end)
+        end)
+    end
 
     return button
 end
