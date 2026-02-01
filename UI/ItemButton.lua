@@ -7,6 +7,36 @@ local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Tooltip = ns:GetModule("Tooltip")
 
+-- Suppress spurious "Item isn't ready yet" errors on retail
+-- ContainerFrameItemButtonTemplate shows this error incorrectly when clicking usable items
+local suppressItemErrors = false
+local suppressUntil = 0
+
+-- Hook UIErrorsFrame to filter out incorrect item errors
+if UIErrorsFrame and ns.IsRetail then
+    local originalAddMessage = UIErrorsFrame.AddMessage
+    UIErrorsFrame.AddMessage = function(self, msg, ...)
+        -- Suppress item-not-ready errors briefly after our button clicks
+        if suppressItemErrors and GetTime() < suppressUntil then
+            -- Check if this is one of the spurious error messages
+            local errItemNotReady = ERR_ITEM_NOT_READY or "Item is not ready yet"
+            local errGenericNoTarget = ERR_GENERIC_NO_TARGET or "You have no target"
+            if msg and (msg:find(errItemNotReady) or msg == errItemNotReady) then
+                return  -- Suppress this error
+            end
+        end
+        return originalAddMessage(self, msg, ...)
+    end
+end
+
+-- Call this before clicking to suppress errors for a brief moment
+local function SuppressItemErrors()
+    if ns.IsRetail then
+        suppressItemErrors = true
+        suppressUntil = GetTime() + 0.1  -- Suppress for 100ms
+    end
+end
+
 -- Phase 1: Use Blizzard's optimized CreateObjectPool API
 local buttonPool = nil  -- Lazy initialized
 local buttonIndex = 0
@@ -173,6 +203,12 @@ local function CreateButton(parent)
     -- Initialize IDs to prevent errors from template handlers before SetItem is called
     wrapper:SetID(0)
     button:SetID(0)
+
+    -- On retail, override click registration to prevent double-firing
+    -- Template registers for both Up and Down, causing items to be used twice
+    if ns.IsRetail then
+        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    end
 
     -- Disable mouse on all child frames from the template (retail has many overlays)
     -- This prevents them from intercepting mouse input meant for the button
@@ -608,6 +644,9 @@ local function CreateButton(parent)
     -- Prevent swapping via click within the same category
     -- Also update pseudo-item slots to use current empty slot
     button:HookScript("PreClick", function(self, mouseButton)
+        -- Suppress spurious "Item isn't ready yet" errors on retail
+        SuppressItemErrors()
+
         -- For pseudo-item buttons, update to current empty slot BEFORE secure handler runs
         if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
             local cursorType = GetCursorInfo()

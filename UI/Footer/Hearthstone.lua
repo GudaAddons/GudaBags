@@ -31,101 +31,26 @@ function Hearthstone:Init(parent)
 
     wrapper = CreateFrame("Frame", "GudaBagsHearthstoneWrapper", parent)
     wrapper:SetSize(bagSlotSize, bagSlotSize)
-    wrapper:EnableMouse(false)  -- Wrapper should not intercept mouse
-    wrapper:SetFrameLevel(parent:GetFrameLevel() + 5)  -- Ensure wrapper is above other footer elements
+    wrapper:EnableMouse(false)
+    wrapper:SetFrameLevel(parent:GetFrameLevel() + 5)
 
-    button = CreateFrame("ItemButton", "GudaBagsHearthstoneButton", wrapper, "ContainerFrameItemButtonTemplate, BackdropTemplate")
+    -- Use SecureActionButtonTemplate for proper item use
+    button = CreateFrame("Button", "GudaBagsHearthstoneButton", wrapper, "SecureActionButtonTemplate, BackdropTemplate")
     button:SetSize(bagSlotSize, bagSlotSize)
     button:SetAllPoints(wrapper)
-    button.wrapper = wrapper
+    -- Use AnyDown only - fires on mouse press, not release (prevents double-firing)
+    button:RegisterForClicks("AnyDown")
 
-    -- Disable mouse on all child frames from the template (retail has many overlays)
-    local function DisableChildMouse(frame)
-        for _, child in pairs({frame:GetChildren()}) do
-            if child.EnableMouse then
-                child:EnableMouse(false)
-            end
-            if child.SetHitRectInsets then
-                child:SetHitRectInsets(1000, 1000, 1000, 1000)
-            end
-            child:Hide()
-            if child.GetChildren then
-                DisableChildMouse(child)
-            end
-        end
-    end
-    DisableChildMouse(button)
+    -- Set up left-click (type1) and right-click (type2) to use hearthstone
+    -- Using macro with item ID is most reliable across all locales
+    local hsItemString = "/use item:" .. Constants.HEARTHSTONE_ID
+    button:SetAttribute("type1", "macro")
+    button:SetAttribute("macrotext1", hsItemString)
+    button:SetAttribute("type2", "macro")
+    button:SetAttribute("macrotext2", hsItemString)
 
-    -- Also check for and disable NineSlice (retail frame decoration)
-    if button.NineSlice then
-        button.NineSlice:Hide()
-        if button.NineSlice.EnableMouse then button.NineSlice:EnableMouse(false) end
-    end
-
-    -- Ensure button receives mouse input
+    -- Ensure button is interactive
     button:EnableMouse(true)
-    button:RegisterForClicks("AnyUp", "AnyDown")
-
-    -- Hide template's built-in visual elements
-    for _, region in pairs({button:GetRegions()}) do
-        if region:IsObjectType("Texture") then
-            region:SetTexture(nil)
-            region:Hide()
-        end
-    end
-
-    local normalTex = button:GetNormalTexture()
-    if normalTex then
-        normalTex:SetTexture(nil)
-        normalTex:Hide()
-    end
-
-    local globalNormal = _G["GudaBagsHearthstoneButtonNormalTexture"]
-    if globalNormal then
-        globalNormal:SetTexture(nil)
-        globalNormal:Hide()
-    end
-
-    -- Hide retail-specific template elements (Midnight/TWW)
-    -- Reparent overlays to remove from button hierarchy entirely
-    local function DisableOverlay(overlay)
-        if not overlay then return end
-        overlay:Hide()
-        overlay:SetAlpha(0)
-        overlay:ClearAllPoints()
-        if overlay.SetParent then overlay:SetParent(nil) end
-        if overlay.EnableMouse then overlay:EnableMouse(false) end
-        if overlay.SetHitRectInsets then overlay:SetHitRectInsets(1000, 1000, 1000, 1000) end
-        if overlay.SetScript then
-            overlay:SetScript("OnShow", function(self) self:Hide() end)
-            overlay:SetScript("OnEnter", nil)
-            overlay:SetScript("OnLeave", nil)
-            overlay:SetScript("OnMouseDown", nil)
-            overlay:SetScript("OnMouseUp", nil)
-        end
-    end
-
-    DisableOverlay(button.ItemContextOverlay)
-    DisableOverlay(button.SearchOverlay)
-    DisableOverlay(button.ExtendedSlot)
-    DisableOverlay(button.UpgradeIcon)
-    DisableOverlay(button.ItemSlotBackground)
-    DisableOverlay(button.JunkIcon)
-    DisableOverlay(button.flash)
-    DisableOverlay(button.NewItem)
-    DisableOverlay(button.Cooldown)  -- Template's cooldown
-    DisableOverlay(button.WidgetContainer)
-    DisableOverlay(button.LevelLinkLockIcon)
-    DisableOverlay(button.BagIndicator)
-    if button.IconBorder then button.IconBorder:Hide() end
-    if button.IconOverlay then button.IconOverlay:Hide() end
-
-    -- Reset hit rect and ensure mouse input works
-    button:SetHitRectInsets(0, 0, 0, 0)
-    if button.SetMouseClickEnabled then button:SetMouseClickEnabled(true) end
-    if button.SetMouseMotionEnabled then button:SetMouseMotionEnabled(true) end
-
-    -- Ensure the button is the topmost interactive element
     button:SetFrameStrata("HIGH")
     button:SetFrameLevel(100)
 
@@ -152,7 +77,6 @@ function Hearthstone:Init(parent)
     local cooldown = CreateFrame("Cooldown", "GudaBagsHearthstoneCooldown", button, "CooldownFrameTemplate")
     cooldown:SetAllPoints()
     cooldown:SetDrawEdge(false)
-    -- Make cooldown text smaller for the small button
     cooldown:SetHideCountdownNumbers(false)
     local cooldownText = cooldown:GetRegions()
     if cooldownText and cooldownText.SetFont then
@@ -160,7 +84,7 @@ function Hearthstone:Init(parent)
     end
     button.cooldown = cooldown
 
-    button:HookScript("OnEnter", function(self)
+    button:SetScript("OnEnter", function(self)
         if self.bag and self.slot then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetBagItem(self.bag, self.slot)
@@ -174,7 +98,7 @@ function Hearthstone:Init(parent)
         end
     end)
 
-    button:HookScript("OnLeave", function()
+    button:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
 
@@ -219,12 +143,7 @@ function Hearthstone:Update()
         button:Show()
         wrapper:Show()
 
-        wrapper:SetID(bag)
-        button:SetID(slot)
-
-        if button.IconBorder then button.IconBorder:Hide() end
-        if button.icon then button.icon:Hide() end
-
+        -- Update cooldown
         local start, duration, enable = C_Container.GetContainerItemCooldown(bag, slot)
         if button.cooldown and start and duration and duration > 0 then
             button.cooldown:SetCooldown(start, duration)
@@ -232,6 +151,7 @@ function Hearthstone:Update()
             button.cooldown:Clear()
         end
 
+        -- Store for tooltip
         button.bag = bag
         button.slot = slot
         button.link = link
@@ -239,9 +159,6 @@ function Hearthstone:Update()
         button:SetAlpha(0.3)
         button:Show()
         wrapper:Show()
-
-        wrapper:SetID(0)
-        button:SetID(0)
 
         button.bag = nil
         button.slot = nil
