@@ -428,14 +428,42 @@ local function CreateIncludeReagentsCheckbox(parent)
     label:SetText("Include Reagents")
     checkbox.label = label
 
-    -- Get/set the include reagents setting from Blizzard's bank panel
+    -- Use CVar to control include reagents setting
+    local INCLUDE_REAGENTS_CVAR = "bankAutoDepositReagents"
+
     checkbox:SetScript("OnClick", function(self)
+        local checked = self:GetChecked()
+        -- Try CVar first
+        if SetCVar then
+            SetCVar(INCLUDE_REAGENTS_CVAR, checked and "1" or "0")
+            ns:Debug("Include Reagents set via CVar:", checked)
+        end
+        -- Also sync with Blizzard's checkbox if available
         if BankFrame and BankFrame.IncludeReagentsCheckbox then
-            BankFrame.IncludeReagentsCheckbox:SetChecked(self:GetChecked())
-            -- Trigger Blizzard's handler
+            BankFrame.IncludeReagentsCheckbox:SetChecked(checked)
             if BankFrame.IncludeReagentsCheckbox:GetScript("OnClick") then
                 BankFrame.IncludeReagentsCheckbox:GetScript("OnClick")(BankFrame.IncludeReagentsCheckbox)
             end
+        end
+    end)
+
+    -- Sync state when shown
+    checkbox:SetScript("OnShow", function(self)
+        -- Try CVar first
+        if GetCVar then
+            local value = GetCVar(INCLUDE_REAGENTS_CVAR)
+            if value then
+                self:SetChecked(value == "1")
+                ns:Debug("Include Reagents read from CVar:", value)
+                return
+            end
+        end
+        -- Fallback to Blizzard's checkbox
+        if BankFrame and BankFrame.IncludeReagentsCheckbox then
+            self:SetChecked(BankFrame.IncludeReagentsCheckbox:GetChecked())
+        else
+            -- Default to unchecked (safer default - don't auto-deposit reagents)
+            self:SetChecked(false)
         end
     end)
 
@@ -1047,10 +1075,7 @@ function BankFooter:UpdateRetailActionButtons(isBankOpen, bankType)
         end
         if includeReagentsCheckbox then
             includeReagentsCheckbox:Show()
-            -- Sync checkbox state with Blizzard's bank panel if available
-            if BankFrame and BankFrame.IncludeReagentsCheckbox then
-                includeReagentsCheckbox:SetChecked(BankFrame.IncludeReagentsCheckbox:GetChecked())
-            end
+            -- Sync checkbox state - OnShow handler will handle this
         end
         -- Show money buttons if we can deposit/withdraw
         if C_Bank then

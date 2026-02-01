@@ -57,6 +57,17 @@ end
 -- Control Factory
 -------------------------------------------------
 local function CreateControl(parent, config)
+    -- Check if control should be hidden
+    if config.hidden then
+        local shouldHide = config.hidden
+        if type(shouldHide) == "function" then
+            shouldHide = shouldHide()
+        end
+        if shouldHide then
+            return nil
+        end
+    end
+
     if config.type == "slider" then
         return Slider:Create(parent, config)
     elseif config.type == "checkbox" then
@@ -79,10 +90,26 @@ local function CreateControl(parent, config)
         frame.text = text
         return frame
     elseif config.type == "row" then
-        local row = HorizontalRow:Create(parent, { columns = #config.children })
+        -- Count visible children
+        local visibleCount = 0
+        for _, childConfig in ipairs(config.children) do
+            local shouldHide = childConfig.hidden
+            if type(shouldHide) == "function" then
+                shouldHide = shouldHide()
+            end
+            if not shouldHide then
+                visibleCount = visibleCount + 1
+            end
+        end
+        if visibleCount == 0 then
+            return nil
+        end
+        local row = HorizontalRow:Create(parent, { columns = visibleCount })
         for _, childConfig in ipairs(config.children) do
             local child = CreateControl(row, childConfig)
-            row:AddChild(child)
+            if child then
+                row:AddChild(child)
+            end
         end
         return row
     end
