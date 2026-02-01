@@ -2057,6 +2057,7 @@ end
 ns.OnBankClosed = function()
     if frame and frame:IsShown() then
         BankScanner:SaveToDatabase()
+        BankFrame:Hide()
     end
 end
 
