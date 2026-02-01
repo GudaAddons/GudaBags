@@ -23,6 +23,11 @@ local categoryHeaders = {}
 local isInitialized = false
 local viewingCharacter = nil -- nil = current character, or fullName string
 
+-- Combat lockdown handling
+-- ContainerFrameItemButtonTemplate is a secure template that cannot be created during combat
+local pendingAction = nil  -- "show", "toggle", or nil
+local combatLockdownRegistered = false
+
 -- Layout caching for incremental updates (Single View)
 local buttonsBySlot = {}  -- Key: "bagID:slot" -> button reference
 local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-specific lookups
@@ -69,6 +74,7 @@ end
 local UpdateFrameAppearance
 local SaveFramePosition
 local RestoreFramePosition
+local RegisterCombatEndCallback
 
 -------------------------------------------------
 -- Category Header Pool (uses shared CategoryHeaderPool module)
@@ -632,6 +638,28 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, searchText, is
     lastTotalItemCount = #categoryViewItems
 
     layoutCached = true
+end
+
+-- Register for combat end event to execute pending actions and refresh open bags
+RegisterCombatEndCallback = function()
+    if combatLockdownRegistered then return end
+    combatLockdownRegistered = true
+
+    Events:Register("PLAYER_REGEN_ENABLED", function()
+        if pendingAction then
+            local action = pendingAction
+            pendingAction = nil
+            if action == "show" then
+                BagFrame:Show()
+            elseif action == "toggle" then
+                BagFrame:Toggle()
+            end
+        elseif frame and frame:IsShown() then
+            -- Bags were already open during combat - refresh to catch any changes
+            BagScanner:ScanAllBags()
+            BagFrame:Refresh()
+        end
+    end, BagFrame)
 end
 
 function BagFrame:Toggle()

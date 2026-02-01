@@ -255,6 +255,7 @@ local function CreateItemButton(parent, name, isMain)
 
     -- PreClick: only allow item use on right click
     button:SetScript("PreClick", function(self, mouseButton)
+        if InCombatLockdown() then return end  -- Can't SetAttribute during combat
         if mouseButton == "RightButton" and not IsShiftKeyDown() then
             self:SetAttribute("type", "item")
         else
@@ -264,6 +265,7 @@ local function CreateItemButton(parent, name, isMain)
 
     -- PostClick: restore type
     button:SetScript("PostClick", function(self, mouseButton)
+        if InCombatLockdown() then return end  -- Can't SetAttribute during combat
         self:SetAttribute("type", "item")
     end)
 
@@ -399,7 +401,10 @@ local function UpdateButton(button, itemData)
         if button.innerShadow then
             for _, tex in pairs(button.innerShadow) do tex:Hide() end
         end
-        button:SetAttribute("item", nil)
+        -- SetAttribute fails during combat - skip it
+        if not InCombatLockdown() then
+            button:SetAttribute("item", nil)
+        end
         button:Hide()
         return
     end
@@ -416,10 +421,13 @@ local function UpdateButton(button, itemData)
     button.slotID = slot
     button.itemName = itemName
 
-    if bagID and slot then
-        button:SetAttribute("item", "item:" .. itemID)
-    else
-        button:SetAttribute("item", nil)
+    -- SetAttribute fails during combat - skip it (button still displays, just can't click to use)
+    if not InCombatLockdown() then
+        if bagID and slot then
+            button:SetAttribute("item", "item:" .. itemID)
+        else
+            button:SetAttribute("item", nil)
+        end
     end
 
     if itemTexture or itemData.texture then

@@ -24,6 +24,11 @@ local itemButtons = {}
 local categoryHeaders = {}
 local viewingCharacter = nil
 
+-- Combat lockdown handling
+-- ContainerFrameItemButtonTemplate is a secure template that cannot be created during combat
+local pendingAction = nil  -- "show" or nil
+local combatLockdownRegistered = false
+
 -- Layout caching for incremental updates (same pattern as BagFrame)
 local buttonsBySlot = {}  -- Key: "bagID:slot" -> button reference
 local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-specific lookups
@@ -92,6 +97,7 @@ end
 local UpdateFrameAppearance
 local SaveFramePosition
 local RestoreFramePosition
+local RegisterCombatEndCallback
 
 local function CreateBankFrame()
     local f = CreateFrame("Frame", "GudaBankFrame", UIParent, "BackdropTemplate")
@@ -1534,6 +1540,28 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     end
 
     layoutCached = true
+end
+
+-- Register for combat end event to execute pending actions and refresh open bank
+RegisterCombatEndCallback = function()
+    if combatLockdownRegistered then return end
+    combatLockdownRegistered = true
+
+    Events:Register("PLAYER_REGEN_ENABLED", function()
+        if pendingAction then
+            local action = pendingAction
+            pendingAction = nil
+            if action == "show" then
+                BankFrame:Show()
+            end
+        elseif frame and frame:IsShown() then
+            -- Bank was already open during combat - refresh to catch any changes
+            if BankScanner:IsBankOpen() then
+                BankScanner:ScanAllBank()
+            end
+            BankFrame:Refresh()
+        end
+    end, BankFrame)
 end
 
 function BankFrame:Toggle()

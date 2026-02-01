@@ -197,6 +197,7 @@ local function CreateItemButton(parent, index)
 
     -- PreClick: only allow item use on right click
     button:SetScript("PreClick", function(self, mouseButton)
+        if InCombatLockdown() then return end  -- Can't SetAttribute during combat
         if mouseButton == "RightButton" and not IsShiftKeyDown() and not (IsControlKeyDown() and IsAltKeyDown()) then
             self:SetAttribute("type", "item")
         else
@@ -209,8 +210,10 @@ local function CreateItemButton(parent, index)
         if IsControlKeyDown() and IsAltKeyDown() and self.itemID then
             TrackedBar:UntrackItem(self.itemID)
         end
-        -- Restore type for next click
-        self:SetAttribute("type", "item")
+        -- Restore type for next click (skip during combat)
+        if not InCombatLockdown() then
+            self:SetAttribute("type", "item")
+        end
     end)
 
     -- OnMouseDown: start bar movement if Shift is held
@@ -298,10 +301,13 @@ local function UpdateButton(button, itemID)
     button.itemName = itemName
 
     -- Set item attribute for SecureActionButton using item ID format
-    if bagID and slot then
-        button:SetAttribute("item", "item:" .. itemID)
-    else
-        button:SetAttribute("item", nil)
+    -- SetAttribute fails during combat - skip it (button still displays, just can't click to use)
+    if not InCombatLockdown() then
+        if bagID and slot then
+            button:SetAttribute("item", "item:" .. itemID)
+        else
+            button:SetAttribute("item", nil)
+        end
     end
 
     if itemTexture then
