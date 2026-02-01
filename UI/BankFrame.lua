@@ -2031,6 +2031,16 @@ ns.OnBankUpdated = function(dirtyBags)
             BankFrame:Refresh()
         end
     end
+
+    -- Also refresh bag frame if open (items may have moved between bank and bags)
+    -- This is needed on Retail where BAG_UPDATE doesn't always fire for player bags
+    -- when items are moved from Warband bank
+    local BagFrame = ns:GetModule("BagFrame")
+    local BagScanner = ns:GetModule("BagScanner")
+    if BagFrame and BagFrame:IsShown() then
+        BagScanner:ScanAllBags()
+        BagFrame:Refresh()
+    end
 end
 
 ns.OnBankOpened = function()
@@ -2304,16 +2314,22 @@ ns.OnBankTypeChanged = function(bankType)
     if frame and frame:IsShown() then
         ns:Debug("Bank type changed to:", bankType)
 
+        -- Update RetailBankScanner's current bank type so BAG_UPDATE events are processed correctly
+        if RetailBankScanner then
+            local bankTypeEnum = bankType == "warband" and Enum.BankType.Account or Enum.BankType.Character
+            RetailBankScanner:SetCurrentBankType(bankTypeEnum)
+            RetailBankScanner:SetSelectedTab(0)  -- Reset tab selection to "All"
+            -- Rescan the new bank type to get fresh data
+            if BankScanner:IsBankOpen() then
+                RetailBankScanner:ScanAllBank()
+            end
+        end
+
         -- Get the character being viewed
         local characterFullName = viewingCharacter or Database:GetPlayerFullName()
 
         -- Refresh side tabs for the new bank type
         BankFrame:ShowSideTabs(characterFullName, bankType)
-
-        -- Reset tab selection to "All" when switching bank types
-        if RetailBankScanner then
-            RetailBankScanner:SetSelectedTab(0)
-        end
 
         -- Update footer action buttons for the new bank type
         local isBankOpen = BankScanner and BankScanner:IsBankOpen()

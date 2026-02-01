@@ -332,6 +332,7 @@ local function OnBagUpdate(event, bagID)
         return
     end
 
+    ns:Debug("BagScanner: BAG_UPDATE for bag", bagID, "pending:", pendingUpdate)
     dirtyBags[bagID] = true
 
     -- Schedule OnUpdate processing if not already pending

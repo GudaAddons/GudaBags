@@ -216,22 +216,25 @@ local function NormalizeContainerData(rawData)
 
     local normalized = {}
     for bagKey, bagData in pairs(rawData) do
-        local normalizedBagID = tonumber(bagKey) or bagKey
-        local normalizedBag = {
-            bagID = bagData.bagID,
-            numSlots = bagData.numSlots,
-            freeSlots = bagData.freeSlots,
-            bagType = bagData.bagType,
-            containerItemID = bagData.containerItemID,
-            containerTexture = bagData.containerTexture,
-            slots = {},
-        }
-        if bagData.slots then
-            for slotKey, slotData in pairs(bagData.slots) do
-                normalizedBag.slots[tonumber(slotKey) or slotKey] = slotData
+        -- Skip non-table entries (like lastUpdate timestamps or boolean flags)
+        if type(bagData) == "table" then
+            local normalizedBagID = tonumber(bagKey) or bagKey
+            local normalizedBag = {
+                bagID = bagData.bagID,
+                numSlots = bagData.numSlots,
+                freeSlots = bagData.freeSlots,
+                bagType = bagData.bagType,
+                containerItemID = bagData.containerItemID,
+                containerTexture = bagData.containerTexture,
+                slots = {},
+            }
+            if bagData.slots then
+                for slotKey, slotData in pairs(bagData.slots) do
+                    normalizedBag.slots[tonumber(slotKey) or slotKey] = slotData
+                end
             end
+            normalized[normalizedBagID] = normalizedBag
         end
-        normalized[normalizedBagID] = normalizedBag
     end
 
     return normalized
@@ -376,7 +379,8 @@ local function CountItemsInContainers(containers, itemID)
     local count = 0
     if containers then
         for bagKey, bagData in pairs(containers) do
-            if bagData.slots then
+            -- Skip non-table entries (like lastUpdate timestamps or boolean flags)
+            if type(bagData) == "table" and bagData.slots then
                 for slotKey, slotData in pairs(bagData.slots) do
                     if slotData.itemID == itemID then
                         count = count + (slotData.count or 1)

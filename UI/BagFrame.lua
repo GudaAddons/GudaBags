@@ -1182,13 +1182,22 @@ end
 
 -- dirtyBags: table of {bagID = true} for bags that were updated
 ns.OnBagsUpdated = function(dirtyBags)
+    ns:Debug("OnBagsUpdated called, frame shown:", frame and frame:IsShown() or false)
     -- Only auto-refresh when viewing current character
     if not viewingCharacter then
-        -- Use incremental update if layout is cached, otherwise full refresh
-        if layoutCached and frame and frame:IsShown() then
-            BagFrame:IncrementalUpdate(dirtyBags)
-        else
-            BagFrame:Refresh()
+        if frame and frame:IsShown() then
+            local viewType = Database:GetSetting("bagViewType") or "single"
+            ns:Debug("OnBagsUpdated refreshing, viewType:", viewType)
+            -- Category view: always do full scan and refresh to ensure proper item grouping
+            -- Single view: use incremental update if layout is cached
+            if viewType == "category" then
+                BagScanner:ScanAllBags()
+                BagFrame:Refresh()
+            elseif layoutCached then
+                BagFrame:IncrementalUpdate(dirtyBags)
+            else
+                BagFrame:Refresh()
+            end
         end
     end
 end
