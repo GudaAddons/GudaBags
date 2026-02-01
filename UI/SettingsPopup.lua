@@ -1358,6 +1358,7 @@ local function CreateSettingsFrame()
     f:SetClampedToScreen(true)
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
+    f:EnableMouse(true)
 
     -- Hide portrait and button bar
     ButtonFrameTemplate_HidePortrait(f)
