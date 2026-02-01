@@ -186,11 +186,20 @@ local function CreateBankFrame()
     -- Create side tab bar for Retail bank tabs (vertical, on right side outside frame)
     if ns.IsRetail then
         local sideTabBar = CreateFrame("Frame", "GudaBankSideTabBar", f)
-        sideTabBar:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -60)
+        sideTabBar:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -55)
         sideTabBar:SetSize(32, 200)  -- Will resize based on tabs
         sideTabBar:Hide()  -- Hidden until tabs are shown
         f.sideTabBar = sideTabBar
         f.sideTabs = {}
+    end
+
+    -- Create bottom bank type tabs (Bank | Warband) - Retail only
+    if ns.IsRetail and Constants.WARBAND_BANK_ACTIVE then
+        f.bottomTabs = {}
+        f.bottomTabBar = CreateFrame("Frame", "GudaBankBottomTabBar", f)
+        f.bottomTabBar:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 8, 0)
+        f.bottomTabBar:SetSize(200, 28)
+        f.bottomTabBar:Hide()
     end
 
     return f
@@ -200,7 +209,7 @@ end
 -- Side Tab Bar (Retail Bank Tabs - Vertical on Right)
 -------------------------------------------------
 
-local TAB_SIZE = 28
+local TAB_SIZE = 36
 local TAB_SPACING = 2
 
 local function CreateSideTab(parent, index, isAllTab)
@@ -513,6 +522,150 @@ function BankFrame:UpdateSideTabSelection()
     end
 end
 
+-------------------------------------------------
+-- Bottom Bank Type Tabs (Bank | Warband - Below Frame)
+-------------------------------------------------
+
+local BOTTOM_TAB_WIDTH = 100
+local BOTTOM_TAB_HEIGHT = 32
+local BOTTOM_TAB_SPACING = 2
+
+local function CreateBottomBankTypeTab(parent, bankType, label)
+    local button = CreateFrame("Button", "GudaBankBottomTab" .. bankType, parent, "BackdropTemplate")
+    button:SetSize(BOTTOM_TAB_WIDTH, BOTTOM_TAB_HEIGHT)
+    button.bankType = bankType
+
+    -- Create rounded bottom corners using a custom backdrop
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 12,
+        insets = {left = 3, right = 3, top = 0, bottom = 3},
+    })
+    button:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
+    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+    -- Mask the top edge to blend with frame (create seamless connection)
+    local topMask = button:CreateTexture(nil, "OVERLAY")
+    topMask:SetPoint("TOPLEFT", button, "TOPLEFT", 1, 0)
+    topMask:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, 0)
+    topMask:SetHeight(3)
+    topMask:SetColorTexture(0.08, 0.08, 0.08, 0.95)
+    button.topMask = topMask
+
+    -- Tab label
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    text:SetPoint("CENTER", 0, -1)
+    text:SetText(label)
+    text:SetTextColor(0.8, 0.8, 0.8)
+    button.text = text
+
+    -- Highlight
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetPoint("TOPLEFT", 2, -2)
+    highlight:SetPoint("BOTTOMRIGHT", -2, 2)
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+    highlight:SetAlpha(0.3)
+
+    -- Selection indicator (bottom glow)
+    local selected = button:CreateTexture(nil, "BACKGROUND")
+    selected:SetPoint("TOPLEFT", 2, -2)
+    selected:SetPoint("BOTTOMRIGHT", -2, 2)
+    selected:SetColorTexture(1, 0.82, 0, 0.2)
+    selected:Hide()
+    button.selected = selected
+
+    button:SetScript("OnClick", function(self)
+        local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+        if currentBankType ~= self.bankType then
+            if BankFooter then
+                BankFooter:SetCurrentBankType(self.bankType)
+            end
+            BankFrame:UpdateBottomTabSelection()
+            -- Notify BankFrame to refresh with new bank type
+            if ns.OnBankTypeChanged then
+                ns.OnBankTypeChanged(self.bankType)
+            end
+        end
+    end)
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        if self.bankType == "character" then
+            GameTooltip:SetText("Character Bank")
+        else
+            GameTooltip:SetText("Warband Bank")
+        end
+        GameTooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    return button
+end
+
+function BankFrame:ShowBottomTabs()
+    if not frame or not frame.bottomTabBar then return end
+    if not ns.IsRetail or not Constants.WARBAND_BANK_ACTIVE then return end
+
+    -- Create tabs if they don't exist
+    if not frame.bottomTabs.character then
+        frame.bottomTabs.character = CreateBottomBankTypeTab(frame.bottomTabBar, "character", "Bank")
+        frame.bottomTabs.character:SetPoint("TOPLEFT", frame.bottomTabBar, "TOPLEFT", 0, 0)
+    end
+
+    if not frame.bottomTabs.warband then
+        frame.bottomTabs.warband = CreateBottomBankTypeTab(frame.bottomTabBar, "warband", "Warband")
+        frame.bottomTabs.warband:SetPoint("LEFT", frame.bottomTabs.character, "RIGHT", BOTTOM_TAB_SPACING, 0)
+    end
+
+    frame.bottomTabs.character:Show()
+    frame.bottomTabs.warband:Show()
+    frame.bottomTabBar:Show()
+
+    self:UpdateBottomTabSelection()
+end
+
+function BankFrame:HideBottomTabs()
+    if not frame or not frame.bottomTabBar then return end
+
+    if frame.bottomTabs.character then
+        frame.bottomTabs.character:Hide()
+    end
+    if frame.bottomTabs.warband then
+        frame.bottomTabs.warband:Hide()
+    end
+    frame.bottomTabBar:Hide()
+end
+
+function BankFrame:UpdateBottomTabSelection()
+    if not frame or not frame.bottomTabs then return end
+
+    local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+    local bgAlpha = Database:GetSetting("bgAlpha") / 100
+
+    for bankType, button in pairs(frame.bottomTabs) do
+        if button then
+            if bankType == currentBankType then
+                button.selected:Show()
+                button:SetBackdropBorderColor(1, 0.82, 0, 1)
+                button:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
+                button.text:SetTextColor(1, 0.82, 0)
+                button.topMask:SetColorTexture(0.08, 0.08, 0.08, bgAlpha)
+            else
+                button.selected:Hide()
+                button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+                button:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
+                button.text:SetTextColor(0.6, 0.6, 0.6)
+                button.topMask:SetColorTexture(0.05, 0.05, 0.05, 0.9)
+            end
+        end
+    end
+end
+
 local function HasBankData(bank)
     if not bank then return false end
     for bagID, bagData in pairs(bank) do
@@ -701,8 +854,9 @@ function BankFrame:Refresh()
 
         local columns = Database:GetSetting("bankColumns")
         local iconSize = Database:GetSetting("iconSize")
+        local spacing = Database:GetSetting("iconSpacing")
         local minWidth = (iconSize * columns) + (Constants.FRAME.PADDING * 2)
-        local minHeight = 150
+        local minHeight = (6 * iconSize) + (5 * spacing) + 80
 
         frame:SetSize(math.max(minWidth, 250), minHeight)
         BankFooter:UpdateSlotInfo(0, 0)
@@ -819,6 +973,10 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local frameWidth = math.max(contentWidth + (Constants.FRAME.PADDING * 2), Constants.FRAME.MIN_WIDTH)
     local frameHeightNeeded = actualContentHeight + chromeHeight
 
+    -- Apply minimum height (6 rows of icons + 50px for chrome)
+    local minFrameHeight = (6 * iconSize) + (5 * spacing) + chromeHeight
+    frameHeightNeeded = math.max(frameHeightNeeded, minFrameHeight)
+
     -- Check if scroll is needed
     local screenHeight = UIParent:GetHeight()
     local maxFrameHeight = screenHeight - 100  -- Leave 100px margin
@@ -847,23 +1005,6 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
         frame.scrollFrame:SetVerticalScroll(0)
         frame.scrollFrame:EnableMouseWheel(false)
     end
-
-    -- Debug logging for scroll issue
-    ns:Debug("=== SingleView Scroll Debug ===")
-    ns:Debug("  numSlots:", numSlots, "rows:", rows, "columns:", columns)
-    ns:Debug("  iconSize:", iconSize, "spacing:", spacing)
-    ns:Debug("  actualContentHeight:", actualContentHeight)
-    ns:Debug("  chromeHeight:", chromeHeight, "(topOffset:", topOffset, "bottomOffset:", bottomOffset, ")")
-    ns:Debug("  frameHeightNeeded:", frameHeightNeeded, "maxFrameHeight:", maxFrameHeight)
-    ns:Debug("  needsScroll:", tostring(needsScroll), "actualFrameHeight:", actualFrameHeight)
-    ns:Debug("  containerSize:", contentWidth, "x", actualContentHeight)
-    C_Timer.After(0.1, function()
-        if frame and frame.scrollFrame and frame.container then
-            local scrollFrameH = frame.scrollFrame:GetHeight() or 0
-            local containerH = frame.container:GetHeight() or 0
-            ns:Debug("  [After layout] scrollFrameHeight:", scrollFrameH, "containerHeight:", containerH, "diff:", containerH - scrollFrameH)
-        end
-    end)
 
     local positions = LayoutEngine:CalculateButtonPositions(allSlots, settings)
 
@@ -982,6 +1123,10 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, searchText, isReadO
     local bottomOffset = Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6
     local chromeHeight = topOffset + bottomOffset
     local frameHeightNeeded = containerHeight + chromeHeight
+
+    -- Apply minimum height (6 rows of icons + 50px for chrome)
+    local minFrameHeight = (6 * iconSize) + (5 * spacing) + chromeHeight
+    frameHeightNeeded = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check if scroll is needed
     local screenHeight = UIParent:GetHeight()
@@ -1120,6 +1265,11 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
 
     -- Calculate content height for container
     local contentHeight = frameHeight - topOffset - bottomOffset
+
+    -- Apply minimum height (6 rows of icons + chrome)
+    local chromeHeight = topOffset + bottomOffset
+    local minFrameHeight = (6 * iconSize) + chromeHeight
+    frameHeight = math.max(frameHeight, minFrameHeight)
 
     -- Check if scroll is needed
     local screenHeight = UIParent:GetHeight()
@@ -1834,25 +1984,29 @@ UpdateFrameAppearance = function()
     if isViewingCached then
         BankFooter:ShowCached(viewingCharacter)
         BankHeader:SetSortEnabled(false)
-        -- Show side tabs for Retail cached bank viewing
+        -- Show side tabs and bottom tabs for Retail cached bank viewing
         if ns.IsRetail then
             BankFrame:ShowSideTabs(viewingCharacter)
+            BankFrame:ShowBottomTabs()
         end
     elseif not isBankOpen then
         BankFooter:ShowCached(Database:GetPlayerFullName())
         BankHeader:SetSortEnabled(false)
-        -- Show side tabs for Retail cached bank viewing
+        -- Show side tabs and bottom tabs for Retail cached bank viewing
         if ns.IsRetail then
             BankFrame:ShowSideTabs(Database:GetPlayerFullName())
+            BankFrame:ShowBottomTabs()
         end
     elseif showFooter then
         BankFooter:Show()
         BankHeader:SetSortEnabled(true)
         BankFrame:HideSideTabs()
+        BankFrame:HideBottomTabs()
     else
         BankFooter:Hide()
         BankHeader:SetSortEnabled(true)
         BankFrame:HideSideTabs()
+        BankFrame:HideBottomTabs()
     end
 
     local showBorders = Database:GetSetting("showBorders")

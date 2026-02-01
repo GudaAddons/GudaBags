@@ -672,14 +672,14 @@ function BankFooter:ShowCached(characterFullName)
     Money:UpdateCached(characterFullName)
 end
 
--- Show Retail bank footer (Bank/Warband selector + slot info)
--- Tabs are shown on the right side of the bank frame (see BankFrame:ShowSideTabs)
+-- Show Retail bank footer (slot info only)
+-- Bank/Warband selector is now shown as bottom tabs (see BankFrame:ShowBottomTabs)
+-- Tab selection is shown on the right side of the bank frame (see BankFrame:ShowSideTabs)
 function BankFooter:ShowRetailTabs(characterFullName)
     isRetailTabMode = true
     local Constants = ns.Constants
 
     ns:Debug("ShowRetailTabs called for:", characterFullName or "current")
-    ns:Debug("  Constants.WARBAND_BANK_ACTIVE:", tostring(Constants.WARBAND_BANK_ACTIVE))
 
     -- Hide classic bag slots (they're replaced by side tabs on Retail)
     for _, button in ipairs(bagSlotButtons) do
@@ -694,40 +694,19 @@ function BankFooter:ShowRetailTabs(characterFullName)
         button:Hide()
     end
 
-    -- Create/update bank type buttons (Bank | Warband)
-    local prevButton = nil
-
-    if Constants.WARBAND_BANK_ACTIVE then
-        -- Create Bank type button
-        if not bankTypeButtons.character then
-            bankTypeButtons.character = CreateBankTypeButton(frame, "character", "Bank", nil)
-            bankTypeButtons.character:SetPoint("LEFT", frame, "LEFT", 0, 0)
-        end
-        bankTypeButtons.character:Show()
-
-        -- Create Warband type button
-        if not bankTypeButtons.warband then
-            bankTypeButtons.warband = CreateBankTypeButton(frame, "warband", "Warband", nil)
-        end
-        bankTypeButtons.warband:ClearAllPoints()
-        bankTypeButtons.warband:SetPoint("LEFT", bankTypeButtons.character, "RIGHT", -1, 0)
-        bankTypeButtons.warband:Show()
-
-        prevButton = bankTypeButtons.warband
-        self:UpdateBankTypeSelection()
+    -- Hide bank type buttons (now shown as bottom tabs on the frame)
+    if bankTypeButtons.character then
+        bankTypeButtons.character:Hide()
+    end
+    if bankTypeButtons.warband then
+        bankTypeButtons.warband:Hide()
     end
 
-    -- Update slot info position
+    -- Update slot info position (left side since bank type buttons are hidden)
     if frame.slotInfoFrame then
         frame.slotInfoFrame:ClearAllPoints()
-        if prevButton then
-            frame.slotInfoFrame:SetPoint("LEFT", prevButton, "RIGHT", 8, 0)
-        else
-            frame.slotInfoFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
-        end
+        frame.slotInfoFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
     end
-
-    -- Tab selection is now handled by BankFrame side tabs
 end
 
 -- Hide Retail bank tabs
