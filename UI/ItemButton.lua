@@ -232,13 +232,9 @@ local function CreateButton(parent)
     -- Disable button's built-in click handlers that might interfere
     -- We'll set up our own handlers
     button:EnableMouse(true)
-    -- On Retail, only register for mouse up to prevent double-firing
-    -- The template already handles clicks properly on mouse up
-    if ns.IsRetail then
-        button:RegisterForClicks("AnyUp")
-    else
-        button:RegisterForClicks("AnyUp", "AnyDown")
-    end
+    -- Only register for mouse up to prevent double-firing
+    -- The template fires on both MouseDown and MouseUp with AnyDown, causing items to be used twice
+    button:RegisterForClicks("AnyUp")
 
     -- Hide template's built-in visual elements (we use our own)
     local normalTex = button:GetNormalTexture()

@@ -143,12 +143,18 @@ function Footer:Show()
     local bagAnchor = BagSlots:GetAnchor()
     local lastAnchor = bagAnchor
 
-    -- Position soul bag relative to bag slots (Warlock only)
+    -- Position soul bag relative to bag slots (Warlock only, single view only)
     local soulBagButton = SoulBag:GetButton()
     if soulBagButton then
-        SoulBag:SetAnchor(lastAnchor)
-        SoulBag:Show()
-        lastAnchor = soulBagButton
+        local Database = ns:GetModule("Database")
+        local viewType = Database and Database:GetSetting("bagViewType") or "single"
+        if viewType == "single" then
+            SoulBag:SetAnchor(lastAnchor)
+            SoulBag:Show()
+            lastAnchor = soulBagButton
+        else
+            SoulBag:Hide()
+        end
     end
 
     -- Position keyring relative to soul bag or bag slots (TBC only)
@@ -196,8 +202,36 @@ function Footer:Update()
     if Keyring:GetButton() then
         Keyring:UpdateState()
     end
-    if SoulBag:GetButton() then
-        SoulBag:UpdateState()
+
+    -- Update soul bag visibility based on view type
+    local soulBagButton = SoulBag:GetButton()
+    if soulBagButton then
+        local Database = ns:GetModule("Database")
+        local viewType = Database and Database:GetSetting("bagViewType") or "single"
+        local bagAnchor = BagSlots:GetAnchor()
+        local keyringButton = Keyring:GetButton()
+
+        if viewType == "single" then
+            -- Show soul bag and reposition chain
+            SoulBag:SetAnchor(bagAnchor)
+            SoulBag:Show()
+            SoulBag:UpdateState()
+            if keyringButton then
+                Keyring:SetAnchor(soulBagButton)
+                Hearthstone:SetAnchor(keyringButton)
+            else
+                Hearthstone:SetAnchor(soulBagButton)
+            end
+        else
+            -- Hide soul bag and reposition chain
+            SoulBag:Hide()
+            if keyringButton then
+                Keyring:SetAnchor(bagAnchor)
+                Hearthstone:SetAnchor(keyringButton)
+            else
+                Hearthstone:SetAnchor(bagAnchor)
+            end
+        end
     end
 end
 
@@ -292,12 +326,18 @@ function Footer:ShowCached(characterFullName)
     local bagAnchor = BagSlots:GetAnchor()
     local lastAnchor = bagAnchor
 
-    -- Position and show soul bag toggle (Warlock only)
+    -- Position and show soul bag toggle (Warlock only, single view only)
     local soulBagButton = SoulBag:GetButton()
     if soulBagButton then
-        SoulBag:SetAnchor(lastAnchor)
-        SoulBag:Show()
-        lastAnchor = soulBagButton
+        local Database = ns:GetModule("Database")
+        local viewType = Database and Database:GetSetting("bagViewType") or "single"
+        if viewType == "single" then
+            SoulBag:SetAnchor(lastAnchor)
+            SoulBag:Show()
+            lastAnchor = soulBagButton
+        else
+            SoulBag:Hide()
+        end
     end
 
     -- Position and show keyring for toggle functionality (TBC only)
