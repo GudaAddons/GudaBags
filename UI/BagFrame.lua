@@ -826,11 +826,17 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
         end
 
-        -- Count available ghost slots (buttons showing empty that can be reused)
+        -- Count available ghost slots (buttons that are or will become empty)
+        -- This includes:
+        -- 1. Buttons already showing empty (cachedItemData is nil)
+        -- 2. Buttons for slots that are NOW empty in currentItemsBySlot (item was removed)
         local ghostSlots = {}  -- Array of {slotKey, button} for reuse
         for slotKey, button in pairs(buttonsBySlot) do
             if not cachedItemData[slotKey] then
-                -- This button is showing empty (ghost) - available for reuse
+                -- This button is already showing empty (ghost) - available for reuse
+                table.insert(ghostSlots, {slotKey = slotKey, button = button})
+            elseif not currentItemsBySlot[slotKey] then
+                -- This button's slot is now empty (item was removed) - will become ghost
                 table.insert(ghostSlots, {slotKey = slotKey, button = button})
             end
         end
@@ -842,16 +848,18 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         local needsFullRefresh = false
         local newItemsNeedingButtons = {}  -- Items that need buttons (no existing key match)
 
-        -- Count total cached buttons (excluding ghosts)
+        -- Count total cached buttons (excluding ghosts and slots that will become ghosts)
         local totalCachedButtons = 0
         for slotKey in pairs(buttonsBySlot) do
-            if cachedItemData[slotKey] then
+            if cachedItemData[slotKey] and currentItemsBySlot[slotKey] then
+                -- Button has cached data AND slot still has an item (not becoming ghost)
                 totalCachedButtons = totalCachedButtons + 1
             end
         end
 
         -- If more items than buttons + ghosts, need full refresh
         local totalAvailable = totalCachedButtons + #ghostSlots
+        ns:Debug("CategoryView check: items=", totalCurrentItems, "cached=", totalCachedButtons, "ghosts=", #ghostSlots, "total=", totalAvailable)
         if totalCurrentItems > totalAvailable then
             ns:Debug("CategoryView REFRESH: more items", totalCurrentItems, "than available slots", totalAvailable)
             needsFullRefresh = true
@@ -939,17 +947,10 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         -- Update lastTotalItemCount for tracking
         lastTotalItemCount = totalCurrentItems
 
-        -- Check for items in slots that don't have buttons (new slots)
-        if not needsFullRefresh then
-            for slotKey, slotInfo in pairs(currentItemsBySlot) do
-                if not buttonsBySlot[slotKey] then
-                    -- Item in a slot we don't have a button for - need refresh
-                    ns:Debug("CategoryView REFRESH: new item at untracked slot", slotKey)
-                    needsFullRefresh = true
-                    break
-                end
-            end
-        end
+        -- NOTE: We intentionally don't check for untracked slots here.
+        -- In Category View with item grouping, multiple slots share buttons,
+        -- so buttonsBySlot doesn't track every individual slot.
+        -- The itemKey-based check below properly handles new items.
 
         -- Check for category changes in existing items
         if not needsFullRefresh and lastCategoryLayout then
@@ -973,6 +974,9 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 local availableButtons = existingButtons and #existingButtons or 0
                 local neededNew = #items - availableButtons
                 if neededNew > 0 then
+                    -- Debug: show which itemKey needs new buttons
+                    local itemName = items[1] and items[1].itemData and items[1].itemData.name or "unknown"
+                    ns:Debug("CategoryView: itemKey needs new button:", itemName, "has", #items, "items but only", availableButtons, "buttons")
                     for i = 1, neededNew do
                         table.insert(newItemsNeedingButtons, items[availableButtons + i])
                     end
@@ -993,6 +997,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         end
 
         -- No full refresh needed - do incremental updates
+        ns:Debug("CategoryView: INCREMENTAL update starting, items=", totalCurrentItems, "ghosts=", #ghostSlots)
         local buttonsReused = 0
         local buttonsUpdated = 0
         local countUpdates = 0
@@ -1048,14 +1053,18 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     end
                 end
             else
-                -- Slot is now empty - item was removed
+                -- Slot is now empty - item was removed (sold/moved/deleted)
                 if oldItemID then
-                    -- In category view, item removal requires full layout reflow
-                    -- Ghost slots at fixed positions cause visual artifacts
-                    -- Force full refresh to properly reposition remaining items
-                    ns:Debug("CategoryView REFRESH: item removed at", slotKey)
-                    self:Refresh()
-                    return
+                    -- Show ghost slot instead of full refresh
+                    local bagID = button.itemData and button.itemData.bagID
+                    local slot = button.itemData and button.itemData.slot
+                    if bagID and slot then
+                        ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
+                        cachedItemData[slotKey] = nil
+                        cachedItemCount[slotKey] = nil
+                        button:SetAlpha(hasSearch and 0.3 or 1)
+                        ghostsCreated = ghostsCreated + 1
+                    end
                 end
             end
             end  -- end if not button.isEmptySlotButton
