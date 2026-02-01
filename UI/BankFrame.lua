@@ -220,11 +220,8 @@ local function CreateSideTab(parent, index, isAllTab)
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
     icon:SetPoint("CENTER")
-    if isAllTab then
-        icon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
-    else
-        icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
-    end
+    -- Default to lockbox texture (will be updated by ShowSideTabs for specific tabs)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Lockbox_1")
     button.icon = icon
 
     -- Tab number text (for non-All tabs)
@@ -282,60 +279,159 @@ local function CreateSideTab(parent, index, isAllTab)
     return button
 end
 
-function BankFrame:ShowSideTabs(characterFullName)
+-- Tab icons
+local TAB_ICON_BANK = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for character bank
+local TAB_ICON_WARBAND = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for warband bank
+local TAB_ICON_ALL = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for "All" tab
+
+function BankFrame:ShowSideTabs(characterFullName, bankType)
     if not frame or not frame.sideTabBar then return end
     if not ns.IsRetail then return end
 
-    local tabs = Database:GetBankTabs(characterFullName)
+    -- Get bank type from footer if not specified
+    bankType = bankType or (BankFooter and BankFooter:GetCurrentBankType()) or "character"
+    local isWarband = bankType == "warband"
 
-    -- Generate tabs if not cached
-    if not tabs or #tabs == 0 then
-        local bankData = Database:GetNormalizedBank(characterFullName)
-        if bankData then
-            tabs = {}
+    ns:Debug("ShowSideTabs - bankType:", bankType, "isWarband:", tostring(isWarband))
 
-            if Constants.CHARACTER_BANK_TABS_ACTIVE and Constants.CHARACTER_BANK_TAB_IDS then
-                for i, containerID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
-                    if bankData[containerID] and bankData[containerID].numSlots and bankData[containerID].numSlots > 0 then
-                        table.insert(tabs, {
-                            index = i,
-                            containerID = containerID,
-                            name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
-                            icon = "Interface\\Icons\\INV_Misc_Bag_10",
-                        })
-                    end
+    local tabs = {}
+
+    -- Get the appropriate tab container IDs based on bank type
+    local tabContainerIDs = isWarband and Constants.WARBAND_BANK_TAB_IDS or Constants.CHARACTER_BANK_TAB_IDS
+    local tabsActive = isWarband and Constants.WARBAND_BANK_ACTIVE or Constants.CHARACTER_BANK_TABS_ACTIVE
+
+    ns:Debug("  tabContainerIDs count:", tabContainerIDs and #tabContainerIDs or 0)
+    ns:Debug("  tabsActive:", tostring(tabsActive))
+
+    -- Try to get cached tabs from RetailBankScanner first
+    if RetailBankScanner then
+        local bankTypeEnum = isWarband and Enum.BankType.Account or Enum.BankType.Character
+        local cachedTabs = RetailBankScanner:GetCachedBankTabs(bankTypeEnum)
+        if cachedTabs and #cachedTabs > 0 then
+            for _, tabData in ipairs(cachedTabs) do
+                table.insert(tabs, {
+                    index = tabData.index,
+                    containerID = tabData.containerID,
+                    name = tabData.name or (isWarband and string.format("Warband Tab %d", tabData.index) or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", tabData.index)),
+                    icon = isWarband and TAB_ICON_WARBAND or TAB_ICON_BANK,
+                })
+            end
+            ns:Debug("  Got", #tabs, "tabs from RetailBankScanner cache")
+        end
+    end
+
+    -- Fallback: For character bank, try Database
+    if #tabs == 0 and not isWarband then
+        tabs = Database:GetBankTabs(characterFullName) or {}
+    end
+
+    -- Fallback: For warband bank, try Database
+    if #tabs == 0 and isWarband then
+        local warbandTabs = Database:GetWarbandBankTabs()
+        if warbandTabs and #warbandTabs > 0 then
+            for _, tabData in ipairs(warbandTabs) do
+                table.insert(tabs, {
+                    index = tabData.index,
+                    containerID = tabData.containerID,
+                    name = tabData.name or string.format("Warband Tab %d", tabData.index),
+                    icon = TAB_ICON_WARBAND,
+                })
+            end
+            ns:Debug("  Got", #tabs, "tabs from Database warband cache")
+        end
+    end
+
+    -- Fallback: For warband bank, try C_Bank.FetchPurchasedBankTabData directly
+    if #tabs == 0 and isWarband and C_Bank and C_Bank.FetchPurchasedBankTabData then
+        -- Check if warband bank is accessible (not locked)
+        local warbandLocked = C_Bank.FetchBankLockedReason and C_Bank.FetchBankLockedReason(Enum.BankType.Account)
+        ns:Debug("  Warband FetchBankLockedReason:", tostring(warbandLocked))
+        if warbandLocked == nil then
+            local tabData = C_Bank.FetchPurchasedBankTabData(Enum.BankType.Account)
+            ns:Debug("  FetchPurchasedBankTabData returned:", tabData and #tabData or 0, "tabs")
+            if tabData then
+                for i, tab in ipairs(tabData) do
+                    local containerID = Constants.WARBAND_BANK_TAB_IDS and Constants.WARBAND_BANK_TAB_IDS[i]
+                    table.insert(tabs, {
+                        index = i,
+                        containerID = containerID,
+                        name = tab.name or string.format("Warband Tab %d", i),
+                        icon = TAB_ICON_WARBAND,
+                    })
                 end
+                ns:Debug("  Got", #tabs, "tabs from C_Bank.FetchPurchasedBankTabData")
+            end
+        end
+    end
 
-                -- Fallback: count all containers
-                if #tabs == 0 then
-                    local tabIndex = 1
-                    for bagID, bagData in pairs(bankData) do
-                        if bagData and bagData.numSlots and bagData.numSlots > 0 then
-                            table.insert(tabs, {
-                                index = tabIndex,
-                                containerID = bagID,
-                                name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", tabIndex),
-                                icon = "Interface\\Icons\\INV_Misc_Bag_10",
-                            })
-                            tabIndex = tabIndex + 1
-                        end
-                    end
+    -- Fallback: Generate tabs based on which containers have data (live check)
+    if #tabs == 0 and tabsActive and tabContainerIDs then
+        for i, containerID in ipairs(tabContainerIDs) do
+            -- Check if this container has slots (either from live data or cached)
+            local numSlots = C_Container.GetContainerNumSlots(containerID)
+            ns:Debug("  Container", containerID, "numSlots:", numSlots or 0)
+
+            if numSlots and numSlots > 0 then
+                table.insert(tabs, {
+                    index = i,
+                    containerID = containerID,
+                    name = isWarband
+                        and string.format("Warband Tab %d", i)
+                        or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
+                    icon = isWarband and TAB_ICON_WARBAND or TAB_ICON_BANK,
+                })
+            end
+        end
+    end
+
+    -- Fallback: check normalized bank data if no live data (character bank only)
+    if #tabs == 0 and not isWarband then
+        local bankData = Database:GetNormalizedBank(characterFullName)
+        if bankData and tabContainerIDs then
+            for i, containerID in ipairs(tabContainerIDs) do
+                if bankData[containerID] and bankData[containerID].numSlots and bankData[containerID].numSlots > 0 then
+                    table.insert(tabs, {
+                        index = i,
+                        containerID = containerID,
+                        name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
+                        icon = TAB_ICON_BANK,
+                    })
                 end
             end
         end
     end
 
+    -- Fallback: check normalized warband bank data if no live data
+    if #tabs == 0 and isWarband then
+        local warbandData = Database:GetNormalizedWarbandBank()
+        if warbandData and tabContainerIDs then
+            for i, containerID in ipairs(tabContainerIDs) do
+                if warbandData[containerID] and warbandData[containerID].numSlots and warbandData[containerID].numSlots > 0 then
+                    table.insert(tabs, {
+                        index = i,
+                        containerID = containerID,
+                        name = string.format("Warband Tab %d", i),
+                        icon = TAB_ICON_WARBAND,
+                    })
+                end
+            end
+        end
+    end
+
+    ns:Debug("  Final tabs count:", #tabs)
+
     -- Default single tab if nothing found
     if not tabs or #tabs == 0 then
         tabs = {{
             index = 1,
-            name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", 1),
-            icon = "Interface\\Icons\\INV_Misc_Bag_10",
+            name = isWarband and "Warband Tab 1" or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", 1),
+            icon = isWarband and TAB_ICON_WARBAND or TAB_ICON_BANK,
         }}
     end
 
-    -- Only show side tabs if there are multiple tabs
-    if #tabs <= 1 then
+    -- Hide side tabs if only 1 character bank tab (for warband, always show since we have at least "All" + tab)
+    -- For character bank with 6 tabs, we show them; for warband with 1 tab, we still show "All" + that tab
+    if #tabs <= 1 and not isWarband then
         frame.sideTabBar:Hide()
         return
     end
@@ -530,7 +626,32 @@ function BankFrame:Refresh()
     local bank
     local selectedTab = 0  -- 0 = all tabs
 
-    if isViewingCached then
+    -- Check if we're viewing warband bank (Retail only)
+    local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+    local isWarbandView = ns.IsRetail and currentBankType == "warband"
+
+    ns:Debug("Refresh - currentBankType:", currentBankType, "isWarbandView:", tostring(isWarbandView))
+
+    if isWarbandView then
+        -- Get warband bank data
+        if RetailBankScanner then
+            bank = RetailBankScanner:GetCachedBank(Enum.BankType.Account) or {}
+            -- Normalize the cached data
+            if bank then
+                local normalized = {}
+                for bagID, bagData in pairs(bank) do
+                    normalized[bagID] = bagData
+                end
+                bank = normalized
+            end
+            selectedTab = RetailBankScanner:GetSelectedTab()
+        end
+        -- Fallback to database
+        if not bank or not next(bank) then
+            bank = Database:GetNormalizedWarbandBank() or {}
+        end
+        ns:Debug("  Warband bank data bags:", bank and next(bank) and "has data" or "empty")
+    elseif isViewingCached then
         bank = Database:GetNormalizedBank(viewingCharacter) or {}
         -- On Retail, get selected tab for filtering
         if ns.IsRetail and RetailBankScanner then
@@ -584,14 +705,16 @@ function BankFrame:Refresh()
     local searchText = SearchBar:GetSearchText(frame)
     local viewType = Database:GetSetting("bankViewType") or "single"
 
-    local classifiedBags = BagClassifier:ClassifyBags(bank, isViewingCached or not isBankOpen, Constants.BANK_BAG_IDS)
+    -- Use appropriate bag IDs for classification
+    local bagIDsToUse = isWarbandView and Constants.WARBAND_BANK_TAB_IDS or Constants.BANK_BAG_IDS
+    local classifiedBags = BagClassifier:ClassifyBags(bank, isViewingCached or not isBankOpen or isWarbandView, bagIDsToUse)
     local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, false)
 
     local showSearchBar = Database:GetSetting("showSearchBar")
     local showFooterSetting = Database:GetSetting("showFooter")
-    local showFooter = showFooterSetting or isViewingCached or not isBankOpen
+    local showFooter = showFooterSetting or isViewingCached or not isBankOpen or isWarbandView
     local showCategoryCount = Database:GetSetting("showCategoryCount")
-    local isReadOnly = isViewingCached or not isBankOpen
+    local isReadOnly = isViewingCached or not isBankOpen or isWarbandView
 
     local settings = {
         columns = columns,
@@ -624,7 +747,7 @@ function BankFrame:Refresh()
         end
     end
 
-    if isViewingCached or not isBankOpen then
+    if isViewingCached or not isBankOpen or isWarbandView then
         local totalSlots = 0
         local usedSlots = 0
         for _, bagData in pairs(bank) do
@@ -640,7 +763,7 @@ function BankFrame:Refresh()
         BankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots, regularTotal, regularFree, specialBags)
     end
 
-    if isBankOpen and not isViewingCached then
+    if isBankOpen and not isViewingCached and not isWarbandView then
         BankFooter:Update()
     end
 end
@@ -1623,9 +1746,20 @@ end
 -- Callback for when bank type changes (Character Bank vs Warband Bank)
 ns.OnBankTypeChanged = function(bankType)
     if frame and frame:IsShown() then
-        -- TODO: Load and display the appropriate bank data based on type
-        -- For now, just refresh to show the type change
         ns:Debug("Bank type changed to:", bankType)
+
+        -- Get the character being viewed
+        local characterFullName = viewingCharacter or Database:GetPlayerFullName()
+
+        -- Refresh side tabs for the new bank type
+        BankFrame:ShowSideTabs(characterFullName, bankType)
+
+        -- Reset tab selection to "All" when switching bank types
+        if RetailBankScanner then
+            RetailBankScanner:SetSelectedTab(0)
+        end
+
+        -- Refresh the display with the new bank type's data
         BankFrame:Refresh()
     end
 end

@@ -285,6 +285,39 @@ function Database:IsRetailBank(fullName)
     return bankData and bankData.isRetail == true
 end
 
+-------------------------------------------------
+-- Warband Bank (Account-wide storage for Retail)
+-------------------------------------------------
+
+function Database:SaveWarbandBank(warbandData)
+    if not GudaBags_DB then return end
+    GudaBags_DB.warbandBank = warbandData
+    GudaBags_DB.warbandBank.lastUpdate = time()
+end
+
+function Database:GetWarbandBank()
+    if not GudaBags_DB then return nil end
+    return GudaBags_DB.warbandBank
+end
+
+function Database:GetNormalizedWarbandBank()
+    local warbandData = self:GetWarbandBank()
+    if not warbandData then return nil end
+
+    if warbandData.containers then
+        return NormalizeContainerData(warbandData.containers)
+    end
+    return nil
+end
+
+function Database:GetWarbandBankTabs()
+    local warbandData = self:GetWarbandBank()
+    if warbandData and warbandData.tabs then
+        return warbandData.tabs
+    end
+    return nil
+end
+
 function Database:SaveMoney(copper)
     local charData = self:GetCurrentCharacter()
     if not charData then return end

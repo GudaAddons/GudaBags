@@ -99,7 +99,17 @@ function RetailBankScanner:GetBankTabs(bankType)
         return tabs
     end
 
+    -- For warband bank, check if it's locked first
+    if bankType == BANK_TYPE_ACCOUNT then
+        local warbandLocked = C_Bank.FetchBankLockedReason and C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
+        if warbandLocked ~= nil then
+            ns:Debug("GetBankTabs: Warband bank is locked, reason:", tostring(warbandLocked))
+            return tabs
+        end
+    end
+
     local tabData = C_Bank.FetchPurchasedBankTabData(bankType)
+    ns:Debug("GetBankTabs: bankType=", bankType, "tabData count=", tabData and #tabData or 0)
     if not tabData then
         return tabs
     end
@@ -121,6 +131,7 @@ function RetailBankScanner:GetBankTabs(bankType)
         })
     end
 
+    ns:Debug("GetBankTabs: returning", #tabs, "tabs")
     return tabs
 end
 
@@ -247,16 +258,25 @@ function RetailBankScanner:GetBankContainerIDs(bankType, tabIndex)
         end
     elseif bankType == BANK_TYPE_ACCOUNT then
         -- Warband bank: uses AccountBankTab containers
+        -- Note: C_Container.GetContainerNumSlots returns 0 for warband when not at bank
+        -- So we use cached tab data to know which containers exist
         if tabIndex > 0 then
             -- Specific tab
             local tabContainerID = Constants.WARBAND_BANK_TAB_IDS and Constants.WARBAND_BANK_TAB_IDS[tabIndex]
-            if tabContainerID and C_Container.GetContainerNumSlots(tabContainerID) > 0 then
-                table.insert(containerIDs, tabContainerID)
+            if tabContainerID then
+                local numSlots = C_Container.GetContainerNumSlots(tabContainerID)
+                if numSlots > 0 or (cachedWarbandBank[tabContainerID] and cachedWarbandBank[tabContainerID].numSlots) then
+                    table.insert(containerIDs, tabContainerID)
+                end
             end
         else
-            -- All tabs
-            for _, tabContainerID in ipairs(Constants.WARBAND_BANK_TAB_IDS or {}) do
-                if C_Container.GetContainerNumSlots(tabContainerID) > 0 then
+            -- All tabs - check both live data and cached data
+            for i, tabContainerID in ipairs(Constants.WARBAND_BANK_TAB_IDS or {}) do
+                local numSlots = C_Container.GetContainerNumSlots(tabContainerID)
+                if numSlots > 0 then
+                    table.insert(containerIDs, tabContainerID)
+                elseif cachedWarbandTabs[i] then
+                    -- Use cached tab info when not at bank
                     table.insert(containerIDs, tabContainerID)
                 end
             end
@@ -492,13 +512,54 @@ function RetailBankScanner:SaveToDatabase()
         isRetail = true,
     }
     Database:SaveBank(bankData)
-    -- TODO: Save warband bank separately if needed
+
+    -- Save warband bank to account-wide storage
+    if next(cachedWarbandBank) or #cachedWarbandTabs > 0 then
+        local warbandData = {
+            containers = cachedWarbandBank,
+            tabs = cachedWarbandTabs,
+            isWarband = true,
+        }
+        Database:SaveWarbandBank(warbandData)
+        ns:Debug("Warband bank saved to database, tabs:", #cachedWarbandTabs)
+    end
 end
 
 -- Load cached tab data from database
 function RetailBankScanner:LoadCachedTabs(bankData)
     if bankData and bankData.tabs then
         cachedBankTabs = bankData.tabs
+    end
+end
+
+-- Load cached warband bank data from database
+function RetailBankScanner:LoadCachedWarbandBank()
+    local warbandData = Database:GetWarbandBank()
+    if warbandData then
+        if warbandData.containers then
+            cachedWarbandBank = warbandData.containers
+        end
+        if warbandData.tabs then
+            cachedWarbandTabs = warbandData.tabs
+        end
+        ns:Debug("Loaded cached warband bank from database, tabs:", #cachedWarbandTabs)
+    end
+end
+
+-- Load cached character bank data from database
+function RetailBankScanner:LoadCachedCharacterBank(fullName)
+    local bankData = Database:GetBank(fullName)
+    if bankData then
+        if bankData.containers then
+            cachedCharacterBank = bankData.containers
+        elseif not bankData.isRetail then
+            -- Legacy format - direct container data
+            cachedCharacterBank = bankData
+        end
+        if bankData.tabs then
+            cachedBankTabs = bankData.tabs
+        end
+        ns:Debug("Loaded cached character bank from database, tabs:", #cachedBankTabs)
     end
 end
 
@@ -658,10 +719,21 @@ Events:OnBankOpened(function()
 
     -- Cache tab data for offline viewing
     RetailBankScanner:CacheBankTabs(BANK_TYPE_CHARACTER)
-
     RetailBankScanner:ScanBank(BANK_TYPE_CHARACTER)
+    ns:Debug("Retail character bank opened and scanned, tabs:", #cachedBankTabs)
+
+    -- Also scan warband bank if available (use FetchBankLockedReason like Syndicator)
+    local warbandLocked = C_Bank and C_Bank.FetchBankLockedReason and C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
+    ns:Debug("Warband bank locked reason:", tostring(warbandLocked))
+    if warbandLocked == nil then
+        RetailBankScanner:CacheBankTabs(BANK_TYPE_ACCOUNT)
+        RetailBankScanner:ScanBank(BANK_TYPE_ACCOUNT)
+        ns:Debug("Retail warband bank scanned, tabs:", #cachedWarbandTabs)
+    else
+        ns:Debug("Warband bank is locked, skipping scan")
+    end
+
     RetailBankScanner:SaveToDatabase()
-    ns:Debug("Retail bank opened and scanned, tabs:", #cachedBankTabs)
 
     if ns.OnBankOpened then
         ns.OnBankOpened()
@@ -716,6 +788,45 @@ if C_Bank then
 
     Events:Register("BANK_TAB_SETTINGS_UPDATED", function(event, bankType)
         ns:Debug("Bank tab settings updated for", bankType)
-        -- Refresh tab data
+        if isBankOpen then
+            RetailBankScanner:CacheBankTabs(bankType)
+        end
+    end, RetailBankScanner)
+
+    -- Warband bank tab slots changed
+    Events:Register("PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED", function(event, tabIndex)
+        ns:Debug("Warband bank tab slots changed, tab:", tabIndex)
+        local warbandLocked = C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
+        if isBankOpen and warbandLocked == nil and tabIndex then
+            local containerID = Constants.WARBAND_BANK_TAB_IDS and Constants.WARBAND_BANK_TAB_IDS[tabIndex]
+            if containerID then
+                dirtyBags[containerID] = true
+                OnBankUpdate(containerID)
+            end
+        end
+    end, RetailBankScanner)
+
+    -- Bank tabs changed (new tab purchased, etc.)
+    Events:Register("BANK_TABS_CHANGED", function(event)
+        ns:Debug("Bank tabs changed")
+        if isBankOpen then
+            RetailBankScanner:CacheBankTabs(BANK_TYPE_CHARACTER)
+            local warbandLocked = C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
+            if warbandLocked == nil then
+                RetailBankScanner:CacheBankTabs(BANK_TYPE_ACCOUNT)
+            end
+        end
     end, RetailBankScanner)
 end
+
+-- Load cached bank data on player login
+Events:OnPlayerLogin(function()
+    -- Load cached warband bank (account-wide)
+    RetailBankScanner:LoadCachedWarbandBank()
+
+    -- Load cached character bank
+    local fullName = Database:GetPlayerFullName()
+    if fullName then
+        RetailBankScanner:LoadCachedCharacterBank(fullName)
+    end
+end, RetailBankScanner)
