@@ -770,7 +770,30 @@ end
 
 function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isReadOnly)
     local iconSize = settings.iconSize
+    local spacing = settings.spacing
+    local columns = settings.columns
 
+    -- Check if we should show tab sections (Retail bank with multiple tabs, viewing "All")
+    local selectedTab = RetailBankScanner and RetailBankScanner:GetSelectedTab() or 0
+    local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+    local isWarbandView = ns.IsRetail and currentBankType == "warband"
+    local showTabSections = ns.IsRetail and selectedTab == 0 and (Constants.CHARACTER_BANK_TABS_ACTIVE or isWarbandView)
+
+    -- Get tab info for headers
+    local tabContainerIDs = isWarbandView and Constants.WARBAND_BANK_TAB_IDS or Constants.CHARACTER_BANK_TAB_IDS
+    local cachedTabs = nil
+    if showTabSections and RetailBankScanner then
+        local bankTypeEnum = isWarbandView and Enum.BankType.Account or Enum.BankType.Character
+        cachedTabs = RetailBankScanner:GetCachedBankTabs(bankTypeEnum)
+    end
+
+    if showTabSections and tabContainerIDs and #tabContainerIDs > 1 then
+        -- Render with tab sections
+        self:RefreshSingleViewWithTabs(bank, settings, searchText, isReadOnly, tabContainerIDs, cachedTabs, isWarbandView)
+        return
+    end
+
+    -- Standard single view (no tab sections)
     -- On Retail, use unified order (sequential by bag ID) to match native sort behavior
     -- This ensures profession materials don't appear after junk from regular bags
     local unifiedOrder = ns.IsRetail and not isReadOnly
@@ -830,6 +853,159 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
             buttonsByBag[bagID] = {}
         end
         buttonsByBag[bagID][slotInfo.slot] = button
+    end
+
+    layoutCached = true
+end
+
+-- Render single view with tab sections (headers and spacing between tabs)
+function BankFrame:RefreshSingleViewWithTabs(bank, settings, searchText, isReadOnly, tabContainerIDs, cachedTabs, isWarbandView)
+    local iconSize = settings.iconSize
+    local spacing = settings.spacing
+    local columns = settings.columns
+
+    local TAB_HEADER_HEIGHT = 18
+    local TAB_SECTION_SPACING = 12
+
+    -- Collect slots grouped by tab
+    local tabSections = {}
+    for tabIndex, containerID in ipairs(tabContainerIDs) do
+        local bagData = bank[containerID]
+        if bagData and bagData.numSlots and bagData.numSlots > 0 then
+            local slots = {}
+            for slot = 1, bagData.numSlots do
+                local itemData = bagData.slots and bagData.slots[slot]
+                table.insert(slots, {
+                    bagID = containerID,
+                    slot = slot,
+                    itemData = itemData,
+                })
+            end
+
+            -- Get tab name
+            local tabName = string.format("Tab %d", tabIndex)
+            if cachedTabs and cachedTabs[tabIndex] then
+                tabName = cachedTabs[tabIndex].name or tabName
+            elseif isWarbandView then
+                tabName = string.format("Warband Tab %d", tabIndex)
+            end
+
+            table.insert(tabSections, {
+                tabIndex = tabIndex,
+                containerID = containerID,
+                name = tabName,
+                slots = slots,
+            })
+        end
+    end
+
+    -- Calculate layout
+    local contentWidth = (iconSize * columns) + (spacing * (columns - 1))
+    local currentY = 0
+    local tabLayouts = {}
+
+    for _, section in ipairs(tabSections) do
+        local numSlots = #section.slots
+        local rows = math.ceil(numSlots / columns)
+        local sectionHeight = TAB_HEADER_HEIGHT + (rows * (iconSize + spacing))
+
+        table.insert(tabLayouts, {
+            section = section,
+            y = currentY,
+            headerY = currentY,
+            slotsStartY = currentY - TAB_HEADER_HEIGHT,
+            rows = rows,
+        })
+
+        currentY = currentY - sectionHeight - TAB_SECTION_SPACING
+    end
+
+    local totalHeight = -currentY + Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING * 2 + 12
+    local frameWidth = contentWidth + Constants.FRAME.PADDING * 2
+
+    -- Limit frame height to screen height minus some margin
+    local screenHeight = UIParent:GetHeight()
+    local maxFrameHeight = screenHeight - 100
+    local actualFrameHeight = math.min(totalHeight, maxFrameHeight)
+
+    frame:SetSize(frameWidth + 20, actualFrameHeight)
+
+    -- Set container size
+    local containerHeight = -currentY
+    frame.container:SetSize(contentWidth, math.max(containerHeight, 1))
+
+    -- Render tab sections
+    for _, layout in ipairs(tabLayouts) do
+        local section = layout.section
+
+        -- Create tab header
+        local header = AcquireCategoryHeader(frame.container)
+        header:SetWidth(contentWidth)
+        header:ClearAllPoints()
+        header:SetPoint("TOPLEFT", frame.container, "TOPLEFT", 0, layout.headerY)
+
+        -- Style the header
+        header.icon:Hide()
+        header.text:ClearAllPoints()
+        header.text:SetPoint("LEFT", header, "LEFT", 0, 0)
+        header.text:SetText(section.name)
+
+        -- Adjust font size based on icon size
+        local fontFile, _, fontFlags = header.text:GetFont()
+        if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
+            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_SMALL, fontFlags)
+        else
+            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_LARGE, fontFlags)
+        end
+
+        header.line:Show()
+        header.categoryId = "Tab_" .. section.tabIndex
+        header:EnableMouse(false)
+
+        table.insert(categoryHeaders, header)
+
+        -- Render slots for this tab
+        for i, slotInfo in ipairs(section.slots) do
+            local button = ItemButton:Acquire(frame.container)
+            local slotKey = slotInfo.bagID .. ":" .. slotInfo.slot
+
+            if slotInfo.itemData then
+                ItemButton:SetItem(button, slotInfo.itemData, iconSize, isReadOnly)
+                if searchText ~= "" and not SearchBar:ItemMatchesSearch(slotInfo.itemData, searchText) then
+                    button:SetAlpha(0.3)
+                else
+                    button:SetAlpha(1)
+                end
+                cachedItemData[slotKey] = slotInfo.itemData.itemID
+                cachedItemCount[slotKey] = slotInfo.itemData.count
+            else
+                ItemButton:SetEmpty(button, slotInfo.bagID, slotInfo.slot, iconSize, isReadOnly)
+                if searchText ~= "" then
+                    button:SetAlpha(0.3)
+                else
+                    button:SetAlpha(1)
+                end
+                cachedItemData[slotKey] = nil
+                cachedItemCount[slotKey] = nil
+            end
+
+            -- Calculate position within section
+            local col = (i - 1) % columns
+            local row = math.floor((i - 1) / columns)
+            local x = col * (iconSize + spacing)
+            local y = layout.slotsStartY - (row * (iconSize + spacing))
+
+            button.wrapper:ClearAllPoints()
+            button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", x, y)
+
+            buttonsBySlot[slotKey] = button
+            table.insert(itemButtons, button)
+
+            if not buttonsByBag[slotInfo.bagID] then
+                buttonsByBag[slotInfo.bagID] = {}
+            end
+            buttonsByBag[slotInfo.bagID][slotInfo.slot] = button
+        end
     end
 
     layoutCached = true
