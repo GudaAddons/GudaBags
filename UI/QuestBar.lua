@@ -193,6 +193,42 @@ local function CreateItemButton(parent, name, isMain)
     local border = CreateBorder(button)
     button.border = border
 
+    -- Inner shadow/glow for quest colors (inset effect with more spread)
+    local shadowSize = 8
+    local innerShadow = {
+        top = button:CreateTexture(nil, "ARTWORK", nil, 1),
+        bottom = button:CreateTexture(nil, "ARTWORK", nil, 1),
+        left = button:CreateTexture(nil, "ARTWORK", nil, 1),
+        right = button:CreateTexture(nil, "ARTWORK", nil, 1),
+    }
+    -- Top edge
+    innerShadow.top:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    innerShadow.top:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+    innerShadow.top:SetHeight(shadowSize)
+    innerShadow.top:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.top:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.6))
+    -- Bottom edge
+    innerShadow.bottom:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+    innerShadow.bottom:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    innerShadow.bottom:SetHeight(shadowSize)
+    innerShadow.bottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.bottom:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.6), CreateColor(0, 0, 0, 0))
+    -- Left edge
+    innerShadow.left:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    innerShadow.left:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+    innerShadow.left:SetWidth(shadowSize)
+    innerShadow.left:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.left:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0.6), CreateColor(0, 0, 0, 0))
+    -- Right edge
+    innerShadow.right:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+    innerShadow.right:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    innerShadow.right:SetWidth(shadowSize)
+    innerShadow.right:SetTexture("Interface\\Buttons\\WHITE8x8")
+    innerShadow.right:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.6))
+    -- Hide by default
+    for _, tex in pairs(innerShadow) do tex:Hide() end
+    button.innerShadow = innerShadow
+
     -- Tooltip
     button:SetScript("OnEnter", function(self)
         if self.itemID then
@@ -360,6 +396,9 @@ local function UpdateButton(button, itemData)
     if not itemData then
         button.itemID = nil
         button.border:Hide()
+        if button.innerShadow then
+            for _, tex in pairs(button.innerShadow) do tex:Hide() end
+        end
         button:SetAttribute("item", nil)
         button:Hide()
         return
@@ -409,10 +448,20 @@ local function UpdateButton(button, itemData)
         button.cooldown:Clear()
     end
 
-    -- Quest border color
+    -- Quest border color and inner shadow
     local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
     button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
     button.border:Show()
+
+    -- Show inner shadow with quest color
+    if button.innerShadow then
+        local r, g, b = questColor[1], questColor[2], questColor[3]
+        button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+        button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
+        button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
+        button.innerShadow.right:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+        for _, tex in pairs(button.innerShadow) do tex:Show() end
+    end
 
     -- Dim if not in bags
     if count == 0 then
