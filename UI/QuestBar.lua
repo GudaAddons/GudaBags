@@ -22,6 +22,12 @@ local PADDING = 0
 local MAX_FLYOUT_ITEMS = 8
 local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF"
 
+-- Battleground detection
+local function IsInBattleground()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and instanceType == "pvp"
+end
+
 local function GetButtonSize()
     return Database:GetSetting("questBarSize") or 44
 end
@@ -498,7 +504,10 @@ function QuestBar:Refresh()
     if not frame then return end
 
     local showQuestBar = Database:GetSetting("showQuestBar")
-    if not showQuestBar then
+    local hideInBGs = Database:GetSetting("hideQuestBarInBGs")
+
+    -- Hide if setting is off OR if in battleground with hide option enabled
+    if not showQuestBar or (hideInBGs and IsInBattleground()) then
         frame:Hide()
         if flyout then flyout:Hide() end
         return
@@ -627,3 +636,15 @@ Events:Register("BAG_UPDATE_COOLDOWN", OnCooldownUpdate, QuestBar)
 Events:Register("QUEST_LOG_UPDATE", OnQuestLogUpdate, QuestBar)
 Events:Register("QUEST_ACCEPTED", OnQuestLogUpdate, QuestBar)
 Events:Register("QUEST_REMOVED", OnQuestLogUpdate, QuestBar)
+
+-- Refresh when entering/leaving battlegrounds
+Events:Register("PLAYER_ENTERING_WORLD", function()
+    if frame then
+        QuestBar:Refresh()
+    end
+end, QuestBar)
+Events:Register("ZONE_CHANGED_NEW_AREA", function()
+    if frame then
+        QuestBar:Refresh()
+    end
+end, QuestBar)

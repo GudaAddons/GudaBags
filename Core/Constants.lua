@@ -111,6 +111,7 @@ Constants.DEFAULTS = {
     showBorders = true,
     showSearchBar = true,
     showQuestBar = true,
+    hideQuestBarInBGs = true,
     hoverBagline = false,
     showFooter = true,
     showTooltipCounts = true,
