@@ -1533,6 +1533,43 @@ Events:Register("PLAYER_ENTERING_WORLD", function()
     end)
 end, BagFrame)
 
+-- Refresh when interaction windows open/close to toggle item grouping
+-- Items are shown ungrouped when bank/trade/mail/merchant/auction is open
+local function RefreshForInteractionWindow()
+    if frame and frame:IsShown() then
+        local viewType = Database:GetSetting("bagViewType") or "single"
+        if viewType == "category" then
+            -- Force full refresh since grouping state changed
+            ItemButton:ReleaseAll(frame.container)
+            buttonsByItemKey = {}
+            BagFrame:Refresh()
+        end
+    end
+end
+
+-- Trade window
+Events:Register("TRADE_SHOW", RefreshForInteractionWindow, BagFrame)
+Events:Register("TRADE_CLOSED", RefreshForInteractionWindow, BagFrame)
+
+-- Mail window
+Events:Register("MAIL_SHOW", RefreshForInteractionWindow, BagFrame)
+Events:Register("MAIL_CLOSED", RefreshForInteractionWindow, BagFrame)
+
+-- Merchant/Vendor window
+Events:Register("MERCHANT_SHOW", RefreshForInteractionWindow, BagFrame)
+Events:Register("MERCHANT_CLOSED", RefreshForInteractionWindow, BagFrame)
+
+-- Auction house
+Events:Register("AUCTION_HOUSE_SHOW", RefreshForInteractionWindow, BagFrame)
+Events:Register("AUCTION_HOUSE_CLOSED", RefreshForInteractionWindow, BagFrame)
+
+-- Bank window (our own bank frame showing affects grouping)
+-- Small delay on open to ensure BankFrame is fully shown before checking
+Events:Register("BANKFRAME_OPENED", function()
+    C_Timer.After(0.05, RefreshForInteractionWindow)
+end, BagFrame)
+Events:Register("BANKFRAME_CLOSED", RefreshForInteractionWindow, BagFrame)
+
 Events:OnPlayerLogin(function()
     isInitialized = true
     ns:Print(string.format(L["ADDON_LOADED"], ns.version))

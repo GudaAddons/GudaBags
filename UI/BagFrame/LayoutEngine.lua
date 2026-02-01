@@ -5,6 +5,49 @@ ns:RegisterModule("BagFrame.LayoutEngine", LayoutEngine)
 
 local Constants = ns.Constants
 
+-- Check if an interaction window is open (bank, trade, mail, merchant, auction)
+-- When these are open, items should be shown ungrouped for easier interaction
+local function IsInteractionWindowOpen()
+    -- Bank - check native Blizzard frame first (more reliable timing)
+    -- BankFrame is the default UI bank frame that's shown when interacting with bank NPC
+    if _G.BankFrame and _G.BankFrame:IsShown() then
+        return true
+    end
+
+    -- Also check our custom BankFrame module
+    local GudaBankFrame = ns:GetModule("BankFrame")
+    if GudaBankFrame and GudaBankFrame:IsShown() then
+        return true
+    end
+
+    -- Trade window
+    if TradeFrame and TradeFrame:IsShown() then
+        return true
+    end
+
+    -- Mail window
+    if MailFrame and MailFrame:IsShown() then
+        return true
+    end
+
+    -- Merchant/Vendor window
+    if MerchantFrame and MerchantFrame:IsShown() then
+        return true
+    end
+
+    -- Auction house (Classic)
+    if AuctionFrame and AuctionFrame:IsShown() then
+        return true
+    end
+
+    -- Auction house (Retail)
+    if AuctionHouseFrame and AuctionHouseFrame:IsShown() then
+        return true
+    end
+
+    return false
+end
+
 -- Build display order from classified bags
 -- Returns array of {bagID, needsSpacing, isKeyring, isSoulBag}
 -- bags parameter is optional, used to check cached keyring data
@@ -654,9 +697,12 @@ function LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, 
     end
 
     -- Group identical items into single slots with combined count (if setting enabled)
+    -- Skip grouping when interaction windows are open (bank, trade, mail, etc.)
+    -- so users can interact with individual stacks
     local Database = ns:GetModule("Database")
     local groupIdenticalItems = Database and Database:GetSetting("groupIdenticalItems")
-    if groupIdenticalItems then
+    local shouldGroup = groupIdenticalItems and not IsInteractionWindowOpen()
+    if shouldGroup then
         for _, section in ipairs(sections) do
             local itemsByID = {}  -- { [itemID] = { items } }
             local itemOrder = {}  -- Track order of first occurrence
