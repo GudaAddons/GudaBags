@@ -1,7 +1,10 @@
 local addonName, ns = ...
 
 ns.addonName = addonName
-ns.version = "1.0.0"
+
+-- Read version from TOC file (compatible with all WoW versions)
+local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+ns.version = GetAddOnMetadata(addonName, "Version") or "1.0.0"
 
 ns.Modules = {}
 
