@@ -1342,15 +1342,20 @@ local function CreateSettingsFrame()
     -- Set title
     f:SetTitle(L["SETTINGS_TITLE"])
 
-    -- Make draggable
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self)
-        self:StartMoving()
-        self:SetUserPlaced(false)
+    -- Make draggable - create invisible drag region over title bar
+    local dragRegion = CreateFrame("Frame", nil, f)
+    dragRegion:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    dragRegion:SetPoint("TOPRIGHT", f, "TOPRIGHT", -28, 0)  -- Leave space for close button
+    dragRegion:SetHeight(24)
+    dragRegion:EnableMouse(true)
+    dragRegion:RegisterForDrag("LeftButton")
+    dragRegion:SetScript("OnDragStart", function()
+        f:StartMoving()
+        f:SetUserPlaced(false)
     end)
-    f:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        self:SetUserPlaced(false)
+    dragRegion:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        f:SetUserPlaced(false)
     end)
 
     -- Store Tabs array for PanelTemplates
