@@ -327,6 +327,13 @@ local function CreateButton(parent)
 
     -- Replace tooltip scripts (not hook, to prevent template's SetBagItem from running first)
     button:SetScript("OnEnter", function(self)
+        -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
+        -- Skip for pseudo-items (Empty/Soul) which don't have real bag slots
+        if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
+            ContainerFrameItemButton_OnEnter(self)
+        end
+
+        -- Show our custom tooltip (overrides Blizzard's if needed)
         -- Don't show tooltip for Empty/Soul pseudo-item buttons
         if not self.isEmptySlotButton and not (self.itemData and self.itemData.isEmptySlots) then
             Tooltip:ShowForItem(self)
@@ -345,6 +352,10 @@ local function CreateButton(parent)
     end)
 
     button:SetScript("OnLeave", function(self)
+        -- Call Blizzard's handler to clear cursor state
+        ContainerFrameItemButton_OnLeave(self)
+
+        -- Hide our custom tooltip
         Tooltip:Hide()
 
         -- Hide drag-drop indicator
