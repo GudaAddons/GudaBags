@@ -21,6 +21,13 @@ local RetailBankScanner = nil
 local Money = nil
 local Database = nil
 
+-- Retail bank action buttons
+local depositReagentsButton = nil
+local depositWarboundButton = nil
+local includeReagentsCheckbox = nil
+local depositMoneyButton = nil
+local withdrawMoneyButton = nil
+
 local function LoadComponents()
     BankScanner = ns:GetModule("BankScanner")
     Money = ns:GetModule("Footer.Money")
@@ -361,6 +368,179 @@ local function CreateAllTabButton(parent)
     return button
 end
 
+-------------------------------------------------
+-- Retail Bank Action Buttons
+-------------------------------------------------
+
+-- Create "Deposit All Reagents" button for Character Bank
+local function CreateDepositReagentsButton(parent)
+    local button = CreateFrame("Button", "GudaBankDepositReagents", parent, "UIPanelButtonTemplate")
+    button:SetSize(130, 22)
+    button:SetText("Deposit Reagents")
+    button:SetScript("OnClick", function()
+        if C_Bank and C_Bank.AutoDepositItemsIntoBank then
+            C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Character)
+        end
+    end)
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Deposit All Reagents")
+        GameTooltip:AddLine("Automatically deposit all reagents from your bags into the bank.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    button:Hide()
+    return button
+end
+
+-- Create "Deposit All Warbound Items" button for Warband Bank
+local function CreateDepositWarboundButton(parent)
+    local button = CreateFrame("Button", "GudaBankDepositWarbound", parent, "UIPanelButtonTemplate")
+    button:SetSize(150, 22)
+    button:SetText("Deposit Warbound")
+    button:SetScript("OnClick", function()
+        if C_Bank and C_Bank.AutoDepositItemsIntoBank then
+            C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Account)
+        end
+    end)
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Deposit All Warbound Items")
+        GameTooltip:AddLine("Automatically deposit all warbound items from your bags into the Warband bank.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    button:Hide()
+    return button
+end
+
+-- Create "Include Reagents" checkbox for Warband Bank
+local function CreateIncludeReagentsCheckbox(parent)
+    local checkbox = CreateFrame("CheckButton", "GudaBankIncludeReagents", parent, "UICheckButtonTemplate")
+    checkbox:SetSize(24, 24)
+
+    local label = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", checkbox, "RIGHT", 2, 0)
+    label:SetText("Include Reagents")
+    checkbox.label = label
+
+    -- Get/set the include reagents setting from Blizzard's bank panel
+    checkbox:SetScript("OnClick", function(self)
+        if BankFrame and BankFrame.IncludeReagentsCheckbox then
+            BankFrame.IncludeReagentsCheckbox:SetChecked(self:GetChecked())
+            -- Trigger Blizzard's handler
+            if BankFrame.IncludeReagentsCheckbox:GetScript("OnClick") then
+                BankFrame.IncludeReagentsCheckbox:GetScript("OnClick")(BankFrame.IncludeReagentsCheckbox)
+            end
+        end
+    end)
+
+    checkbox:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Include Reagents")
+        GameTooltip:AddLine("When checked, tradeable reagents will also be deposited.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    checkbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    checkbox:Hide()
+    return checkbox
+end
+
+-- Create Deposit Money button for Warband Bank
+local function CreateDepositMoneyButton(parent)
+    local button = CreateFrame("Button", "GudaBankDepositMoney", parent, "UIPanelButtonTemplate")
+    button:SetSize(70, 22)
+    button:SetText("Deposit")
+    button:SetScript("OnClick", function()
+        -- Open the deposit money dialog
+        if StaticPopup_Show then
+            StaticPopup_Show("GUDABAGS_DEPOSIT_WARBAND_MONEY")
+        end
+    end)
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Deposit Money")
+        GameTooltip:AddLine("Deposit gold into the Warband bank.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    button:Hide()
+    return button
+end
+
+-- Create Withdraw Money button for Warband Bank
+local function CreateWithdrawMoneyButton(parent)
+    local button = CreateFrame("Button", "GudaBankWithdrawMoney", parent, "UIPanelButtonTemplate")
+    button:SetSize(70, 22)
+    button:SetText("Withdraw")
+    button:SetScript("OnClick", function()
+        -- Open the withdraw money dialog
+        if StaticPopup_Show then
+            StaticPopup_Show("GUDABAGS_WITHDRAW_WARBAND_MONEY")
+        end
+    end)
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Withdraw Money")
+        GameTooltip:AddLine("Withdraw gold from the Warband bank.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    button:Hide()
+    return button
+end
+
+-- Register money dialogs for Warband bank
+StaticPopupDialogs["GUDABAGS_DEPOSIT_WARBAND_MONEY"] = {
+    text = "Enter amount to deposit:",
+    button1 = ACCEPT,
+    button2 = CANCEL,
+    hasMoneyInputFrame = true,
+    OnAccept = function(self)
+        local amount = MoneyInputFrame_GetCopper(self.moneyInputFrame)
+        if amount and amount > 0 and C_Bank and C_Bank.CanDepositMoney and C_Bank.CanDepositMoney(Enum.BankType.Account) then
+            C_Bank.DepositMoney(Enum.BankType.Account, amount)
+        end
+    end,
+    OnShow = function(self)
+        MoneyInputFrame_SetCopper(self.moneyInputFrame, 0)
+    end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+StaticPopupDialogs["GUDABAGS_WITHDRAW_WARBAND_MONEY"] = {
+    text = "Enter amount to withdraw:",
+    button1 = ACCEPT,
+    button2 = CANCEL,
+    hasMoneyInputFrame = true,
+    OnAccept = function(self)
+        local amount = MoneyInputFrame_GetCopper(self.moneyInputFrame)
+        if amount and amount > 0 and C_Bank and C_Bank.CanWithdrawMoney and C_Bank.CanWithdrawMoney(Enum.BankType.Account) then
+            C_Bank.WithdrawMoney(Enum.BankType.Account, amount)
+        end
+    end,
+    OnShow = function(self)
+        MoneyInputFrame_SetCopper(self.moneyInputFrame, 0)
+    end,
+    timeout = 0,
+    whileDead = false,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
 -- Create bank type selector button (Bank | Warband)
 local function CreateBankTypeButton(parent, bankType, label, icon)
     local button = CreateFrame("Button", "GudaBankType" .. bankType, parent, "BackdropTemplate")
@@ -477,6 +657,24 @@ function BankFooter:Init(parent)
 
     frame.moneyFrame = Money:Init(frame)
 
+    -- Create Retail bank action buttons (only on Retail)
+    if ns.IsRetail then
+        depositReagentsButton = CreateDepositReagentsButton(frame)
+        depositReagentsButton:SetPoint("LEFT", frame, "LEFT", 0, 0)
+
+        depositWarboundButton = CreateDepositWarboundButton(frame)
+        depositWarboundButton:SetPoint("LEFT", frame, "LEFT", 0, 0)
+
+        includeReagentsCheckbox = CreateIncludeReagentsCheckbox(frame)
+        includeReagentsCheckbox:SetPoint("LEFT", depositWarboundButton, "RIGHT", 8, 0)
+
+        depositMoneyButton = CreateDepositMoneyButton(frame)
+        depositMoneyButton:SetPoint("LEFT", includeReagentsCheckbox.label, "RIGHT", 12, 0)
+
+        withdrawMoneyButton = CreateWithdrawMoneyButton(frame)
+        withdrawMoneyButton:SetPoint("LEFT", depositMoneyButton, "RIGHT", 4, 0)
+    end
+
     backButton = CreateFrame("Button", "GudaBankBackButton", frame)
     backButton:SetSize(60, 18)
     backButton:SetPoint("LEFT", frame, "LEFT", 0, 0)
@@ -514,12 +712,44 @@ function BankFooter:Show()
     -- Reset viewing character to current character
     viewingCharacter = nil
 
-    -- Hide retail tabs when showing live bank
-    self:HideRetailTabs()
+    -- On Retail with bank open, show action buttons instead of bag slots
+    if ns.IsRetail and BankScanner and BankScanner:IsBankOpen() then
+        self:ShowRetailTabs(nil, true)  -- Bank is open
+    else
+        -- Hide retail tabs when showing live bank on Classic
+        self:HideRetailTabs()
 
-    for _, button in ipairs(bagSlotButtons) do
-        button:Show()
-        button:SetAlpha(1)
+        for _, button in ipairs(bagSlotButtons) do
+            button:Show()
+            button:SetAlpha(1)
+        end
+    end
+
+    Money:Show()
+    self:Update()
+end
+
+-- Show footer for live bank interaction (Retail only)
+function BankFooter:ShowLive(bankType)
+    if not frame then return end
+    frame:Show()
+
+    if backButton then
+        backButton:Hide()
+    end
+
+    viewingCharacter = nil
+    currentBankType = bankType or "character"
+
+    if ns.IsRetail then
+        self:ShowRetailTabs(nil, true)  -- Bank is open
+        self:UpdateRetailActionButtons(true, currentBankType)
+    else
+        self:HideRetailTabs()
+        for _, button in ipairs(bagSlotButtons) do
+            button:Show()
+            button:SetAlpha(1)
+        end
     end
 
     Money:Show()
@@ -653,9 +883,9 @@ function BankFooter:ShowCached(characterFullName)
     -- On Retail, always show tabs instead of bag slots for cached bank viewing
     -- On Classic, show traditional bag slots
     if ns.IsRetail then
-        -- Show tabs instead of bag slots
-        ns:Debug("  Calling ShowRetailTabs")
-        self:ShowRetailTabs(characterFullName)
+        -- Show tabs instead of bag slots (bank is NOT open when viewing cached)
+        ns:Debug("  Calling ShowRetailTabs (cached, bank not open)")
+        self:ShowRetailTabs(characterFullName, false)
     else
         -- Show bag slots for Classic (disable interactions)
         self:HideRetailTabs()
@@ -675,11 +905,11 @@ end
 -- Show Retail bank footer (slot info only)
 -- Bank/Warband selector is now shown as bottom tabs (see BankFrame:ShowBottomTabs)
 -- Tab selection is shown on the right side of the bank frame (see BankFrame:ShowSideTabs)
-function BankFooter:ShowRetailTabs(characterFullName)
+function BankFooter:ShowRetailTabs(characterFullName, isBankOpen)
     isRetailTabMode = true
     local Constants = ns.Constants
 
-    ns:Debug("ShowRetailTabs called for:", characterFullName or "current")
+    ns:Debug("ShowRetailTabs called for:", characterFullName or "current", "isBankOpen:", tostring(isBankOpen))
 
     -- Hide classic bag slots (they're replaced by side tabs on Retail)
     for _, button in ipairs(bagSlotButtons) do
@@ -702,11 +932,8 @@ function BankFooter:ShowRetailTabs(characterFullName)
         bankTypeButtons.warband:Hide()
     end
 
-    -- Update slot info position (left side since bank type buttons are hidden)
-    if frame.slotInfoFrame then
-        frame.slotInfoFrame:ClearAllPoints()
-        frame.slotInfoFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
-    end
+    -- Show/hide retail action buttons based on whether bank is actually open
+    self:UpdateRetailActionButtons(isBankOpen, currentBankType)
 end
 
 -- Hide Retail bank tabs
@@ -790,6 +1017,69 @@ end
 
 function BankFooter:SetBackCallback(callback)
     onBackCallback = callback
+end
+
+-- Show/hide Retail bank action buttons based on bank state
+function BankFooter:UpdateRetailActionButtons(isBankOpen, bankType)
+    if not ns.IsRetail then return end
+
+    -- Hide all action buttons first
+    if depositReagentsButton then depositReagentsButton:Hide() end
+    if depositWarboundButton then depositWarboundButton:Hide() end
+    if includeReagentsCheckbox then includeReagentsCheckbox:Hide() end
+    if depositMoneyButton then depositMoneyButton:Hide() end
+    if withdrawMoneyButton then withdrawMoneyButton:Hide() end
+
+    -- Only show buttons when bank is actually open (not viewing cached)
+    if not isBankOpen then return end
+
+    bankType = bankType or currentBankType
+
+    if bankType == "character" then
+        -- Show "Deposit Reagents" button for Character Bank
+        if depositReagentsButton then
+            depositReagentsButton:Show()
+        end
+    elseif bankType == "warband" then
+        -- Show Warband bank controls
+        if depositWarboundButton then
+            depositWarboundButton:Show()
+        end
+        if includeReagentsCheckbox then
+            includeReagentsCheckbox:Show()
+            -- Sync checkbox state with Blizzard's bank panel if available
+            if BankFrame and BankFrame.IncludeReagentsCheckbox then
+                includeReagentsCheckbox:SetChecked(BankFrame.IncludeReagentsCheckbox:GetChecked())
+            end
+        end
+        -- Show money buttons if we can deposit/withdraw
+        if C_Bank then
+            if depositMoneyButton and C_Bank.CanDepositMoney and C_Bank.CanDepositMoney(Enum.BankType.Account) then
+                depositMoneyButton:Show()
+            end
+            if withdrawMoneyButton and C_Bank.CanWithdrawMoney and C_Bank.CanWithdrawMoney(Enum.BankType.Account) then
+                withdrawMoneyButton:Show()
+            end
+        end
+    end
+
+    -- Update slot info position based on visible buttons
+    if frame and frame.slotInfoFrame then
+        frame.slotInfoFrame:ClearAllPoints()
+        if bankType == "warband" and withdrawMoneyButton and withdrawMoneyButton:IsShown() then
+            frame.slotInfoFrame:SetPoint("LEFT", withdrawMoneyButton, "RIGHT", 12, 0)
+        elseif bankType == "warband" and depositMoneyButton and depositMoneyButton:IsShown() then
+            frame.slotInfoFrame:SetPoint("LEFT", depositMoneyButton, "RIGHT", 12, 0)
+        elseif bankType == "warband" and includeReagentsCheckbox and includeReagentsCheckbox:IsShown() then
+            frame.slotInfoFrame:SetPoint("LEFT", includeReagentsCheckbox.label, "RIGHT", 12, 0)
+        elseif bankType == "warband" and depositWarboundButton and depositWarboundButton:IsShown() then
+            frame.slotInfoFrame:SetPoint("LEFT", depositWarboundButton, "RIGHT", 12, 0)
+        elseif bankType == "character" and depositReagentsButton and depositReagentsButton:IsShown() then
+            frame.slotInfoFrame:SetPoint("LEFT", depositReagentsButton, "RIGHT", 12, 0)
+        else
+            frame.slotInfoFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
+        end
+    end
 end
 
 function BankFooter:GetFrame()

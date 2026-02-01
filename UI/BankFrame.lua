@@ -128,7 +128,17 @@ local function CreateBankFrame()
 
     -- Close bank interaction when frame is hidden
     f:SetScript("OnHide", function()
-        CloseBankFrame()
+        if ns.IsRetail then
+            -- On Retail, use PlayerInteractionManager to close the bank interaction
+            if C_PlayerInteractionManager and C_PlayerInteractionManager.ClearInteraction then
+                C_PlayerInteractionManager.ClearInteraction(Enum.PlayerInteractionType.Banker)
+            end
+        else
+            -- On Classic, use the traditional CloseBankFrame
+            if CloseBankFrame then
+                CloseBankFrame()
+            end
+        end
     end)
 
     f.titleBar = BankHeader:Init(f)
@@ -831,6 +841,10 @@ function BankFrame:Refresh()
         end
     elseif isBankOpen then
         bank = BankScanner:GetCachedBank()
+        -- On Retail, get selected tab for filtering live bank
+        if ns.IsRetail and RetailBankScanner then
+            selectedTab = RetailBankScanner:GetSelectedTab()
+        end
     else
         bank = Database:GetNormalizedBank() or {}
         -- On Retail, get selected tab for filtering cached bank
@@ -839,8 +853,8 @@ function BankFrame:Refresh()
         end
     end
 
-    -- Filter bank data by selected tab (Retail only, for cached viewing or warband)
-    if selectedTab > 0 and (isViewingCached or not isBankOpen or isWarbandView) then
+    -- Filter bank data by selected tab (Retail only)
+    if selectedTab > 0 and ns.IsRetail then
         bank = self:FilterBankByTab(bank, selectedTab, isWarbandView)
     end
 
@@ -880,14 +894,14 @@ function BankFrame:Refresh()
 
     -- Use appropriate bag IDs for classification
     local bagIDsToUse = isWarbandView and Constants.WARBAND_BANK_TAB_IDS or Constants.BANK_BAG_IDS
-    local classifiedBags = BagClassifier:ClassifyBags(bank, isViewingCached or not isBankOpen or isWarbandView, bagIDsToUse)
+    local classifiedBags = BagClassifier:ClassifyBags(bank, isViewingCached or not isBankOpen, bagIDsToUse)
     local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, false)
 
     local showSearchBar = Database:GetSetting("showSearchBar")
     local showFooterSetting = Database:GetSetting("showFooter")
-    local showFooter = showFooterSetting or isViewingCached or not isBankOpen or isWarbandView
+    local showFooter = showFooterSetting or isViewingCached or not isBankOpen
     local showCategoryCount = Database:GetSetting("showCategoryCount")
-    local isReadOnly = isViewingCached or not isBankOpen or isWarbandView
+    local isReadOnly = isViewingCached or not isBankOpen
 
     local settings = {
         columns = columns,
@@ -904,7 +918,18 @@ function BankFrame:Refresh()
         self:RefreshSingleView(bank, bagsToShow, settings, searchText, isReadOnly)
     end
 
-    if isViewingCached or not isBankOpen or isWarbandView then
+    if isViewingCached or not isBankOpen then
+        local totalSlots = 0
+        local usedSlots = 0
+        for _, bagData in pairs(bank) do
+            if bagData.numSlots then
+                totalSlots = totalSlots + bagData.numSlots
+                usedSlots = usedSlots + (bagData.numSlots - (bagData.freeSlots or 0))
+            end
+        end
+        BankFooter:UpdateSlotInfo(usedSlots, totalSlots)
+    elseif isWarbandView then
+        -- Warband bank - calculate slots from bank data
         local totalSlots = 0
         local usedSlots = 0
         for _, bagData in pairs(bank) do
@@ -920,7 +945,7 @@ function BankFrame:Refresh()
         BankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots, regularTotal, regularFree, specialBags)
     end
 
-    if isBankOpen and not isViewingCached and not isWarbandView then
+    if isBankOpen and not isViewingCached then
         BankFooter:Update()
     end
 end
@@ -1565,12 +1590,6 @@ RegisterCombatEndCallback = function()
 end
 
 function BankFrame:Toggle()
-    -- On Retail, only allow toggling if bank is NOT open (for cached data viewing)
-    -- When bank is open on Retail, user should use Blizzard's native UI
-    if ns.IsRetail and BankScanner:IsBankOpen() then
-        return
-    end
-
     LoadComponents()
 
     if not frame then
@@ -2015,12 +2034,6 @@ ns.OnBankUpdated = function(dirtyBags)
 end
 
 ns.OnBankOpened = function()
-    -- On Retail, don't show GudaBags bank frame - use Blizzard's native UI
-    -- GudaBags bank frame is only used for viewing cached/offline bank data on Retail
-    if ns.IsRetail then
-        return
-    end
-
     LoadComponents()
 
     if not frame then
@@ -2094,10 +2107,18 @@ UpdateFrameAppearance = function()
             BankFrame:ShowBottomTabs()
         end
     elseif showFooter then
-        BankFooter:Show()
         BankHeader:SetSortEnabled(true)
-        BankFrame:HideSideTabs()
-        BankFrame:HideBottomTabs()
+        -- On Retail with bank open, show footer with action buttons and bottom tabs
+        if ns.IsRetail then
+            local currentBankType = BankFooter:GetCurrentBankType() or "character"
+            BankFooter:ShowLive(currentBankType)
+            BankFrame:ShowSideTabs(Database:GetPlayerFullName(), currentBankType)
+            BankFrame:ShowBottomTabs()
+        else
+            BankFooter:Show()
+            BankFrame:HideSideTabs()
+            BankFrame:HideBottomTabs()
+        end
     else
         BankFooter:Hide()
         BankHeader:SetSortEnabled(true)
@@ -2294,19 +2315,17 @@ ns.OnBankTypeChanged = function(bankType)
             RetailBankScanner:SetSelectedTab(0)
         end
 
+        -- Update footer action buttons for the new bank type
+        local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+        BankFooter:UpdateRetailActionButtons(isBankOpen, bankType)
+
         -- Refresh the display with the new bank type's data
         BankFrame:Refresh()
     end
 end
 
--- Disable the default Blizzard bank frame completely (Classic only)
--- On Retail, we let Blizzard's bank UI show and only use GudaBags for cached/offline viewing
+-- Disable the default Blizzard bank frame completely
 local function HideDefaultBankFrame()
-    -- Don't hide Blizzard's bank on Retail - it has a good tab-based UI
-    if ns.IsRetail then
-        return
-    end
-
     if _G.BankFrame then
         _G.BankFrame:SetParent(hiddenParent)
         _G.BankFrame:SetScript("OnShow", nil)
