@@ -480,15 +480,137 @@ local function CreateIncludeReagentsCheckbox(parent)
     return checkbox
 end
 
+-- Money input popup frame (shared for deposit/withdraw)
+local moneyInputFrame = nil
+local moneyInputMode = nil  -- "deposit" or "withdraw"
+local moneyInputCallback = nil
+
+local function CreateMoneyInputFrame()
+    if moneyInputFrame then return moneyInputFrame end
+
+    local dialogCounter = 1
+    local f = CreateFrame("Frame", "GudaBagsMoneyDialog" .. dialogCounter, UIParent)
+    f:SetToplevel(true)
+    table.insert(UISpecialFrames, "GudaBagsMoneyDialog" .. dialogCounter)
+    f:SetPoint("CENTER")  -- Default, will be repositioned on show
+    f:EnableMouse(true)
+    f:SetFrameStrata("DIALOG")
+    f:SetSize(350, 110)
+
+    -- Use NineSlice for proper dialog styling
+    f.NineSlice = CreateFrame("Frame", nil, f, "NineSlicePanelTemplate")
+    if NineSliceUtil and NineSliceUtil.ApplyLayoutByName then
+        NineSliceUtil.ApplyLayoutByName(f.NineSlice, "Dialog", f.NineSlice:GetFrameLayoutTextureKit())
+    end
+
+    -- Dark background
+    local bg = f:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bg:SetColorTexture(0, 0, 0, 0.8)
+    bg:SetPoint("TOPLEFT", 11, -11)
+    bg:SetPoint("BOTTOMRIGHT", -11, 11)
+
+    -- Title/prompt text
+    f.text = f:CreateFontString(nil, nil, "GameFontHighlight")
+    f.text:SetPoint("TOP", 0, -20)
+    f.text:SetPoint("LEFT", 20, 0)
+    f.text:SetPoint("RIGHT", -20, 0)
+    f.text:SetJustifyH("CENTER")
+
+    -- Money input using Blizzard's MoneyInputFrameTemplate
+    f.moneyBox = CreateFrame("Frame", "GudaBagsMoneyInputBox", f, "MoneyInputFrameTemplate")
+    f.moneyBox:SetPoint("CENTER", 0, 0)
+
+    -- Accept button
+    f.acceptButton = CreateFrame("Button", nil, f, "UIPanelDynamicResizeButtonTemplate")
+    f.acceptButton:SetText(ACCEPT)
+    if DynamicResizeButton_Resize then
+        DynamicResizeButton_Resize(f.acceptButton)
+    else
+        f.acceptButton:SetWidth(f.acceptButton:GetTextWidth() + 30)
+    end
+    f.acceptButton:SetPoint("TOPRIGHT", f, "CENTER", -5, -18)
+
+    -- Cancel button
+    f.cancelButton = CreateFrame("Button", nil, f, "UIPanelDynamicResizeButtonTemplate")
+    f.cancelButton:SetText(CANCEL)
+    if DynamicResizeButton_Resize then
+        DynamicResizeButton_Resize(f.cancelButton)
+    else
+        f.cancelButton:SetWidth(f.cancelButton:GetTextWidth() + 30)
+    end
+    f.cancelButton:SetPoint("TOPLEFT", f, "CENTER", 5, -18)
+    f.cancelButton:SetScript("OnClick", function()
+        f:Hide()
+    end)
+
+    -- OnEnterPressed handlers for money inputs
+    local function OnConfirm()
+        local copper = MoneyInputFrame_GetCopper(f.moneyBox)
+        if copper > 0 and moneyInputCallback then
+            moneyInputCallback(copper)
+        end
+        f:Hide()
+    end
+
+    f.acceptButton:SetScript("OnClick", OnConfirm)
+    if f.moneyBox.copper then
+        f.moneyBox.copper:SetScript("OnEnterPressed", OnConfirm)
+    end
+    if f.moneyBox.silver then
+        f.moneyBox.silver:SetScript("OnEnterPressed", OnConfirm)
+    end
+    if f.moneyBox.gold then
+        f.moneyBox.gold:SetScript("OnEnterPressed", OnConfirm)
+    end
+
+    f:SetScript("OnShow", function()
+        MoneyInputFrame_ResetMoney(f.moneyBox)
+        if f.moneyBox.gold then
+            f.moneyBox.gold:SetFocus()
+        end
+    end)
+
+    f:Hide()
+    moneyInputFrame = f
+    return f
+end
+
+local function ShowMoneyInput(mode, promptText, callback, anchorButton)
+    local f = CreateMoneyInputFrame()
+    moneyInputMode = mode
+    moneyInputCallback = callback
+    f.text:SetText(promptText)
+
+    -- Position popup near the anchor button if provided
+    f:ClearAllPoints()
+    if anchorButton then
+        f:SetPoint("BOTTOM", anchorButton, "TOP", 0, 10)
+    else
+        f:SetPoint("CENTER")
+    end
+
+    f:Show()
+end
+
 -- Create Deposit Money button for Warband Bank
 local function CreateDepositMoneyButton(parent)
     local button = CreateFrame("Button", "GudaBankDepositMoney", parent, "UIPanelButtonTemplate")
     button:SetSize(70, 22)
     button:SetText("Deposit")
-    button:SetScript("OnClick", function()
-        -- Open the deposit money dialog
-        if StaticPopup_Show then
-            StaticPopup_Show("GUDABAGS_DEPOSIT_WARBAND_MONEY")
+    button:SetScript("OnClick", function(self)
+        local canDeposit = C_Bank and C_Bank.CanDepositMoney and C_Bank.CanDepositMoney(Enum.BankType.Account)
+        if canDeposit then
+            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION)
+            -- Use Blizzard's string if available, fallback to custom
+            local promptText = BANK_MONEY_DEPOSIT_PROMPT or "Enter amount to deposit:"
+            ShowMoneyInput("deposit", promptText, function(copper)
+                if C_Bank and C_Bank.DepositMoney then
+                    C_Bank.DepositMoney(Enum.BankType.Account, copper)
+                    ns:Debug("Deposited", copper, "copper")
+                end
+            end, self)
+        else
+            ns:Print("Cannot deposit money to Warband bank at this time")
         end
     end)
     button:SetScript("OnEnter", function(self)
@@ -509,10 +631,20 @@ local function CreateWithdrawMoneyButton(parent)
     local button = CreateFrame("Button", "GudaBankWithdrawMoney", parent, "UIPanelButtonTemplate")
     button:SetSize(70, 22)
     button:SetText("Withdraw")
-    button:SetScript("OnClick", function()
-        -- Open the withdraw money dialog
-        if StaticPopup_Show then
-            StaticPopup_Show("GUDABAGS_WITHDRAW_WARBAND_MONEY")
+    button:SetScript("OnClick", function(self)
+        local canWithdraw = C_Bank and C_Bank.CanWithdrawMoney and C_Bank.CanWithdrawMoney(Enum.BankType.Account)
+        if canWithdraw then
+            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION)
+            -- Use Blizzard's string if available, fallback to custom
+            local promptText = BANK_MONEY_WITHDRAW_PROMPT or "Enter amount to withdraw:"
+            ShowMoneyInput("withdraw", promptText, function(copper)
+                if C_Bank and C_Bank.WithdrawMoney then
+                    C_Bank.WithdrawMoney(Enum.BankType.Account, copper)
+                    ns:Debug("Withdrew", copper, "copper")
+                end
+            end, self)
+        else
+            ns:Print("Cannot withdraw money from Warband bank at this time")
         end
     end)
     button:SetScript("OnEnter", function(self)
@@ -527,47 +659,6 @@ local function CreateWithdrawMoneyButton(parent)
     button:Hide()
     return button
 end
-
--- Register money dialogs for Warband bank
-StaticPopupDialogs["GUDABAGS_DEPOSIT_WARBAND_MONEY"] = {
-    text = "Enter amount to deposit:",
-    button1 = ACCEPT,
-    button2 = CANCEL,
-    hasMoneyInputFrame = true,
-    OnAccept = function(self)
-        local amount = MoneyInputFrame_GetCopper(self.moneyInputFrame)
-        if amount and amount > 0 and C_Bank and C_Bank.CanDepositMoney and C_Bank.CanDepositMoney(Enum.BankType.Account) then
-            C_Bank.DepositMoney(Enum.BankType.Account, amount)
-        end
-    end,
-    OnShow = function(self)
-        MoneyInputFrame_SetCopper(self.moneyInputFrame, 0)
-    end,
-    timeout = 0,
-    whileDead = false,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
-
-StaticPopupDialogs["GUDABAGS_WITHDRAW_WARBAND_MONEY"] = {
-    text = "Enter amount to withdraw:",
-    button1 = ACCEPT,
-    button2 = CANCEL,
-    hasMoneyInputFrame = true,
-    OnAccept = function(self)
-        local amount = MoneyInputFrame_GetCopper(self.moneyInputFrame)
-        if amount and amount > 0 and C_Bank and C_Bank.CanWithdrawMoney and C_Bank.CanWithdrawMoney(Enum.BankType.Account) then
-            C_Bank.WithdrawMoney(Enum.BankType.Account, amount)
-        end
-    end,
-    OnShow = function(self)
-        MoneyInputFrame_SetCopper(self.moneyInputFrame, 0)
-    end,
-    timeout = 0,
-    whileDead = false,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
 
 -- Create bank type selector button (Bank | Warband)
 local function CreateBankTypeButton(parent, bankType, label, icon)
@@ -701,6 +792,14 @@ function BankFooter:Init(parent)
 
         withdrawMoneyButton = CreateWithdrawMoneyButton(frame)
         withdrawMoneyButton:SetPoint("LEFT", depositMoneyButton, "RIGHT", 4, 0)
+
+        -- Register for Warband money update events
+        frame:RegisterEvent("ACCOUNT_MONEY")
+        frame:SetScript("OnEvent", function(self, event, ...)
+            if event == "ACCOUNT_MONEY" and currentBankType == "warband" and Money then
+                Money:UpdateWarband()
+            end
+        end)
     end
 
     backButton = CreateFrame("Button", "GudaBankBackButton", frame)
@@ -860,7 +959,12 @@ function BankFooter:Update()
     end
 
     if not viewingCharacter then
-        Money:Update()
+        -- Update money based on current bank type
+        if currentBankType == "warband" and Money.UpdateWarband then
+            Money:UpdateWarband()
+        else
+            Money:Update()
+        end
     end
 end
 
@@ -870,7 +974,12 @@ end
 
 function BankFooter:UpdateMoney()
     if Money then
-        Money:Update()
+        -- Update money based on current bank type
+        if currentBankType == "warband" and Money.UpdateWarband then
+            Money:UpdateWarband()
+        else
+            Money:Update()
+        end
     end
 end
 
@@ -1049,6 +1158,7 @@ end
 
 -- Show/hide Retail bank action buttons based on bank state
 function BankFooter:UpdateRetailActionButtons(isBankOpen, bankType)
+    ns:Debug("UpdateRetailActionButtons called, isBankOpen:", isBankOpen, "bankType:", bankType)
     if not ns.IsRetail then return end
 
     -- Hide all action buttons first
@@ -1086,6 +1196,16 @@ function BankFooter:UpdateRetailActionButtons(isBankOpen, bankType)
                 withdrawMoneyButton:Show()
             end
         end
+        -- Update money display to show Warband money
+        ns:Debug("About to call Money:UpdateWarband, Money exists:", Money ~= nil)
+        if Money then
+            Money:UpdateWarband()
+        end
+    end
+
+    -- Update money display based on bank type
+    if bankType == "character" and Money then
+        Money:Update()
     end
 
     -- Update slot info position based on visible buttons

@@ -152,3 +152,54 @@ function Money:UpdateCached(characterFullName)
     local money = GetDatabase():GetMoney(characterFullName)
     MoneyFrame_Update(moneyFrame.frameName, money)
 end
+
+-- Update with Warband bank money (Retail only)
+function Money:UpdateWarband()
+    if not moneyFrame then return end
+    local money = 0
+    -- Try different APIs to get Warband bank money
+    if C_Bank then
+        -- Try FetchDepositedMoney first
+        if C_Bank.FetchDepositedMoney then
+            money = C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0
+            ns:Debug("Warband money via FetchDepositedMoney:", money)
+        end
+        -- Try GetBankMoney if available
+        if money == 0 and C_Bank.GetBankMoney then
+            money = C_Bank.GetBankMoney(Enum.BankType.Account) or 0
+            ns:Debug("Warband money via GetBankMoney:", money)
+        end
+    end
+    -- Try AccountBankPanel if available (Blizzard's UI)
+    if money == 0 and AccountBankPanel then
+        if AccountBankPanel.GetMoney then
+            money = AccountBankPanel:GetMoney() or 0
+            ns:Debug("Warband money via AccountBankPanel:GetMoney:", money)
+        elseif AccountBankPanel.money then
+            money = AccountBankPanel.money or 0
+            ns:Debug("Warband money via AccountBankPanel.money:", money)
+        end
+    end
+    -- Try C_CurrencyInfo for warbound gold
+    if money == 0 and C_CurrencyInfo and C_CurrencyInfo.GetWarModeRewardBonus then
+        -- This is a fallback - may not be the right API
+    end
+    ns:Debug("UpdateWarband called, final money:", money, "frameName:", moneyFrame.frameName)
+    MoneyFrame_Update(moneyFrame.frameName, money)
+    ns:Debug("MoneyFrame_Update called for Warband")
+end
+
+-- Get current Warband bank money amount
+function Money:GetWarbandMoney()
+    if C_Bank then
+        if C_Bank.FetchDepositedMoney then
+            local money = C_Bank.FetchDepositedMoney(Enum.BankType.Account)
+            if money and money > 0 then return money end
+        end
+        if C_Bank.GetBankMoney then
+            local money = C_Bank.GetBankMoney(Enum.BankType.Account)
+            if money and money > 0 then return money end
+        end
+    end
+    return 0
+end
