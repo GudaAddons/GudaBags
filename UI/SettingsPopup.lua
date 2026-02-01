@@ -1416,6 +1416,9 @@ function SettingsPopup:Toggle()
     else
         tabPanel:RefreshAll()
         frame:Show()
+        -- Re-select active tab after show (OnShow deselects all tabs)
+        local activeTab = tabPanel.GetActiveTab() or "general"
+        tabPanel.SelectTab(activeTab)
     end
 end
 
@@ -1426,6 +1429,9 @@ function SettingsPopup:Show()
     end
     tabPanel:RefreshAll()
     frame:Show()
+    -- Re-select active tab after show (OnShow deselects all tabs)
+    local activeTab = tabPanel.GetActiveTab() or "general"
+    tabPanel.SelectTab(activeTab)
 end
 
 function SettingsPopup:Hide()
