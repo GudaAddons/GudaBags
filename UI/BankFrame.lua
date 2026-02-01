@@ -220,8 +220,12 @@ local function CreateSideTab(parent, index, isAllTab)
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
     icon:SetPoint("CENTER")
-    -- Default to lockbox texture (will be updated by ShowSideTabs for specific tabs)
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Lockbox_1")
+    -- Use chest icon for "All" tab, lockbox for specific tabs
+    if isAllTab then
+        icon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\chest.png")
+    else
+        icon:SetTexture("Interface\\Icons\\INV_Misc_Lockbox_1")
+    end
     button.icon = icon
 
     -- Tab number text (for non-All tabs)
@@ -280,9 +284,9 @@ local function CreateSideTab(parent, index, isAllTab)
 end
 
 -- Tab icons
-local TAB_ICON_BANK = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for character bank
-local TAB_ICON_WARBAND = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for warband bank
-local TAB_ICON_ALL = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for "All" tab
+local TAB_ICON_BANK = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for character bank tabs
+local TAB_ICON_WARBAND = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for warband bank tabs
+local TAB_ICON_ALL = "Interface\\AddOns\\GudaBags\\assets\\chest"  -- Chest icon for "All" tab
 
 function BankFrame:ShowSideTabs(characterFullName, bankType)
     if not frame or not frame.sideTabBar then return end
