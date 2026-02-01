@@ -258,7 +258,31 @@ function Database:GetBank(fullName)
 end
 
 function Database:GetNormalizedBank(fullName)
-    return NormalizeContainerData(self:GetBank(fullName))
+    local bankData = self:GetBank(fullName)
+    if not bankData then return nil end
+
+    -- Check if this is the new Retail structure with tabs
+    if bankData.isRetail and bankData.containers then
+        return NormalizeContainerData(bankData.containers)
+    end
+
+    -- Legacy/Classic structure - just container data
+    return NormalizeContainerData(bankData)
+end
+
+-- Get bank tabs for Retail (for offline viewing)
+function Database:GetBankTabs(fullName)
+    local bankData = self:GetBank(fullName)
+    if bankData and bankData.tabs then
+        return bankData.tabs
+    end
+    return nil
+end
+
+-- Check if bank data is from Retail (has tabs)
+function Database:IsRetailBank(fullName)
+    local bankData = self:GetBank(fullName)
+    return bankData and bankData.isRetail == true
 end
 
 function Database:SaveMoney(copper)

@@ -16,6 +16,11 @@ function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags)
         table.insert(bagsToShow, {bagID = bagID, needsSpacing = false})
     end
 
+    -- Reagent bags (Retail only, with spacing)
+    for i, bagID in ipairs(classifiedBags.reagent or {}) do
+        table.insert(bagsToShow, {bagID = bagID, needsSpacing = (i == 1), isReagentBag = true})
+    end
+
     -- Profession bags (with spacing before first bag of each type)
     local professionTypes = {"enchant", "herb", "engineering", "mining", "gem", "leatherworking", "inscription"}
     for _, bagType in ipairs(professionTypes) do
@@ -67,17 +72,21 @@ end
 function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unifiedOrder)
     local allSlots = {}
 
-    -- On Retail Single View, collect all non-keyring bags in sequential order (0, 1, 2, 3...)
+    -- On Retail Single View, collect all non-special bags in sequential order (0, 1, 2, 3, 4)
     -- This matches how C_Container.SortBags() organizes items across all bags
+    -- Special bags (reagent, keyring) are shown separately with spacing
     if unifiedOrder then
-        -- Collect unique bag IDs (excluding keyring) and sort them
+        -- Collect unique bag IDs (excluding keyring and reagent bag) and sort them
         local bagIDs = {}
         local seenBags = {}
         local keyringInfo = nil
+        local reagentBagInfo = nil
 
         for _, bagInfo in ipairs(bagsToShow) do
             if bagInfo.isKeyring then
                 keyringInfo = bagInfo  -- Save keyring for later
+            elseif bagInfo.isReagentBag then
+                reagentBagInfo = bagInfo  -- Save reagent bag for later
             elseif not seenBags[bagInfo.bagID] then
                 seenBags[bagInfo.bagID] = true
                 table.insert(bagIDs, bagInfo.bagID)
@@ -95,6 +104,23 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                         slot = slot,
                         itemData = bagData.slots[slot],
                         needsSpacing = false,
+                    })
+                end
+            end
+        end
+
+        -- Add reagent bag with spacing (if present)
+        if reagentBagInfo then
+            local bagID = reagentBagInfo.bagID
+            local bagData = bags[bagID]
+            if bagData then
+                for slot = 1, bagData.numSlots do
+                    local needsSpacing = (slot == 1)
+                    table.insert(allSlots, {
+                        bagID = bagID,
+                        slot = slot,
+                        itemData = bagData.slots[slot],
+                        needsSpacing = needsSpacing,
                     })
                 end
             end

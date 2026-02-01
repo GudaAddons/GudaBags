@@ -20,7 +20,7 @@ local subClassToBagType = {
 
 -- All supported bag types for classification
 local BAG_TYPES = {
-    "regular", "enchant", "herb", "soul", "quiver", "ammo",
+    "regular", "reagent", "enchant", "herb", "soul", "quiver", "ammo",
     "engineering", "mining", "gem", "leatherworking", "inscription"
 }
 
@@ -55,6 +55,11 @@ function BagClassifier:GetBagType(bagID)
     -- Backpack and main bank are always regular
     if bagID == Constants.PLAYER_BAG_MIN or bagID == Constants.BANK_MAIN_BAG then
         return "regular"
+    end
+
+    -- Retail: Reagent bag is always bag ID 5
+    if Constants.REAGENT_BAG and bagID == Constants.REAGENT_BAG then
+        return "reagent"
     end
 
     -- Try using bagFamily from container API first (most reliable when container is open)

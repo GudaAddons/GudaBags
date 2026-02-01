@@ -24,24 +24,61 @@ if Expansion and Expansion.IsRetail then
     -- Retail: bags 0-4 (backpack + 4 equipped bags) + reagent bag (5)
     Constants.PLAYER_BAG_MAX = 4
     Constants.REAGENT_BAG = 5  -- Retail only
-    Constants.BANK_BAG_MIN = 6
-    Constants.BANK_BAG_MAX = 12
+    -- Check if modern bank tabs are active (TWW and later)
+    Constants.CHARACTER_BANK_TABS_ACTIVE = Enum and Enum.BagIndex and Enum.BagIndex.CharacterBankTab_1 ~= nil
+    print("|cff00ccff[GudaBags]|r Bank Tabs Detection: CHARACTER_BANK_TABS_ACTIVE=" .. tostring(Constants.CHARACTER_BANK_TABS_ACTIVE))
+    if Constants.CHARACTER_BANK_TABS_ACTIVE then
+        -- Modern Retail: Each bank tab is a separate container
+        Constants.BANK_BAG_MIN = Enum.BagIndex.CharacterBankTab_1
+        Constants.BANK_BAG_MAX = Enum.BagIndex.CharacterBankTab_6 or Enum.BagIndex.CharacterBankTab_5
+    else
+        -- Older Retail: traditional bank + bank bags
+        Constants.BANK_BAG_MIN = 6
+        Constants.BANK_BAG_MAX = 12
+    end
 else
     -- Classic: bags 0-4 (backpack + 4 equipped bags)
     Constants.PLAYER_BAG_MAX = 4
     Constants.BANK_BAG_MIN = 5
     Constants.BANK_BAG_MAX = 11
+    Constants.CHARACTER_BANK_TABS_ACTIVE = false
 end
 Constants.BANK_MAIN_BAG = -1
 
 -- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
 Constants.KEYRING_BAG = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 
+-- Warband Bank (Retail only)
+Constants.WARBAND_BANK_ACTIVE = Expansion and Expansion.IsRetail and Enum.BagIndex.AccountBankTab_1 ~= nil
+Constants.WARBAND_BANK_TAB_IDS = {}
+if Constants.WARBAND_BANK_ACTIVE then
+    for i = 1, 5 do
+        local tabIndex = Enum.BagIndex["AccountBankTab_" .. i]
+        if tabIndex then
+            table.insert(Constants.WARBAND_BANK_TAB_IDS, tabIndex)
+        end
+    end
+end
+
 -- Bag ID Arrays (derived from ranges for convenience)
 if Expansion and Expansion.IsRetail then
     -- Retail: include reagent bag in player bags
     Constants.BAG_IDS = {0, 1, 2, 3, 4, 5}
-    Constants.BANK_BAG_IDS = {-1, 6, 7, 8, 9, 10, 11, 12}
+    if Constants.CHARACTER_BANK_TABS_ACTIVE then
+        -- Modern Retail: Bank tabs are separate containers
+        Constants.BANK_BAG_IDS = {}
+        Constants.CHARACTER_BANK_TAB_IDS = {}
+        for i = 1, 6 do
+            local tabIndex = Enum.BagIndex["CharacterBankTab_" .. i]
+            if tabIndex then
+                table.insert(Constants.BANK_BAG_IDS, tabIndex)
+                table.insert(Constants.CHARACTER_BANK_TAB_IDS, tabIndex)
+            end
+        end
+    else
+        -- Older Retail: traditional bank + bank bags
+        Constants.BANK_BAG_IDS = {-1, 6, 7, 8, 9, 10, 11, 12}
+    end
 else
     -- Classic
     Constants.BAG_IDS = {0, 1, 2, 3, 4}

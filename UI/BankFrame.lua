@@ -16,6 +16,7 @@ local CategoryHeaderPool = ns:GetModule("CategoryHeaderPool")
 
 local BankHeader = nil
 local BankFooter = nil
+local RetailBankScanner = nil
 
 local frame
 local searchBar
@@ -68,6 +69,9 @@ hiddenParent:Hide()
 local function LoadComponents()
     BankHeader = ns:GetModule("BankFrame.BankHeader")
     BankFooter = ns:GetModule("BankFrame.BankFooter")
+    if ns.IsRetail then
+        RetailBankScanner = ns:GetModule("RetailBankScanner")
+    end
 end
 
 -------------------------------------------------
@@ -130,13 +134,26 @@ local function CreateBankFrame()
     end)
     f.searchBar = searchBar
 
-    local container = CreateFrame("Frame", nil, f)
-    container:SetPoint("TOPLEFT", f, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-    container:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+    -- Create scroll frame for large bank contents
+    local scrollFrame = CreateFrame("ScrollFrame", "GudaBankScrollFrame", f, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
+    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+    f.scrollFrame = scrollFrame
+
+    -- Style the scroll bar
+    local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
+    if scrollBar then
+        scrollBar:SetAlpha(0.7)
+    end
+
+    -- Create container as scroll child
+    local container = CreateFrame("Frame", "GudaBankContainer", scrollFrame)
+    container:SetSize(1, 1)  -- Will be resized based on content
+    scrollFrame:SetScrollChild(container)
     f.container = container
 
     local emptyMessage = CreateFrame("Frame", nil, f)
-    emptyMessage:SetAllPoints(container)
+    emptyMessage:SetAllPoints(scrollFrame)
     emptyMessage:Hide()
 
     local emptyText = emptyMessage:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -166,7 +183,235 @@ local function CreateBankFrame()
         BankFrame:ViewCharacter(fullName, charData)
     end)
 
+    -- Create side tab bar for Retail bank tabs (vertical, on right side outside frame)
+    if ns.IsRetail then
+        local sideTabBar = CreateFrame("Frame", "GudaBankSideTabBar", f)
+        sideTabBar:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -60)
+        sideTabBar:SetSize(32, 200)  -- Will resize based on tabs
+        sideTabBar:Hide()  -- Hidden until tabs are shown
+        f.sideTabBar = sideTabBar
+        f.sideTabs = {}
+    end
+
     return f
+end
+
+-------------------------------------------------
+-- Side Tab Bar (Retail Bank Tabs - Vertical on Right)
+-------------------------------------------------
+
+local TAB_SIZE = 28
+local TAB_SPACING = 2
+
+local function CreateSideTab(parent, index, isAllTab)
+    local button = CreateFrame("Button", "GudaBankSideTab" .. (isAllTab and "All" or index), parent, "BackdropTemplate")
+    button:SetSize(TAB_SIZE, TAB_SIZE)
+    button.tabIndex = isAllTab and 0 or index
+
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    button:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
+    icon:SetPoint("CENTER")
+    if isAllTab then
+        icon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
+    else
+        icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
+    end
+    button.icon = icon
+
+    -- Tab number text (for non-All tabs)
+    if not isAllTab then
+        local numText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        numText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+        numText:SetText(tostring(index))
+        numText:SetTextColor(0.8, 0.8, 0.8)
+        button.numText = numText
+    end
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+
+    -- Selection indicator
+    local selected = button:CreateTexture(nil, "OVERLAY")
+    selected:SetAllPoints()
+    selected:SetColorTexture(1, 0.82, 0, 0.3)
+    selected:Hide()
+    button.selected = selected
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        if self.tabIndex == 0 then
+            GameTooltip:SetText(ns.L["TOOLTIP_BANK_ALL_TABS"] or "All Tabs")
+        elseif self.tabName then
+            GameTooltip:SetText(self.tabName)
+        else
+            GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", self.tabIndex))
+        end
+        GameTooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    button:SetScript("OnClick", function(self)
+        if RetailBankScanner then
+            local currentTab = RetailBankScanner:GetSelectedTab()
+            if currentTab == self.tabIndex then
+                -- Clicking same tab - do nothing or show all
+                if self.tabIndex ~= 0 then
+                    RetailBankScanner:SetSelectedTab(0)
+                end
+            else
+                RetailBankScanner:SetSelectedTab(self.tabIndex)
+            end
+            BankFrame:UpdateSideTabSelection()
+        end
+    end)
+
+    return button
+end
+
+function BankFrame:ShowSideTabs(characterFullName)
+    if not frame or not frame.sideTabBar then return end
+    if not ns.IsRetail then return end
+
+    local tabs = Database:GetBankTabs(characterFullName)
+
+    -- Generate tabs if not cached
+    if not tabs or #tabs == 0 then
+        local bankData = Database:GetNormalizedBank(characterFullName)
+        if bankData then
+            tabs = {}
+
+            if Constants.CHARACTER_BANK_TABS_ACTIVE and Constants.CHARACTER_BANK_TAB_IDS then
+                for i, containerID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+                    if bankData[containerID] and bankData[containerID].numSlots and bankData[containerID].numSlots > 0 then
+                        table.insert(tabs, {
+                            index = i,
+                            containerID = containerID,
+                            name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
+                            icon = "Interface\\Icons\\INV_Misc_Bag_10",
+                        })
+                    end
+                end
+
+                -- Fallback: count all containers
+                if #tabs == 0 then
+                    local tabIndex = 1
+                    for bagID, bagData in pairs(bankData) do
+                        if bagData and bagData.numSlots and bagData.numSlots > 0 then
+                            table.insert(tabs, {
+                                index = tabIndex,
+                                containerID = bagID,
+                                name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", tabIndex),
+                                icon = "Interface\\Icons\\INV_Misc_Bag_10",
+                            })
+                            tabIndex = tabIndex + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Default single tab if nothing found
+    if not tabs or #tabs == 0 then
+        tabs = {{
+            index = 1,
+            name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", 1),
+            icon = "Interface\\Icons\\INV_Misc_Bag_10",
+        }}
+    end
+
+    -- Only show side tabs if there are multiple tabs
+    if #tabs <= 1 then
+        frame.sideTabBar:Hide()
+        return
+    end
+
+    -- Create "All" tab button first
+    if not frame.sideTabs[0] then
+        frame.sideTabs[0] = CreateSideTab(frame.sideTabBar, 0, true)
+    end
+    frame.sideTabs[0]:ClearAllPoints()
+    frame.sideTabs[0]:SetPoint("TOP", frame.sideTabBar, "TOP", 0, 0)
+    frame.sideTabs[0]:Show()
+
+    local prevButton = frame.sideTabs[0]
+
+    -- Create/update tab buttons
+    for i, tabData in ipairs(tabs) do
+        if not frame.sideTabs[i] then
+            frame.sideTabs[i] = CreateSideTab(frame.sideTabBar, i, false)
+        end
+
+        local button = frame.sideTabs[i]
+        button.tabIndex = i
+        button.tabName = tabData.name
+        if tabData.icon then
+            button.icon:SetTexture(tabData.icon)
+        end
+
+        button:ClearAllPoints()
+        button:SetPoint("TOP", prevButton, "BOTTOM", 0, -TAB_SPACING)
+        button:Show()
+
+        prevButton = button
+    end
+
+    -- Hide excess tabs
+    for i = #tabs + 1, #frame.sideTabs do
+        if frame.sideTabs[i] then
+            frame.sideTabs[i]:Hide()
+        end
+    end
+
+    -- Resize tab bar
+    local totalHeight = (TAB_SIZE + TAB_SPACING) * (#tabs + 1)
+    frame.sideTabBar:SetSize(TAB_SIZE, totalHeight)
+
+    -- Reset selection to "All"
+    if RetailBankScanner then
+        RetailBankScanner:SetSelectedTab(0)
+    end
+
+    frame.sideTabBar:Show()
+    self:UpdateSideTabSelection()
+end
+
+function BankFrame:HideSideTabs()
+    if frame and frame.sideTabBar then
+        frame.sideTabBar:Hide()
+    end
+end
+
+function BankFrame:UpdateSideTabSelection()
+    if not frame or not frame.sideTabs then return end
+
+    local selectedTab = RetailBankScanner and RetailBankScanner:GetSelectedTab() or 0
+
+    for i, button in pairs(frame.sideTabs) do
+        if button and button:IsShown() then
+            if i == selectedTab then
+                button.selected:Show()
+                button:SetBackdropBorderColor(1, 0.82, 0, 1)
+            else
+                button.selected:Hide()
+                button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+            end
+        end
+    end
 end
 
 local function HasBankData(bank)
@@ -177,6 +422,86 @@ local function HasBankData(bank)
         end
     end
     return false
+end
+
+-- Filter bank data to only show containers from a specific tab (Retail only)
+-- In modern Retail (TWW+), each bank tab IS a separate container
+-- tabIndex: 1-based tab index (0 = all tabs)
+function BankFrame:FilterBankByTab(bank, tabIndex)
+    if not bank or not tabIndex or tabIndex < 1 then
+        return bank
+    end
+
+    -- For modern Retail with container-based tabs
+    if Constants.CHARACTER_BANK_TABS_ACTIVE then
+        local filtered = {}
+
+        -- Get the container ID for this specific tab
+        local tabContainerID = Constants.CHARACTER_BANK_TAB_IDS and Constants.CHARACTER_BANK_TAB_IDS[tabIndex]
+        if not tabContainerID then
+            return bank  -- No valid tab container, return all
+        end
+
+        -- Only include the container that matches this tab
+        for bagID, bagData in pairs(bank) do
+            if bagID == tabContainerID then
+                filtered[bagID] = bagData
+            end
+        end
+
+        return filtered
+    end
+
+    -- Legacy Retail (pre-TWW): slot-range based filtering
+    -- Each tab has 98 slots in the main bank container
+    local SLOTS_PER_TAB = 98
+    local startSlot = ((tabIndex - 1) * SLOTS_PER_TAB) + 1
+    local endSlot = tabIndex * SLOTS_PER_TAB
+
+    local filtered = {}
+
+    for bagID, bagData in pairs(bank) do
+        -- Only filter the main bank container (bagID -1 or Enum.BagIndex.Bank)
+        local mainBankID = Enum and Enum.BagIndex and Enum.BagIndex.Bank or -1
+        if bagID == mainBankID or bagID == -1 then
+            local filteredBag = {
+                bagID = bagData.bagID,
+                numSlots = 0,
+                freeSlots = 0,
+                bagType = bagData.bagType,
+                containerItemID = bagData.containerItemID,
+                containerTexture = bagData.containerTexture,
+                slots = {},
+            }
+
+            if bagData.slots then
+                for slot, slotData in pairs(bagData.slots) do
+                    if slot >= startSlot and slot <= endSlot then
+                        local displaySlot = slot - startSlot + 1
+                        filteredBag.slots[displaySlot] = slotData
+                        filteredBag.numSlots = math.max(filteredBag.numSlots, displaySlot)
+                    end
+                end
+            end
+
+            filteredBag.numSlots = math.min(SLOTS_PER_TAB, (bagData.numSlots or 0) - startSlot + 1)
+            if filteredBag.numSlots < 0 then filteredBag.numSlots = 0 end
+
+            for slot = 1, filteredBag.numSlots do
+                if not filteredBag.slots[slot] then
+                    filteredBag.freeSlots = filteredBag.freeSlots + 1
+                end
+            end
+
+            if filteredBag.numSlots > 0 then
+                filtered[bagID] = filteredBag
+            end
+        else
+            filtered[bagID] = bagData
+        end
+    end
+
+    return filtered
 end
 
 function BankFrame:Refresh()
@@ -203,13 +528,27 @@ function BankFrame:Refresh()
     local isViewingCached = viewingCharacter ~= nil
     local isBankOpen = BankScanner:IsBankOpen()
     local bank
+    local selectedTab = 0  -- 0 = all tabs
 
     if isViewingCached then
         bank = Database:GetNormalizedBank(viewingCharacter) or {}
+        -- On Retail, get selected tab for filtering
+        if ns.IsRetail and RetailBankScanner then
+            selectedTab = RetailBankScanner:GetSelectedTab()
+        end
     elseif isBankOpen then
         bank = BankScanner:GetCachedBank()
     else
         bank = Database:GetNormalizedBank() or {}
+        -- On Retail, get selected tab for filtering cached bank
+        if ns.IsRetail and RetailBankScanner then
+            selectedTab = RetailBankScanner:GetSelectedTab()
+        end
+    end
+
+    -- Filter bank data by selected tab (Retail only, for cached viewing)
+    if selectedTab > 0 and (isViewingCached or not isBankOpen) then
+        bank = self:FilterBankByTab(bank, selectedTab)
     end
 
     local hasBankData = isBankOpen or HasBankData(bank)
@@ -269,6 +608,22 @@ function BankFrame:Refresh()
         self:RefreshSingleView(bank, bagsToShow, settings, searchText, isReadOnly)
     end
 
+    -- Manage scrollbar visibility based on content height
+    if frame.scrollFrame then
+        local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+        if scrollBar then
+            local containerHeight = frame.container:GetHeight() or 0
+            local scrollFrameHeight = frame.scrollFrame:GetHeight() or 0
+            if containerHeight > scrollFrameHeight + 5 then
+                scrollBar:Show()
+            else
+                scrollBar:Hide()
+                -- Reset scroll position when no scrolling needed
+                frame.scrollFrame:SetVerticalScroll(0)
+            end
+        end
+    end
+
     if isViewingCached or not isBankOpen then
         local totalSlots = 0
         local usedSlots = 0
@@ -299,7 +654,17 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bank, isReadOnly, unifiedOrder)
 
     local frameWidth, frameHeight = LayoutEngine:CalculateFrameSize(allSlots, settings)
-    frame:SetSize(frameWidth, frameHeight)
+
+    -- Limit frame height to screen height minus some margin
+    local screenHeight = UIParent:GetHeight()
+    local maxFrameHeight = screenHeight - 100  -- Leave 100px margin
+    local actualFrameHeight = math.min(frameHeight, maxFrameHeight)
+
+    frame:SetSize(frameWidth + 20, actualFrameHeight)  -- +20 for scrollbar width
+
+    -- Set container (scroll child) size to full content height
+    local contentHeight = frameHeight - Constants.FRAME.TITLE_HEIGHT - Constants.FRAME.SEARCH_BAR_HEIGHT - Constants.FRAME.FOOTER_HEIGHT - Constants.FRAME.PADDING * 2 - 12
+    frame.container:SetSize(frameWidth - Constants.FRAME.PADDING * 2, math.max(contentHeight, 1))
 
     local positions = LayoutEngine:CalculateButtonPositions(allSlots, settings)
 
@@ -365,7 +730,17 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     local sections = LayoutEngine:BuildCategorySections(items, isReadOnly, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot)
 
     local frameWidth, frameHeight = LayoutEngine:CalculateCategoryFrameSize(sections, settings)
-    frame:SetSize(frameWidth, frameHeight)
+
+    -- Limit frame height to screen height minus some margin
+    local screenHeight = UIParent:GetHeight()
+    local maxFrameHeight = screenHeight - 100  -- Leave 100px margin
+    local actualFrameHeight = math.min(frameHeight, maxFrameHeight)
+
+    frame:SetSize(frameWidth + 20, actualFrameHeight)  -- +20 for scrollbar width
+
+    -- Set container (scroll child) size to full content height
+    local contentHeight = frameHeight - Constants.FRAME.TITLE_HEIGHT - Constants.FRAME.SEARCH_BAR_HEIGHT - Constants.FRAME.FOOTER_HEIGHT - Constants.FRAME.PADDING * 2 - 12
+    frame.container:SetSize(frameWidth - Constants.FRAME.PADDING * 2, math.max(contentHeight, 1))
 
     local layout = LayoutEngine:CalculateCategoryPositions(sections, settings)
 
@@ -536,6 +911,12 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
 end
 
 function BankFrame:Toggle()
+    -- On Retail, only allow toggling if bank is NOT open (for cached data viewing)
+    -- When bank is open on Retail, user should use Blizzard's native UI
+    if ns.IsRetail and BankScanner:IsBankOpen() then
+        return
+    end
+
     LoadComponents()
 
     if not frame then
@@ -980,6 +1361,12 @@ ns.OnBankUpdated = function(dirtyBags)
 end
 
 ns.OnBankOpened = function()
+    -- On Retail, don't show GudaBags bank frame - use Blizzard's native UI
+    -- GudaBags bank frame is only used for viewing cached/offline bank data on Retail
+    if ns.IsRetail then
+        return
+    end
+
     LoadComponents()
 
     if not frame then
@@ -1023,28 +1410,41 @@ UpdateFrameAppearance = function()
     local showFooter = Database:GetSetting("showFooter")
     local footerHeight = (not showFooter and isBankOpen and not isViewingCached) and Constants.FRAME.PADDING or (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
 
-    frame.container:ClearAllPoints()
-    if showSearchBar then
-        SearchBar:Show(frame)
-        frame.container:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-    else
-        SearchBar:Hide(frame)
-        frame.container:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2))
+    -- Position the scroll frame (container's parent)
+    if frame.scrollFrame then
+        frame.scrollFrame:ClearAllPoints()
+        if showSearchBar then
+            SearchBar:Show(frame)
+            frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
+        else
+            SearchBar:Hide(frame)
+            frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2))
+        end
+        frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, footerHeight)
     end
-    frame.container:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING, footerHeight)
 
     if isViewingCached then
         BankFooter:ShowCached(viewingCharacter)
         BankHeader:SetSortEnabled(false)
+        -- Show side tabs for Retail cached bank viewing
+        if ns.IsRetail then
+            BankFrame:ShowSideTabs(viewingCharacter)
+        end
     elseif not isBankOpen then
         BankFooter:ShowCached(Database:GetPlayerFullName())
         BankHeader:SetSortEnabled(false)
+        -- Show side tabs for Retail cached bank viewing
+        if ns.IsRetail then
+            BankFrame:ShowSideTabs(Database:GetPlayerFullName())
+        end
     elseif showFooter then
         BankFooter:Show()
         BankHeader:SetSortEnabled(true)
+        BankFrame:HideSideTabs()
     else
         BankFooter:Hide()
         BankHeader:SetSortEnabled(true)
+        BankFrame:HideSideTabs()
     end
 
     local showBorders = Database:GetSetting("showBorders")
@@ -1210,8 +1610,34 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     end
 end, BankFrame)
 
--- Disable the default Blizzard bank frame completely
+-- Callback for when Retail bank tab changes
+ns.OnRetailBankTabChanged = function(tabIndex)
+    if frame and frame:IsShown() then
+        -- Update side tab selection visuals
+        BankFrame:UpdateSideTabSelection()
+        -- Refresh the display with the new tab filter
+        BankFrame:Refresh()
+    end
+end
+
+-- Callback for when bank type changes (Character Bank vs Warband Bank)
+ns.OnBankTypeChanged = function(bankType)
+    if frame and frame:IsShown() then
+        -- TODO: Load and display the appropriate bank data based on type
+        -- For now, just refresh to show the type change
+        ns:Debug("Bank type changed to:", bankType)
+        BankFrame:Refresh()
+    end
+end
+
+-- Disable the default Blizzard bank frame completely (Classic only)
+-- On Retail, we let Blizzard's bank UI show and only use GudaBags for cached/offline viewing
 local function HideDefaultBankFrame()
+    -- Don't hide Blizzard's bank on Retail - it has a good tab-based UI
+    if ns.IsRetail then
+        return
+    end
+
     if _G.BankFrame then
         _G.BankFrame:SetParent(hiddenParent)
         _G.BankFrame:SetScript("OnShow", nil)

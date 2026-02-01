@@ -3,6 +3,21 @@ local addonName, ns = ...
 local BankScanner = {}
 ns:RegisterModule("BankScanner", BankScanner)
 
+-------------------------------------------------
+-- Retail Delegation Helper
+-- On Retail, some functions delegate to RetailBankScanner
+-------------------------------------------------
+local function GetRetailScanner()
+    if ns.IsRetail then
+        return ns:GetModule("RetailBankScanner")
+    end
+    return nil
+end
+
+-------------------------------------------------
+-- Classic Bank Implementation
+-------------------------------------------------
+
 local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
@@ -115,10 +130,19 @@ function BankScanner:GetDirtyBags()
 end
 
 function BankScanner:GetCachedBank()
+    local retailScanner = GetRetailScanner()
+    if retailScanner then
+        return retailScanner:GetCachedBank()
+    end
     return cachedBank
 end
 
 function BankScanner:GetTotalSlots()
+    local retailScanner = GetRetailScanner()
+    if retailScanner then
+        return retailScanner:GetTotalSlots()
+    end
+
     local total = 0
     local free = 0
 
@@ -134,6 +158,11 @@ end
 -- Returns: regularTotal, regularFree, specialBags table
 -- specialBags format: { [bagType] = { total = N, free = N, name = "Bag Name" }, ... }
 function BankScanner:GetDetailedSlotCounts()
+    local retailScanner = GetRetailScanner()
+    if retailScanner then
+        return retailScanner:GetDetailedSlotCounts()
+    end
+
     local regularTotal = 0
     local regularFree = 0
     local specialBags = {}
@@ -202,6 +231,10 @@ function BankScanner:SaveToDatabase()
 end
 
 function BankScanner:IsBankOpen()
+    local retailScanner = GetRetailScanner()
+    if retailScanner then
+        return retailScanner:IsBankOpen()
+    end
     return isBankOpen
 end
 
@@ -299,47 +332,51 @@ local function OnBankUpdate(bagID)
     end
 end
 
-Events:OnBankOpened(function()
-    isBankOpen = true
-    BankScanner:ScanAllBank()
-    BankScanner:SaveToDatabase()
-    ns:Debug("Bank opened and scanned")
+-- On Retail, RetailBankScanner handles all bank scanning
+-- These event handlers are for Classic only
+if not ns.IsRetail then
+    Events:OnBankOpened(function()
+        isBankOpen = true
+        BankScanner:ScanAllBank()
+        BankScanner:SaveToDatabase()
+        ns:Debug("Bank opened and scanned")
 
-    if ns.OnBankOpened then
-        ns.OnBankOpened()
-    end
-end, BankScanner)
-
-Events:OnBankClosed(function()
-    isBankOpen = false
-    -- Clear any pending dirty bags
-    dirtyBags = {}
-    ns:Debug("Bank closed")
-
-    if ns.OnBankClosed then
-        ns.OnBankClosed()
-    end
-end, BankScanner)
-
-Events:Register("BAG_UPDATE", function(event, bagID)
-    if bagID and bagID >= -1 and bagID <= 11 then
-        local isBankBag = bagID == -1 or (bagID >= 5 and bagID <= 11)
-        if isBankBag then
-            OnBankUpdate(bagID)
+        if ns.OnBankOpened then
+            ns.OnBankOpened()
         end
-    end
-end, BankScanner)
+    end, BankScanner)
 
--- For these events, scan all bank bags since we don't know which specific bag changed
-Events:Register("PLAYERBANKSLOTS_CHANGED", function()
-    -- Mark main bank bag as dirty (-1)
-    OnBankUpdate(-1)
-end, BankScanner)
+    Events:OnBankClosed(function()
+        isBankOpen = false
+        -- Clear any pending dirty bags
+        dirtyBags = {}
+        ns:Debug("Bank closed")
 
-Events:Register("PLAYERBANKBAGSLOTS_CHANGED", function()
-    -- Bank bag slots changed, mark all bank bags dirty
-    for _, bagID in ipairs(Constants.BANK_BAG_IDS) do
-        dirtyBags[bagID] = true
-    end
-    OnBankUpdate(nil)
-end, BankScanner)
+        if ns.OnBankClosed then
+            ns.OnBankClosed()
+        end
+    end, BankScanner)
+
+    Events:Register("BAG_UPDATE", function(event, bagID)
+        if bagID and bagID >= -1 and bagID <= 11 then
+            local isBankBag = bagID == -1 or (bagID >= 5 and bagID <= 11)
+            if isBankBag then
+                OnBankUpdate(bagID)
+            end
+        end
+    end, BankScanner)
+
+    -- For these events, scan all bank bags since we don't know which specific bag changed
+    Events:Register("PLAYERBANKSLOTS_CHANGED", function()
+        -- Mark main bank bag as dirty (-1)
+        OnBankUpdate(-1)
+    end, BankScanner)
+
+    Events:Register("PLAYERBANKBAGSLOTS_CHANGED", function()
+        -- Bank bag slots changed, mark all bank bags dirty
+        for _, bagID in ipairs(Constants.BANK_BAG_IDS) do
+            dirtyBags[bagID] = true
+        end
+        OnBankUpdate(nil)
+    end, BankScanner)
+end  -- End of Classic-only event handlers

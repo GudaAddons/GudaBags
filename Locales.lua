@@ -241,6 +241,8 @@ L["GROUP_CLASS"] = "Class"
 -- Header Tooltips
 L["TOOLTIP_CHARACTERS"] = "Characters"
 L["TOOLTIP_BANK"] = "Bank"
+L["TOOLTIP_BANK_ALL_TABS"] = "All Tabs"
+L["TOOLTIP_BANK_TAB"] = "Tab %d"
 L["TOOLTIP_GUILD_BANK"] = "Guild Bank"
 L["TOOLTIP_MAIL"] = "Mail"
 L["TOOLTIP_SETTINGS"] = "Settings"

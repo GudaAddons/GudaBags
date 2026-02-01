@@ -9,15 +9,25 @@ local frame = nil
 local backButton = nil
 local onBackCallback = nil
 local bagSlotButtons = {}
+local tabButtons = {}  -- Retail bank tab buttons
+local bankTypeButtons = {}  -- Bank type selector buttons (Bank | Warband)
 local mainBankFrame = nil
 local viewingCharacter = nil
+local isRetailTabMode = false  -- True when showing Retail tabs instead of bag slots
+local currentBankType = "character"  -- "character" or "warband"
 
 local BankScanner = nil
+local RetailBankScanner = nil
 local Money = nil
+local Database = nil
 
 local function LoadComponents()
     BankScanner = ns:GetModule("BankScanner")
     Money = ns:GetModule("Footer.Money")
+    Database = ns:GetModule("Database")
+    if ns.IsRetail then
+        RetailBankScanner = ns:GetModule("RetailBankScanner")
+    end
 end
 
 local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:12|t"
@@ -235,6 +245,169 @@ local function CreateBagSlotButton(parent, index)
     return button
 end
 
+-- Create a tab button for Retail bank tabs
+local function CreateTabButton(parent, index)
+    local button = CreateFrame("Button", "GudaBankTab" .. index, parent, "BackdropTemplate")
+    button:SetSize(Constants.BAG_SLOT_SIZE, Constants.BAG_SLOT_SIZE)
+    button.tabIndex = index
+
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(Constants.BAG_SLOT_SIZE - 4, Constants.BAG_SLOT_SIZE - 4)
+    icon:SetPoint("CENTER")
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
+    button.icon = icon
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+
+    -- Selection indicator
+    local selected = button:CreateTexture(nil, "OVERLAY")
+    selected:SetAllPoints()
+    selected:SetColorTexture(1, 0.82, 0, 0.3)
+    selected:Hide()
+    button.selected = selected
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        if self.tabName then
+            GameTooltip:SetText(self.tabName)
+        else
+            GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"], self.tabIndex))
+        end
+        GameTooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    button:SetScript("OnClick", function(self)
+        if RetailBankScanner then
+            -- If clicking the already selected tab, deselect (show all)
+            local currentTab = RetailBankScanner:GetSelectedTab()
+            if currentTab == self.tabIndex then
+                RetailBankScanner:SetSelectedTab(0)
+            else
+                RetailBankScanner:SetSelectedTab(self.tabIndex)
+            end
+            BankFooter:UpdateTabSelection()
+        end
+    end)
+
+    return button
+end
+
+-- Create "All" tab button
+local function CreateAllTabButton(parent)
+    local button = CreateFrame("Button", "GudaBankTabAll", parent, "BackdropTemplate")
+    button:SetSize(Constants.BAG_SLOT_SIZE, Constants.BAG_SLOT_SIZE)
+    button.tabIndex = 0
+
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(Constants.BAG_SLOT_SIZE - 4, Constants.BAG_SLOT_SIZE - 4)
+    icon:SetPoint("CENTER")
+    icon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
+    button.icon = icon
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+
+    -- Selection indicator
+    local selected = button:CreateTexture(nil, "OVERLAY")
+    selected:SetAllPoints()
+    selected:SetColorTexture(1, 0.82, 0, 0.3)
+    selected:Hide()
+    button.selected = selected
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(ns.L["TOOLTIP_BANK_ALL_TABS"])
+        GameTooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    button:SetScript("OnClick", function(self)
+        if RetailBankScanner then
+            RetailBankScanner:SetSelectedTab(0)
+            BankFooter:UpdateTabSelection()
+        end
+    end)
+
+    return button
+end
+
+-- Create bank type selector button (Bank | Warband)
+local function CreateBankTypeButton(parent, bankType, label, icon)
+    local button = CreateFrame("Button", "GudaBankType" .. bankType, parent, "BackdropTemplate")
+    button:SetSize(50, 18)
+    button.bankType = bankType
+
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    text:SetPoint("CENTER")
+    text:SetText(label)
+    text:SetTextColor(0.8, 0.8, 0.8)
+    button.text = text
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+
+    -- Selection indicator
+    local selected = button:CreateTexture(nil, "OVERLAY")
+    selected:SetAllPoints()
+    selected:SetColorTexture(1, 0.82, 0, 0.3)
+    selected:Hide()
+    button.selected = selected
+
+    button:SetScript("OnClick", function(self)
+        if currentBankType ~= self.bankType then
+            currentBankType = self.bankType
+            BankFooter:UpdateBankTypeSelection()
+            -- Notify BankFrame to refresh with new bank type
+            if ns.OnBankTypeChanged then
+                ns.OnBankTypeChanged(currentBankType)
+            end
+        end
+    end)
+
+    return button
+end
+
 function BankFooter:Init(parent)
     LoadComponents()
 
@@ -341,6 +514,9 @@ function BankFooter:Show()
     -- Reset viewing character to current character
     viewingCharacter = nil
 
+    -- Hide retail tabs when showing live bank
+    self:HideRetailTabs()
+
     for _, button in ipairs(bagSlotButtons) do
         button:Show()
         button:SetAlpha(1)
@@ -357,6 +533,9 @@ function BankFooter:Hide()
     for _, button in ipairs(bagSlotButtons) do
         button:Hide()
     end
+
+    -- Hide retail tabs too
+    self:HideRetailTabs()
 
     Money:Hide()
 
@@ -460,6 +639,9 @@ function BankFooter:ShowCached(characterFullName)
     if not frame then return end
     frame:Show()
 
+    ns:Debug("BankFooter:ShowCached called for:", characterFullName or "current")
+    ns:Debug("  ns.IsRetail:", tostring(ns.IsRetail))
+
     -- Hide back button
     if backButton then
         backButton:Hide()
@@ -468,18 +650,163 @@ function BankFooter:ShowCached(characterFullName)
     -- Set viewing character for bag slot textures
     viewingCharacter = characterFullName
 
-    -- Show bag slots for hover highlighting (but disable interactions)
-    for _, button in ipairs(bagSlotButtons) do
-        button:Show()
-        button:SetAlpha(0.7)
+    -- On Retail, always show tabs instead of bag slots for cached bank viewing
+    -- On Classic, show traditional bag slots
+    if ns.IsRetail then
+        -- Show tabs instead of bag slots
+        ns:Debug("  Calling ShowRetailTabs")
+        self:ShowRetailTabs(characterFullName)
+    else
+        -- Show bag slots for Classic (disable interactions)
+        self:HideRetailTabs()
+        for _, button in ipairs(bagSlotButtons) do
+            button:Show()
+            button:SetAlpha(0.7)
+        end
+        -- Update bag slot visuals with cached textures
+        self:Update()
     end
 
     -- Show and update money for the cached character
     Money:Show()
     Money:UpdateCached(characterFullName)
+end
 
-    -- Update bag slot visuals with cached textures
-    self:Update()
+-- Show Retail bank footer (Bank/Warband selector + slot info)
+-- Tabs are shown on the right side of the bank frame (see BankFrame:ShowSideTabs)
+function BankFooter:ShowRetailTabs(characterFullName)
+    isRetailTabMode = true
+    local Constants = ns.Constants
+
+    ns:Debug("ShowRetailTabs called for:", characterFullName or "current")
+    ns:Debug("  Constants.WARBAND_BANK_ACTIVE:", tostring(Constants.WARBAND_BANK_ACTIVE))
+
+    -- Hide classic bag slots (they're replaced by side tabs on Retail)
+    for _, button in ipairs(bagSlotButtons) do
+        button:Hide()
+    end
+
+    -- Hide old footer tab buttons (tabs moved to side bar)
+    if frame.allTabButton then
+        frame.allTabButton:Hide()
+    end
+    for _, button in ipairs(tabButtons) do
+        button:Hide()
+    end
+
+    -- Create/update bank type buttons (Bank | Warband)
+    local prevButton = nil
+
+    if Constants.WARBAND_BANK_ACTIVE then
+        -- Create Bank type button
+        if not bankTypeButtons.character then
+            bankTypeButtons.character = CreateBankTypeButton(frame, "character", "Bank", nil)
+            bankTypeButtons.character:SetPoint("LEFT", frame, "LEFT", 0, 0)
+        end
+        bankTypeButtons.character:Show()
+
+        -- Create Warband type button
+        if not bankTypeButtons.warband then
+            bankTypeButtons.warband = CreateBankTypeButton(frame, "warband", "Warband", nil)
+        end
+        bankTypeButtons.warband:ClearAllPoints()
+        bankTypeButtons.warband:SetPoint("LEFT", bankTypeButtons.character, "RIGHT", -1, 0)
+        bankTypeButtons.warband:Show()
+
+        prevButton = bankTypeButtons.warband
+        self:UpdateBankTypeSelection()
+    end
+
+    -- Update slot info position
+    if frame.slotInfoFrame then
+        frame.slotInfoFrame:ClearAllPoints()
+        if prevButton then
+            frame.slotInfoFrame:SetPoint("LEFT", prevButton, "RIGHT", 8, 0)
+        else
+            frame.slotInfoFrame:SetPoint("LEFT", frame, "LEFT", 0, 0)
+        end
+    end
+
+    -- Tab selection is now handled by BankFrame side tabs
+end
+
+-- Hide Retail bank tabs
+function BankFooter:HideRetailTabs()
+    isRetailTabMode = false
+
+    -- Hide bank type buttons
+    if bankTypeButtons.character then
+        bankTypeButtons.character:Hide()
+    end
+    if bankTypeButtons.warband then
+        bankTypeButtons.warband:Hide()
+    end
+    if frame and frame.bankTypeSeparator then
+        frame.bankTypeSeparator:Hide()
+    end
+
+    if frame and frame.allTabButton then
+        frame.allTabButton:Hide()
+    end
+
+    for _, button in ipairs(tabButtons) do
+        button:Hide()
+    end
+
+    -- Restore slot info position
+    if frame and frame.slotInfoFrame and #bagSlotButtons > 0 then
+        frame.slotInfoFrame:ClearAllPoints()
+        frame.slotInfoFrame:SetPoint("LEFT", bagSlotButtons[#bagSlotButtons], "RIGHT", 8, 0)
+    end
+end
+
+-- Update bank type button selection visuals
+function BankFooter:UpdateBankTypeSelection()
+    if bankTypeButtons.character then
+        if currentBankType == "character" then
+            bankTypeButtons.character.selected:Show()
+            bankTypeButtons.character:SetBackdropBorderColor(1, 0.82, 0, 1)
+            bankTypeButtons.character.text:SetTextColor(1, 0.82, 0)
+        else
+            bankTypeButtons.character.selected:Hide()
+            bankTypeButtons.character:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+            bankTypeButtons.character.text:SetTextColor(0.8, 0.8, 0.8)
+        end
+    end
+
+    if bankTypeButtons.warband then
+        if currentBankType == "warband" then
+            bankTypeButtons.warband.selected:Show()
+            bankTypeButtons.warband:SetBackdropBorderColor(1, 0.82, 0, 1)
+            bankTypeButtons.warband.text:SetTextColor(1, 0.82, 0)
+        else
+            bankTypeButtons.warband.selected:Hide()
+            bankTypeButtons.warband:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+            bankTypeButtons.warband.text:SetTextColor(0.8, 0.8, 0.8)
+        end
+    end
+end
+
+-- Get current bank type
+function BankFooter:GetCurrentBankType()
+    return currentBankType
+end
+
+-- Set current bank type
+function BankFooter:SetCurrentBankType(bankType)
+    currentBankType = bankType or "character"
+    self:UpdateBankTypeSelection()
+end
+
+-- Update tab selection visuals (tabs are now on side bar, this is kept for compatibility)
+function BankFooter:UpdateTabSelection()
+    -- Tab selection is now handled by BankFrame:UpdateSideTabSelection()
+    -- This function is kept for backwards compatibility
+end
+
+-- Check if in retail tab mode
+function BankFooter:IsRetailTabMode()
+    return isRetailTabMode
 end
 
 function BankFooter:SetBackCallback(callback)
