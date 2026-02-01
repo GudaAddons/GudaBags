@@ -32,6 +32,7 @@ function Hearthstone:Init(parent)
     wrapper = CreateFrame("Frame", "GudaBagsHearthstoneWrapper", parent)
     wrapper:SetSize(bagSlotSize, bagSlotSize)
     wrapper:EnableMouse(false)  -- Wrapper should not intercept mouse
+    wrapper:SetFrameLevel(parent:GetFrameLevel() + 5)  -- Ensure wrapper is above other footer elements
 
     button = CreateFrame("ItemButton", "GudaBagsHearthstoneButton", wrapper, "ContainerFrameItemButtonTemplate, BackdropTemplate")
     button:SetSize(bagSlotSize, bagSlotSize)
@@ -123,6 +124,10 @@ function Hearthstone:Init(parent)
     button:SetHitRectInsets(0, 0, 0, 0)
     if button.SetMouseClickEnabled then button:SetMouseClickEnabled(true) end
     if button.SetMouseMotionEnabled then button:SetMouseMotionEnabled(true) end
+
+    -- Ensure the button is the topmost interactive element
+    button:SetFrameStrata("HIGH")
+    button:SetFrameLevel(100)
 
     button:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",

@@ -170,6 +170,10 @@ local function CreateButton(parent)
     -- Store reference to easily resize wrapper with button
     wrapper.button = button
 
+    -- Initialize IDs to prevent errors from template handlers before SetItem is called
+    wrapper:SetID(0)
+    button:SetID(0)
+
     -- Disable mouse on all child frames from the template (retail has many overlays)
     -- This prevents them from intercepting mouse input meant for the button
     local function DisableChildMouse(frame)
@@ -415,41 +419,58 @@ local function CreateButton(parent)
 
     -- Replace tooltip scripts (not hook, to prevent template's SetBagItem from running first)
     button:SetScript("OnEnter", function(self)
-        -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
-        -- Skip for pseudo-items (Empty/Soul) which don't have real bag slots
-        if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
-            ContainerFrameItemButton_OnEnter(self)
-        end
-
-        -- Show our custom tooltip (overrides Blizzard's if needed)
-        -- Don't show tooltip for Empty/Soul pseudo-item buttons
-        if not self.isEmptySlotButton and not (self.itemData and self.itemData.isEmptySlots) then
-            Tooltip:ShowForItem(self)
-        end
-
-        -- Show drag-drop indicator if cursor has item and this is a category view item
-        if self.categoryId and self.containerFrame then
-            local cursorType = GetCursorInfo()
-            if cursorType == "item" then
-                local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
-                if CategoryDropIndicator then
-                    CategoryDropIndicator:OnItemButtonEnter(self)
+        -- Wrap in pcall to prevent errors from breaking interaction
+        local success, err = pcall(function()
+            -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
+            -- Skip for pseudo-items (Empty/Soul) which don't have real bag slots
+            if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
+                -- ContainerFrameItemButton_OnEnter may not exist on retail
+                if ContainerFrameItemButton_OnEnter then
+                    ContainerFrameItemButton_OnEnter(self)
                 end
             end
+
+            -- Show our custom tooltip (overrides Blizzard's if needed)
+            -- Don't show tooltip for Empty/Soul pseudo-item buttons
+            if not self.isEmptySlotButton and not (self.itemData and self.itemData.isEmptySlots) then
+                Tooltip:ShowForItem(self)
+            end
+
+            -- Show drag-drop indicator if cursor has item and this is a category view item
+            if self.categoryId and self.containerFrame then
+                local cursorType = GetCursorInfo()
+                if cursorType == "item" then
+                    local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
+                    if CategoryDropIndicator then
+                        CategoryDropIndicator:OnItemButtonEnter(self)
+                    end
+                end
+            end
+        end)
+        if not success and ns.debugMode then
+            ns:Print("OnEnter error: " .. tostring(err))
         end
     end)
 
     button:SetScript("OnLeave", function(self)
-        -- Call Blizzard's handler to clear cursor state
-        ContainerFrameItemButton_OnLeave(self)
+        -- Wrap in pcall to prevent errors
+        local success, err = pcall(function()
+            -- Call Blizzard's handler to clear cursor state (may not exist on retail)
+            if ContainerFrameItemButton_OnLeave then
+                ContainerFrameItemButton_OnLeave(self)
+            end
 
-        -- Hide our custom tooltip
-        Tooltip:Hide()
+            -- Hide our custom tooltip
+            Tooltip:Hide()
 
-        -- Hide drag-drop indicator
-        local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
-        if CategoryDropIndicator then
-            CategoryDropIndicator:OnItemButtonLeave()
+            -- Hide drag-drop indicator
+            local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
+            if CategoryDropIndicator then
+                CategoryDropIndicator:OnItemButtonLeave()
+            end
+        end)
+        if not success and ns.debugMode then
+            ns:Print("OnLeave error: " .. tostring(err))
         end
     end)
 
@@ -535,13 +556,19 @@ local function CreateButton(parent)
 
     -- Ctrl+Alt+Click to track/untrack items
     button:HookScript("OnClick", function(self, mouseButton)
-        if mouseButton == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
-            if self.itemData and self.itemData.itemID then
-                local TrackedBar = ns:GetModule("TrackedBar")
-                if TrackedBar then
-                    TrackedBar:ToggleTrackItem(self.itemData.itemID)
+        -- Wrap in pcall to prevent errors from breaking item interaction
+        local success, err = pcall(function()
+            if mouseButton == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
+                if self.itemData and self.itemData.itemID then
+                    local TrackedBar = ns:GetModule("TrackedBar")
+                    if TrackedBar then
+                        TrackedBar:ToggleTrackItem(self.itemData.itemID)
+                    end
                 end
             end
+        end)
+        if not success and ns.debugMode then
+            ns:Print("OnClick error: " .. tostring(err))
         end
     end)
 
