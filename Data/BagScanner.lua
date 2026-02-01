@@ -321,8 +321,11 @@ updateFrame:SetScript("OnUpdate", ProcessBatchedUpdates)
 -- Check if bagID is a player bag (not bank)
 local function IsPlayerBag(bagID)
     if not bagID then return false end
-    -- Player bags: 0-4, Keyring: -2
-    return (bagID >= 0 and bagID <= 4) or bagID == Constants.KEYRING_BAG_ID
+    -- Player bags: 0-4, Reagent Bag: 5 (Retail), Keyring: -2 (Classic)
+    if bagID >= 0 and bagID <= 4 then return true end
+    if Constants.REAGENT_BAG and bagID == Constants.REAGENT_BAG then return true end
+    if Constants.KEYRING_BAG_ID and bagID == Constants.KEYRING_BAG_ID then return true end
+    return false
 end
 
 -- Mark a bag as dirty and schedule batched processing
