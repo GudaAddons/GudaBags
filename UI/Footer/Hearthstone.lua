@@ -31,31 +31,28 @@ function Hearthstone:Init(parent)
 
     wrapper = CreateFrame("Frame", "GudaBagsHearthstoneWrapper", parent)
     wrapper:SetSize(bagSlotSize, bagSlotSize)
+    wrapper:EnableMouse(false)
+    wrapper:SetFrameLevel(parent:GetFrameLevel() + 5)
 
-    button = CreateFrame("ItemButton", "GudaBagsHearthstoneButton", wrapper, "ContainerFrameItemButtonTemplate, BackdropTemplate")
+    -- Use SecureActionButtonTemplate for proper item use
+    button = CreateFrame("Button", "GudaBagsHearthstoneButton", wrapper, "SecureActionButtonTemplate, BackdropTemplate")
     button:SetSize(bagSlotSize, bagSlotSize)
     button:SetAllPoints(wrapper)
-    button.wrapper = wrapper
+    -- Use AnyDown only - fires on mouse press, not release (prevents double-firing)
+    button:RegisterForClicks("AnyDown")
 
-    -- Hide template's built-in visual elements
-    for _, region in pairs({button:GetRegions()}) do
-        if region:IsObjectType("Texture") then
-            region:SetTexture(nil)
-            region:Hide()
-        end
-    end
+    -- Set up left-click (type1) and right-click (type2) to use hearthstone
+    -- Using macro with item ID is most reliable across all locales
+    local hsItemString = "/use item:" .. Constants.HEARTHSTONE_ID
+    button:SetAttribute("type1", "macro")
+    button:SetAttribute("macrotext1", hsItemString)
+    button:SetAttribute("type2", "macro")
+    button:SetAttribute("macrotext2", hsItemString)
 
-    local normalTex = button:GetNormalTexture()
-    if normalTex then
-        normalTex:SetTexture(nil)
-        normalTex:Hide()
-    end
-
-    local globalNormal = _G["GudaBagsHearthstoneButtonNormalTexture"]
-    if globalNormal then
-        globalNormal:SetTexture(nil)
-        globalNormal:Hide()
-    end
+    -- Ensure button is interactive
+    button:EnableMouse(true)
+    button:SetFrameStrata("HIGH")
+    button:SetFrameLevel(100)
 
     button:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -80,7 +77,6 @@ function Hearthstone:Init(parent)
     local cooldown = CreateFrame("Cooldown", "GudaBagsHearthstoneCooldown", button, "CooldownFrameTemplate")
     cooldown:SetAllPoints()
     cooldown:SetDrawEdge(false)
-    -- Make cooldown text smaller for the small button
     cooldown:SetHideCountdownNumbers(false)
     local cooldownText = cooldown:GetRegions()
     if cooldownText and cooldownText.SetFont then
@@ -88,7 +84,7 @@ function Hearthstone:Init(parent)
     end
     button.cooldown = cooldown
 
-    button:HookScript("OnEnter", function(self)
+    button:SetScript("OnEnter", function(self)
         if self.bag and self.slot then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetBagItem(self.bag, self.slot)
@@ -102,7 +98,7 @@ function Hearthstone:Init(parent)
         end
     end)
 
-    button:HookScript("OnLeave", function()
+    button:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
 
@@ -147,12 +143,7 @@ function Hearthstone:Update()
         button:Show()
         wrapper:Show()
 
-        wrapper:SetID(bag)
-        button:SetID(slot)
-
-        if button.IconBorder then button.IconBorder:Hide() end
-        if button.icon then button.icon:Hide() end
-
+        -- Update cooldown
         local start, duration, enable = C_Container.GetContainerItemCooldown(bag, slot)
         if button.cooldown and start and duration and duration > 0 then
             button.cooldown:SetCooldown(start, duration)
@@ -160,6 +151,7 @@ function Hearthstone:Update()
             button.cooldown:Clear()
         end
 
+        -- Store for tooltip
         button.bag = bag
         button.slot = slot
         button.link = link
@@ -167,9 +159,6 @@ function Hearthstone:Update()
         button:SetAlpha(0.3)
         button:Show()
         wrapper:Show()
-
-        wrapper:SetID(0)
-        button:SetID(0)
 
         button.bag = nil
         button.slot = nil

@@ -170,7 +170,12 @@ function Database:GetSetting(key)
         -- Return default if DB not initialized yet
         return Constants.DEFAULTS and Constants.DEFAULTS[key] or nil
     end
-    return GudaBags_CharDB.settings[key]
+    local value = GudaBags_CharDB.settings[key]
+    -- Return default if value is nil (not explicitly set)
+    if value == nil and Constants.DEFAULTS then
+        return Constants.DEFAULTS[key]
+    end
+    return value
 end
 
 function Database:SetSetting(key, value)
@@ -216,22 +221,25 @@ local function NormalizeContainerData(rawData)
 
     local normalized = {}
     for bagKey, bagData in pairs(rawData) do
-        local normalizedBagID = tonumber(bagKey) or bagKey
-        local normalizedBag = {
-            bagID = bagData.bagID,
-            numSlots = bagData.numSlots,
-            freeSlots = bagData.freeSlots,
-            bagType = bagData.bagType,
-            containerItemID = bagData.containerItemID,
-            containerTexture = bagData.containerTexture,
-            slots = {},
-        }
-        if bagData.slots then
-            for slotKey, slotData in pairs(bagData.slots) do
-                normalizedBag.slots[tonumber(slotKey) or slotKey] = slotData
+        -- Skip non-table entries (like lastUpdate timestamps or boolean flags)
+        if type(bagData) == "table" then
+            local normalizedBagID = tonumber(bagKey) or bagKey
+            local normalizedBag = {
+                bagID = bagData.bagID,
+                numSlots = bagData.numSlots,
+                freeSlots = bagData.freeSlots,
+                bagType = bagData.bagType,
+                containerItemID = bagData.containerItemID,
+                containerTexture = bagData.containerTexture,
+                slots = {},
+            }
+            if bagData.slots then
+                for slotKey, slotData in pairs(bagData.slots) do
+                    normalizedBag.slots[tonumber(slotKey) or slotKey] = slotData
+                end
             end
+            normalized[normalizedBagID] = normalizedBag
         end
-        normalized[normalizedBagID] = normalizedBag
     end
 
     return normalized
@@ -258,7 +266,64 @@ function Database:GetBank(fullName)
 end
 
 function Database:GetNormalizedBank(fullName)
-    return NormalizeContainerData(self:GetBank(fullName))
+    local bankData = self:GetBank(fullName)
+    if not bankData then return nil end
+
+    -- Check if this is the new Retail structure with tabs
+    if bankData.isRetail and bankData.containers then
+        return NormalizeContainerData(bankData.containers)
+    end
+
+    -- Legacy/Classic structure - just container data
+    return NormalizeContainerData(bankData)
+end
+
+-- Get bank tabs for Retail (for offline viewing)
+function Database:GetBankTabs(fullName)
+    local bankData = self:GetBank(fullName)
+    if bankData and bankData.tabs then
+        return bankData.tabs
+    end
+    return nil
+end
+
+-- Check if bank data is from Retail (has tabs)
+function Database:IsRetailBank(fullName)
+    local bankData = self:GetBank(fullName)
+    return bankData and bankData.isRetail == true
+end
+
+-------------------------------------------------
+-- Warband Bank (Account-wide storage for Retail)
+-------------------------------------------------
+
+function Database:SaveWarbandBank(warbandData)
+    if not GudaBags_DB then return end
+    GudaBags_DB.warbandBank = warbandData
+    GudaBags_DB.warbandBank.lastUpdate = time()
+end
+
+function Database:GetWarbandBank()
+    if not GudaBags_DB then return nil end
+    return GudaBags_DB.warbandBank
+end
+
+function Database:GetNormalizedWarbandBank()
+    local warbandData = self:GetWarbandBank()
+    if not warbandData then return nil end
+
+    if warbandData.containers then
+        return NormalizeContainerData(warbandData.containers)
+    end
+    return nil
+end
+
+function Database:GetWarbandBankTabs()
+    local warbandData = self:GetWarbandBank()
+    if warbandData and warbandData.tabs then
+        return warbandData.tabs
+    end
+    return nil
 end
 
 function Database:SaveMoney(copper)
@@ -319,7 +384,8 @@ local function CountItemsInContainers(containers, itemID)
     local count = 0
     if containers then
         for bagKey, bagData in pairs(containers) do
-            if bagData.slots then
+            -- Skip non-table entries (like lastUpdate timestamps or boolean flags)
+            if type(bagData) == "table" and bagData.slots then
                 for slotKey, slotData in pairs(bagData.slots) do
                     if slotData.itemID == itemID then
                         count = count + (slotData.count or 1)

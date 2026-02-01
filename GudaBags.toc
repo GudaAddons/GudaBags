@@ -1,6 +1,6 @@
-## Interface: 11508, 20505, 50503
+## Interface: 120000, 110207, 50503, 20505, 11508
 ## Title: GudaBags
-## Notes: Clean, unified bag management for Classic expansions
+## Notes: Clean, unified bag management for all WoW versions
 ## Author: Vati
 ## Version: 1.0.7
 ## SavedVariables: GudaBags_DB
@@ -51,6 +51,7 @@ Data\ItemScanner.lua
 Data\ScannerBase.lua
 Data\BagScanner.lua
 Data\BankScanner.lua
+Data\RetailBankScanner.lua
 
 # Sorting
 Sorting\SortEngine.lua
@@ -82,6 +83,7 @@ UI\Header\Characters.lua
 # Footer Components
 UI\Footer\BagSlots.lua
 UI\Footer\Keyring.lua
+UI\Footer\SoulBag.lua
 UI\Footer\Hearthstone.lua
 UI\Footer\Money.lua
 UI\Footer.lua

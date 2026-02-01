@@ -23,7 +23,8 @@ function SettingsSchema.GetGeneral()
         }},
 
         { type = "row", children = {
-            { type = "checkbox", key = "sortRightToLeft", label = L["SETTINGS_SORT_RTL"], tooltip = L["SETTINGS_SORT_RTL_TIP"] },
+            { type = "checkbox", key = "sortRightToLeft", label = L["SETTINGS_SORT_RTL"], tooltip = L["SETTINGS_SORT_RTL_TIP"],
+              hidden = function() local Expansion = ns:GetModule("Expansion") return Expansion and Expansion.IsRetail end },
             { type = "checkbox", key = "reverseStackSort", label = L["SETTINGS_REVERSE_STACK"], tooltip = L["SETTINGS_REVERSE_STACK_TIP"] },
         }},
     }
@@ -44,8 +45,8 @@ function SettingsSchema.GetLayout()
             { value = "category", label = L["SETTINGS_VIEW_CATEGORY"] },
         }},
 
-        { type = "slider", key = "bagColumns", label = L["SETTINGS_BAG_COLUMNS"], min = 5, max = 20, step = 1 },
-        { type = "slider", key = "bankColumns", label = L["SETTINGS_BANK_COLUMNS"], min = 5, max = 20, step = 1 },
+        { type = "slider", key = "bagColumns", label = L["SETTINGS_BAG_COLUMNS"], min = 5, max = 22, step = 1 },
+        { type = "slider", key = "bankColumns", label = L["SETTINGS_BANK_COLUMNS"], min = 5, max = 36, step = 1 },
 
         { type = "row", children = {
             { type = "checkbox", key = "showSearchBar", label = L["SETTINGS_SHOW_SEARCH"], tooltip = L["SETTINGS_SHOW_SEARCH_TIP"] },

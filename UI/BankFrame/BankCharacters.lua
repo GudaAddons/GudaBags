@@ -17,7 +17,8 @@ local MAX_VISIBLE_ROWS = 10
 
 local function HasBankData(fullName)
     local Database = GetDatabase()
-    local bank = Database:GetBank(fullName)
+    -- Use GetNormalizedBank which handles both Classic and Retail bank structures
+    local bank = Database:GetNormalizedBank(fullName)
     if not bank then return false end
 
     for bagID, bagData in pairs(bank) do

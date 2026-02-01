@@ -63,6 +63,54 @@ commandHandlers["debug"] = function()
     ns:Print(L["CMD_DEBUG_MODE"], ns.debugMode and L["CMD_ON"] or L["CMD_OFF"])
 end
 
+-- Debug item button frames (for retail overlay issues)
+commandHandlers["debugbutton"] = function()
+    local ItemButton = ns:GetModule("ItemButton")
+    ns:Print("Checking first item button structure...")
+
+    -- Get first active button
+    local firstButton = nil
+    for button in ItemButton:GetActiveButtons() do
+        firstButton = button
+        break
+    end
+
+    if not firstButton then
+        ns:Print("No active item buttons found. Open your bags first.")
+        return
+    end
+
+    ns:Print("Button: " .. (firstButton:GetName() or "unnamed"))
+    ns:Print("  Mouse enabled: " .. tostring(firstButton:IsMouseEnabled()))
+    ns:Print("  Shown: " .. tostring(firstButton:IsShown()))
+    ns:Print("  Frame level: " .. tostring(firstButton:GetFrameLevel()))
+
+    -- List children
+    local children = {firstButton:GetChildren()}
+    ns:Print("  Children (" .. #children .. "):")
+    for i, child in ipairs(children) do
+        local childName = child:GetName() or child:GetObjectType()
+        local mouseEnabled = child.IsMouseEnabled and child:IsMouseEnabled() or "N/A"
+        local shown = child:IsShown()
+        local level = child.GetFrameLevel and child:GetFrameLevel() or "N/A"
+        ns:Print("    " .. i .. ": " .. childName .. " mouse=" .. tostring(mouseEnabled) .. " shown=" .. tostring(shown) .. " level=" .. tostring(level))
+    end
+
+    -- Check specific overlays
+    local overlays = {"ItemContextOverlay", "SearchOverlay", "ExtendedSlot", "WidgetContainer", "Cooldown", "NineSlice"}
+    ns:Print("  Known overlays:")
+    for _, name in ipairs(overlays) do
+        local overlay = firstButton[name]
+        if overlay then
+            local shown = overlay.IsShown and overlay:IsShown() or "N/A"
+            local mouse = overlay.IsMouseEnabled and overlay:IsMouseEnabled() or "N/A"
+            ns:Print("    " .. name .. ": exists, shown=" .. tostring(shown) .. " mouse=" .. tostring(mouse))
+        else
+            ns:Print("    " .. name .. ": not found")
+        end
+    end
+end
+
 -- List saved characters
 commandHandlers["chars"] = function()
     local Database = GetDatabase()
@@ -147,6 +195,61 @@ commandHandlers["locale"] = function()
         ns:Print("Test override: none")
     end
     ns:Print("Available: " .. table.concat(ns:GetAvailableLocales(), ", "))
+end
+
+-- Debug hearthstone button
+commandHandlers["debughs"] = function()
+    local Hearthstone = ns:GetModule("Footer.Hearthstone")
+    ns:Print("Checking hearthstone button structure...")
+
+    local button = Hearthstone:GetButton()
+    local wrapper = Hearthstone:GetWrapper()
+
+    if not button then
+        ns:Print("Hearthstone button not found. Open your bags first.")
+        return
+    end
+
+    ns:Print("Wrapper: " .. (wrapper and wrapper:GetName() or "nil"))
+    if wrapper then
+        ns:Print("  Wrapper shown: " .. tostring(wrapper:IsShown()))
+        ns:Print("  Wrapper mouse: " .. tostring(wrapper:IsMouseEnabled()))
+        ns:Print("  Wrapper level: " .. tostring(wrapper:GetFrameLevel()))
+        ns:Print("  Wrapper strata: " .. tostring(wrapper:GetFrameStrata()))
+    end
+
+    ns:Print("Button: " .. (button:GetName() or "unnamed"))
+    ns:Print("  Mouse enabled: " .. tostring(button:IsMouseEnabled()))
+    ns:Print("  Shown: " .. tostring(button:IsShown()))
+    ns:Print("  Frame level: " .. tostring(button:GetFrameLevel()))
+    ns:Print("  Frame strata: " .. tostring(button:GetFrameStrata()))
+    ns:Print("  Alpha: " .. tostring(button:GetAlpha()))
+
+    -- Check position
+    local point, relativeTo, relativePoint, x, y = button:GetPoint(1)
+    ns:Print("  Position: " .. tostring(point) .. " offset=" .. tostring(x) .. "," .. tostring(y))
+
+    -- List children
+    local children = {button:GetChildren()}
+    ns:Print("  Children (" .. #children .. "):")
+    for i, child in ipairs(children) do
+        local childName = child:GetName() or child:GetObjectType()
+        local mouseEnabled = child.IsMouseEnabled and child:IsMouseEnabled() or "N/A"
+        local shown = child:IsShown()
+        ns:Print("    " .. i .. ": " .. childName .. " mouse=" .. tostring(mouseEnabled) .. " shown=" .. tostring(shown))
+    end
+
+    -- Check overlays
+    local overlays = {"ItemContextOverlay", "SearchOverlay", "ExtendedSlot", "WidgetContainer", "Cooldown", "NineSlice"}
+    ns:Print("  Known overlays:")
+    for _, name in ipairs(overlays) do
+        local overlay = button[name]
+        if overlay then
+            local parent = overlay.GetParent and overlay:GetParent()
+            local parentName = parent and (parent.GetName and parent:GetName() or "has parent") or "nil parent"
+            ns:Print("    " .. name .. ": exists, parent=" .. parentName)
+        end
+    end
 end
 
 -- Help

@@ -27,4 +27,4 @@ function ns:Debug(...)
     print("|cff888888[GudaBags Debug]|r " .. msg)
 end
 
-ns.debugMode = false
+ns.debugMode = false  -- Enable for debugging Retail bank tabs

@@ -7,6 +7,36 @@ local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Tooltip = ns:GetModule("Tooltip")
 
+-- Suppress spurious "Item isn't ready yet" errors on retail
+-- ContainerFrameItemButtonTemplate shows this error incorrectly when clicking usable items
+local suppressItemErrors = false
+local suppressUntil = 0
+
+-- Hook UIErrorsFrame to filter out incorrect item errors
+if UIErrorsFrame and ns.IsRetail then
+    local originalAddMessage = UIErrorsFrame.AddMessage
+    UIErrorsFrame.AddMessage = function(self, msg, ...)
+        -- Suppress item-not-ready errors briefly after our button clicks
+        if suppressItemErrors and GetTime() < suppressUntil then
+            -- Check if this is one of the spurious error messages
+            local errItemNotReady = ERR_ITEM_NOT_READY or "Item is not ready yet"
+            local errGenericNoTarget = ERR_GENERIC_NO_TARGET or "You have no target"
+            if msg and (msg:find(errItemNotReady) or msg == errItemNotReady) then
+                return  -- Suppress this error
+            end
+        end
+        return originalAddMessage(self, msg, ...)
+    end
+end
+
+-- Call this before clicking to suppress errors for a brief moment
+local function SuppressItemErrors()
+    if ns.IsRetail then
+        suppressItemErrors = true
+        suppressUntil = GetTime() + 0.1  -- Suppress for 100ms
+    end
+end
+
 -- Phase 1: Use Blizzard's optimized CreateObjectPool API
 local buttonPool = nil  -- Lazy initialized
 local buttonIndex = 0
@@ -158,6 +188,7 @@ local function CreateButton(parent)
     -- Wrapper frame holds bag ID for the template's click handler
     local wrapper = CreateFrame("Frame", name .. "Wrapper", parent)
     wrapper:SetSize(37, 37)
+    wrapper:EnableMouse(false)  -- Wrapper should not intercept mouse
 
     -- ContainerFrameItemButtonTemplate provides secure item click handling
     local button = CreateFrame("ItemButton", name, wrapper, "ContainerFrameItemButtonTemplate")
@@ -168,6 +199,42 @@ local function CreateButton(parent)
 
     -- Store reference to easily resize wrapper with button
     wrapper.button = button
+
+    -- Initialize IDs to prevent errors from template handlers before SetItem is called
+    wrapper:SetID(0)
+    button:SetID(0)
+
+    -- Disable mouse on all child frames from the template (retail has many overlays)
+    -- This prevents them from intercepting mouse input meant for the button
+    local function DisableChildMouse(frame)
+        for _, child in pairs({frame:GetChildren()}) do
+            if child.EnableMouse then
+                child:EnableMouse(false)
+            end
+            if child.SetHitRectInsets then
+                child:SetHitRectInsets(1000, 1000, 1000, 1000)
+            end
+            child:Hide()
+            -- Recursively disable grandchildren
+            if child.GetChildren then
+                DisableChildMouse(child)
+            end
+        end
+    end
+    DisableChildMouse(button)
+
+    -- Also check for and disable NineSlice (retail frame decoration)
+    if button.NineSlice then
+        button.NineSlice:Hide()
+        if button.NineSlice.EnableMouse then button.NineSlice:EnableMouse(false) end
+    end
+
+    -- Disable button's built-in click handlers that might interfere
+    -- We'll set up our own handlers
+    button:EnableMouse(true)
+    -- Only register for mouse up to prevent double-firing
+    -- The template fires on both MouseDown and MouseUp with AnyDown, causing items to be used twice
+    button:RegisterForClicks("AnyUp")
 
     -- Hide template's built-in visual elements (we use our own)
     local normalTex = button:GetNormalTexture()
@@ -184,6 +251,55 @@ local function CreateButton(parent)
     end
     if button.NewItemTexture then button.NewItemTexture:Hide() end
     if button.BattlepayItemTexture then button.BattlepayItemTexture:Hide() end
+
+    -- Hide retail-specific template elements (Midnight/TWW)
+    -- These overlays block mouse input - reparent them to remove completely
+    local function DisableOverlay(overlay)
+        if not overlay then return end
+        overlay:Hide()
+        overlay:SetAlpha(0)
+        overlay:ClearAllPoints()
+        -- Reparent to remove from button hierarchy entirely
+        if overlay.SetParent then
+            overlay:SetParent(nil)
+        end
+        if overlay.EnableMouse then overlay:EnableMouse(false) end
+        if overlay.SetHitRectInsets then overlay:SetHitRectInsets(1000, 1000, 1000, 1000) end
+        if overlay.SetScript then
+            overlay:SetScript("OnShow", function(self) self:Hide() end)
+            overlay:SetScript("OnEnter", nil)
+            overlay:SetScript("OnLeave", nil)
+            overlay:SetScript("OnMouseDown", nil)
+            overlay:SetScript("OnMouseUp", nil)
+        end
+    end
+
+    DisableOverlay(button.ItemContextOverlay)
+    DisableOverlay(button.SearchOverlay)
+    DisableOverlay(button.ExtendedSlot)
+    DisableOverlay(button.UpgradeIcon)
+    DisableOverlay(button.ItemSlotBackground)
+    DisableOverlay(button.JunkIcon)
+    DisableOverlay(button.flash)
+    DisableOverlay(button.NewItem)
+    DisableOverlay(button.Cooldown)  -- Template's cooldown (we create our own)
+    DisableOverlay(button.WidgetContainer)  -- Retail widget container
+    DisableOverlay(button.LevelLinkLockIcon)
+    DisableOverlay(button.BagIndicator)
+    DisableOverlay(button.StackSplitFrame)
+
+    -- Disable any mouse blocking on the icon texture layer
+    if button.icon then button.icon:SetDrawLayer("ARTWORK", 0) end
+
+    -- Ensure the button is the topmost interactive element
+    button:SetFrameLevel(button:GetParent():GetFrameLevel() + 5)
+
+    -- Reset hit rect to cover the full button (template might shrink it)
+    button:SetHitRectInsets(0, 0, 0, 0)
+
+    -- Ensure button receives all mouse events (check if methods exist)
+    if button.SetMouseClickEnabled then button:SetMouseClickEnabled(true) end
+    if button.SetMouseMotionEnabled then button:SetMouseMotionEnabled(true) end
 
     -- Hide global texture created by template XML
     local globalNormal = _G[name .. "NormalTexture"]
@@ -335,41 +451,58 @@ local function CreateButton(parent)
 
     -- Replace tooltip scripts (not hook, to prevent template's SetBagItem from running first)
     button:SetScript("OnEnter", function(self)
-        -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
-        -- Skip for pseudo-items (Empty/Soul) which don't have real bag slots
-        if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
-            ContainerFrameItemButton_OnEnter(self)
-        end
-
-        -- Show our custom tooltip (overrides Blizzard's if needed)
-        -- Don't show tooltip for Empty/Soul pseudo-item buttons
-        if not self.isEmptySlotButton and not (self.itemData and self.itemData.isEmptySlots) then
-            Tooltip:ShowForItem(self)
-        end
-
-        -- Show drag-drop indicator if cursor has item and this is a category view item
-        if self.categoryId and self.containerFrame then
-            local cursorType = GetCursorInfo()
-            if cursorType == "item" then
-                local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
-                if CategoryDropIndicator then
-                    CategoryDropIndicator:OnItemButtonEnter(self)
+        -- Wrap in pcall to prevent errors from breaking interaction
+        local success, err = pcall(function()
+            -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
+            -- Skip for pseudo-items (Empty/Soul) which don't have real bag slots
+            if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
+                -- ContainerFrameItemButton_OnEnter may not exist on retail
+                if ContainerFrameItemButton_OnEnter then
+                    ContainerFrameItemButton_OnEnter(self)
                 end
             end
+
+            -- Show our custom tooltip (overrides Blizzard's if needed)
+            -- Don't show tooltip for Empty/Soul pseudo-item buttons
+            if not self.isEmptySlotButton and not (self.itemData and self.itemData.isEmptySlots) then
+                Tooltip:ShowForItem(self)
+            end
+
+            -- Show drag-drop indicator if cursor has item and this is a category view item
+            if self.categoryId and self.containerFrame then
+                local cursorType = GetCursorInfo()
+                if cursorType == "item" then
+                    local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
+                    if CategoryDropIndicator then
+                        CategoryDropIndicator:OnItemButtonEnter(self)
+                    end
+                end
+            end
+        end)
+        if not success and ns.debugMode then
+            ns:Print("OnEnter error: " .. tostring(err))
         end
     end)
 
     button:SetScript("OnLeave", function(self)
-        -- Call Blizzard's handler to clear cursor state
-        ContainerFrameItemButton_OnLeave(self)
+        -- Wrap in pcall to prevent errors
+        local success, err = pcall(function()
+            -- Call Blizzard's handler to clear cursor state (may not exist on retail)
+            if ContainerFrameItemButton_OnLeave then
+                ContainerFrameItemButton_OnLeave(self)
+            end
 
-        -- Hide our custom tooltip
-        Tooltip:Hide()
+            -- Hide our custom tooltip
+            Tooltip:Hide()
 
-        -- Hide drag-drop indicator
-        local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
-        if CategoryDropIndicator then
-            CategoryDropIndicator:OnItemButtonLeave()
+            -- Hide drag-drop indicator
+            local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
+            if CategoryDropIndicator then
+                CategoryDropIndicator:OnItemButtonLeave()
+            end
+        end)
+        if not success and ns.debugMode then
+            ns:Print("OnLeave error: " .. tostring(err))
         end
     end)
 
@@ -455,13 +588,19 @@ local function CreateButton(parent)
 
     -- Ctrl+Alt+Click to track/untrack items
     button:HookScript("OnClick", function(self, mouseButton)
-        if mouseButton == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
-            if self.itemData and self.itemData.itemID then
-                local TrackedBar = ns:GetModule("TrackedBar")
-                if TrackedBar then
-                    TrackedBar:ToggleTrackItem(self.itemData.itemID)
+        -- Wrap in pcall to prevent errors from breaking item interaction
+        local success, err = pcall(function()
+            if mouseButton == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
+                if self.itemData and self.itemData.itemID then
+                    local TrackedBar = ns:GetModule("TrackedBar")
+                    if TrackedBar then
+                        TrackedBar:ToggleTrackItem(self.itemData.itemID)
+                    end
                 end
             end
+        end)
+        if not success and ns.debugMode then
+            ns:Print("OnClick error: " .. tostring(err))
         end
     end)
 
@@ -500,7 +639,14 @@ local function CreateButton(parent)
 
     -- Prevent swapping via click within the same category
     -- Also update pseudo-item slots to use current empty slot
+    -- NOTE: On Retail, skip these operations to avoid tainting the secure click handler
     button:HookScript("PreClick", function(self, mouseButton)
+        -- Suppress spurious "Item isn't ready yet" errors on retail
+        SuppressItemErrors()
+
+        -- On Retail, don't do anything that could taint the secure click path
+        if ns.IsRetail then return end
+
         -- For pseudo-item buttons, update to current empty slot BEFORE secure handler runs
         if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
             local cursorType = GetCursorInfo()
@@ -517,40 +663,42 @@ local function CreateButton(parent)
 
     -- Custom OnReceiveDrag to prevent swapping items within the same category
     -- Also handles pseudo-item buttons to place items in current empty slot
-    -- Store original handler reference
-    local originalReceiveDrag = button:GetScript("OnReceiveDrag")
-    button:SetScript("OnReceiveDrag", function(self)
-        -- For pseudo-item buttons (Empty/Soul), find current empty slot
-        if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
-            local cursorType = GetCursorInfo()
-            if cursorType == "item" then
-                local newBagID, newSlotID = FindCurrentEmptySlot(self)
-                if newBagID and newSlotID then
-                    -- Place item in the current first empty slot
-                    C_Container.PickupContainerItem(newBagID, newSlotID)
+    -- NOTE: On Retail, don't replace the secure OnReceiveDrag handler
+    if not ns.IsRetail then
+        local originalReceiveDrag = button:GetScript("OnReceiveDrag")
+        button:SetScript("OnReceiveDrag", function(self)
+            -- For pseudo-item buttons (Empty/Soul), find current empty slot
+            if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
+                local cursorType = GetCursorInfo()
+                if cursorType == "item" then
+                    local newBagID, newSlotID = FindCurrentEmptySlot(self)
+                    if newBagID and newSlotID then
+                        -- Place item in the current first empty slot
+                        C_Container.PickupContainerItem(newBagID, newSlotID)
+                    end
+                end
+                return
+            end
+
+            -- If same category drop, prevent the swap
+            if IsSameCategoryDrop(self) then
+                ClearCursor()
+                return
+            end
+
+            -- Allow normal swap (different categories or non-category view)
+            if originalReceiveDrag then
+                originalReceiveDrag(self)
+            else
+                -- Fallback: manually do the pickup/place
+                local bagID = self:GetParent():GetID()
+                local slotID = self:GetID()
+                if bagID and slotID and bagID >= 0 then
+                    C_Container.PickupContainerItem(bagID, slotID)
                 end
             end
-            return
-        end
-
-        -- If same category drop, prevent the swap
-        if IsSameCategoryDrop(self) then
-            ClearCursor()
-            return
-        end
-
-        -- Allow normal swap (different categories or non-category view)
-        if originalReceiveDrag then
-            originalReceiveDrag(self)
-        else
-            -- Fallback: manually do the pickup/place
-            local bagID = self:GetParent():GetID()
-            local slotID = self:GetID()
-            if bagID and slotID and bagID >= 0 then
-                C_Container.PickupContainerItem(bagID, slotID)
-            end
-        end
-    end)
+        end)
+    end
 
     return button
 end

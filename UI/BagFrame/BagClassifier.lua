@@ -20,7 +20,7 @@ local subClassToBagType = {
 
 -- All supported bag types for classification
 local BAG_TYPES = {
-    "regular", "enchant", "herb", "soul", "quiver", "ammo",
+    "regular", "reagent", "enchant", "herb", "soul", "quiver", "ammo",
     "engineering", "mining", "gem", "leatherworking", "inscription"
 }
 
@@ -57,6 +57,11 @@ function BagClassifier:GetBagType(bagID)
         return "regular"
     end
 
+    -- Retail: Reagent bag is always bag ID 5
+    if Constants.REAGENT_BAG and bagID == Constants.REAGENT_BAG then
+        return "reagent"
+    end
+
     -- Try using bagFamily from container API first (most reliable when container is open)
     local numSlots = C_Container.GetContainerNumSlots(bagID)
     if numSlots and numSlots > 0 then
@@ -76,12 +81,10 @@ function BagClassifier:GetBagType(bagID)
     end
 
     -- Fallback: try using item info (for when container isn't open)
+    -- Use C_Container.ContainerIDToInventoryID which works for both player bags and bank bags in all versions
     local invSlot = nil
-    if bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX then
-        -- Bank bag slots
-        invSlot = BankButtonIDToInvSlotID(bagID - 4)
-    elseif bagID >= 1 and bagID <= Constants.PLAYER_BAG_MAX then
-        -- Regular bag slots (1-4, not backpack)
+    if (bagID >= 1 and bagID <= Constants.PLAYER_BAG_MAX) or
+       (bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX) then
         invSlot = C_Container.ContainerIDToInventoryID(bagID)
     end
 

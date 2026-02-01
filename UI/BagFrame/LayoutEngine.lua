@@ -5,15 +5,64 @@ ns:RegisterModule("BagFrame.LayoutEngine", LayoutEngine)
 
 local Constants = ns.Constants
 
+-- Check if an interaction window is open (bank, trade, mail, merchant, auction)
+-- When these are open, items should be shown ungrouped for easier interaction
+local function IsInteractionWindowOpen()
+    -- Bank - check native Blizzard frame first (more reliable timing)
+    -- BankFrame is the default UI bank frame that's shown when interacting with bank NPC
+    if _G.BankFrame and _G.BankFrame:IsShown() then
+        return true
+    end
+
+    -- Also check our custom BankFrame module
+    local GudaBankFrame = ns:GetModule("BankFrame")
+    if GudaBankFrame and GudaBankFrame:IsShown() then
+        return true
+    end
+
+    -- Trade window
+    if TradeFrame and TradeFrame:IsShown() then
+        return true
+    end
+
+    -- Mail window
+    if MailFrame and MailFrame:IsShown() then
+        return true
+    end
+
+    -- Merchant/Vendor window
+    if MerchantFrame and MerchantFrame:IsShown() then
+        return true
+    end
+
+    -- Auction house (Classic)
+    if AuctionFrame and AuctionFrame:IsShown() then
+        return true
+    end
+
+    -- Auction house (Retail)
+    if AuctionHouseFrame and AuctionHouseFrame:IsShown() then
+        return true
+    end
+
+    return false
+end
+
 -- Build display order from classified bags
--- Returns array of {bagID, needsSpacing, isKeyring}
+-- Returns array of {bagID, needsSpacing, isKeyring, isSoulBag}
 -- bags parameter is optional, used to check cached keyring data
-function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags)
+-- showSoulBag parameter controls whether soul bags are included (default true)
+function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag)
     local bagsToShow = {}
 
     -- Regular bags first (no spacing)
     for _, bagID in ipairs(classifiedBags.regular or {}) do
         table.insert(bagsToShow, {bagID = bagID, needsSpacing = false})
+    end
+
+    -- Reagent bags (Retail only, with spacing)
+    for i, bagID in ipairs(classifiedBags.reagent or {}) do
+        table.insert(bagsToShow, {bagID = bagID, needsSpacing = (i == 1), isReagentBag = true})
     end
 
     -- Profession bags (with spacing before first bag of each type)
@@ -25,9 +74,11 @@ function LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags)
         end
     end
 
-    -- Soul bags
-    for i, bagID in ipairs(classifiedBags.soul or {}) do
-        table.insert(bagsToShow, {bagID = bagID, needsSpacing = (i == 1), isSoulBag = true})
+    -- Soul bags (only if showSoulBag is true or not specified)
+    if showSoulBag ~= false then
+        for i, bagID in ipairs(classifiedBags.soul or {}) do
+            table.insert(bagsToShow, {bagID = bagID, needsSpacing = (i == 1), isSoulBag = true})
+        end
     end
 
     -- Quiver bags
@@ -62,9 +113,116 @@ end
 
 -- Collect all slots from bags in display order
 -- Returns array of {bagID, slot, itemData, needsSpacing}
-function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached)
+-- If unifiedOrder is true (for Retail Single View), collect all slots sequentially by bag ID
+-- without bag type separation, which matches Blizzard's native sorted display order
+function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unifiedOrder)
     local allSlots = {}
 
+    -- On Retail Single View, collect all non-special bags in sequential order (0, 1, 2, 3, 4)
+    -- This matches how C_Container.SortBags() organizes items across all bags
+    -- Special bags (reagent, keyring) are shown separately with spacing
+    if unifiedOrder then
+        -- Collect unique bag IDs (excluding keyring and reagent bag) and sort them
+        local bagIDs = {}
+        local seenBags = {}
+        local keyringInfo = nil
+        local reagentBagInfo = nil
+
+        for _, bagInfo in ipairs(bagsToShow) do
+            if bagInfo.isKeyring then
+                keyringInfo = bagInfo  -- Save keyring for later
+            elseif bagInfo.isReagentBag then
+                reagentBagInfo = bagInfo  -- Save reagent bag for later
+            elseif not seenBags[bagInfo.bagID] then
+                seenBags[bagInfo.bagID] = true
+                table.insert(bagIDs, bagInfo.bagID)
+            end
+        end
+        table.sort(bagIDs)
+
+        -- Collect slots in bag ID order (no section spacing)
+        for _, bagID in ipairs(bagIDs) do
+            local bagData = bags[bagID]
+            if bagData then
+                for slot = 1, bagData.numSlots do
+                    table.insert(allSlots, {
+                        bagID = bagID,
+                        slot = slot,
+                        itemData = bagData.slots[slot],
+                        needsSpacing = false,
+                    })
+                end
+            end
+        end
+
+        -- Add reagent bag with spacing (if present)
+        if reagentBagInfo then
+            local bagID = reagentBagInfo.bagID
+            local bagData = bags[bagID]
+            if bagData then
+                for slot = 1, bagData.numSlots do
+                    local needsSpacing = (slot == 1)
+                    table.insert(allSlots, {
+                        bagID = bagID,
+                        slot = slot,
+                        itemData = bagData.slots[slot],
+                        needsSpacing = needsSpacing,
+                    })
+                end
+            end
+        end
+
+        -- Add keyring at the end with spacing (if present)
+        if keyringInfo then
+            local bagID = keyringInfo.bagID
+            local bagData = bags[bagID]
+            if isViewingCached and bagData then
+                for slot = 1, bagData.numSlots do
+                    local needsSpacing = (slot == 1)
+                    table.insert(allSlots, {
+                        bagID = bagID,
+                        slot = slot,
+                        itemData = bagData.slots[slot],
+                        needsSpacing = needsSpacing,
+                    })
+                end
+            else
+                local numSlots = C_Container.GetContainerNumSlots(bagID)
+                if numSlots and numSlots > 0 then
+                    for slot = 1, numSlots do
+                        local needsSpacing = (slot == 1)
+                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                        local itemData = nil
+                        if itemInfo then
+                            local itemName, _, itemQuality, _, _, itemType, itemSubType = GetItemInfo(itemInfo.hyperlink or "")
+                            itemData = {
+                                bagID = bagID,
+                                slot = slot,
+                                link = itemInfo.hyperlink,
+                                texture = itemInfo.iconFileID,
+                                count = itemInfo.stackCount or 1,
+                                quality = itemInfo.quality or 0,
+                                name = itemName or "",
+                                itemType = itemType or "",
+                                itemSubType = itemSubType or "",
+                                locked = itemInfo.isLocked,
+                            }
+                        end
+                        table.insert(allSlots, {
+                            bagID = bagID,
+                            slot = slot,
+                            itemData = itemData,
+                            needsSpacing = needsSpacing,
+                        })
+                    end
+                end
+            end
+        end
+
+        return allSlots
+    end
+
+    -- Original behavior: collect in display order with bag type separation
     for _, bagInfo in ipairs(bagsToShow) do
         local bagID = bagInfo.bagID
         local bagData = bags[bagID]
@@ -539,9 +697,12 @@ function LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, 
     end
 
     -- Group identical items into single slots with combined count (if setting enabled)
+    -- Skip grouping when interaction windows are open (bank, trade, mail, etc.)
+    -- so users can interact with individual stacks
     local Database = ns:GetModule("Database")
     local groupIdenticalItems = Database and Database:GetSetting("groupIdenticalItems")
-    if groupIdenticalItems then
+    local shouldGroup = groupIdenticalItems and not IsInteractionWindowOpen()
+    if shouldGroup then
         for _, section in ipairs(sections) do
             local itemsByID = {}  -- { [itemID] = { items } }
             local itemOrder = {}  -- Track order of first occurrence
