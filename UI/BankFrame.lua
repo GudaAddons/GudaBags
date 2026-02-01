@@ -220,9 +220,11 @@ local function CreateSideTab(parent, index, isAllTab)
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
     icon:SetPoint("CENTER")
-    -- Use chest icon for "All" tab, lockbox for specific tabs
+    -- Use chest icon for "All" tab, default bag icon for specific tabs (will be updated with actual icon)
     if isAllTab then
         icon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\chest.png")
+    else
+        icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")  -- Default, will be updated by ShowSideTabs
     end
     button.icon = icon
 
@@ -282,9 +284,8 @@ local function CreateSideTab(parent, index, isAllTab)
 end
 
 -- Tab icons
-local TAB_ICON_BANK = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for character bank tabs
-local TAB_ICON_WARBAND = "Interface\\Icons\\INV_Misc_Lockbox_1"  -- Lockbox for warband bank tabs
-local TAB_ICON_ALL = "Interface\\AddOns\\GudaBags\\assets\\chest"  -- Chest icon for "All" tab
+local TAB_ICON_ALL = "Interface\\AddOns\\GudaBags\\Assets\\chest.png"  -- Chest icon for "All" tab
+local TAB_ICON_DEFAULT = "Interface\\Icons\\INV_Misc_Bag_10"  -- Default fallback icon
 
 function BankFrame:ShowSideTabs(characterFullName, bankType)
     if not frame or not frame.sideTabBar then return end
@@ -315,7 +316,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                     index = tabData.index,
                     containerID = tabData.containerID,
                     name = tabData.name or (isWarband and string.format("Warband Tab %d", tabData.index) or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", tabData.index)),
-                    icon = isWarband and TAB_ICON_WARBAND or TAB_ICON_BANK,
+                    icon = tabData.icon or TAB_ICON_DEFAULT,  -- Use tab's actual icon
                 })
             end
             ns:Debug("  Got", #tabs, "tabs from RetailBankScanner cache")
@@ -336,7 +337,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                     index = tabData.index,
                     containerID = tabData.containerID,
                     name = tabData.name or string.format("Warband Tab %d", tabData.index),
-                    icon = TAB_ICON_WARBAND,
+                    icon = tabData.icon or TAB_ICON_DEFAULT,  -- Use tab's actual icon
                 })
             end
             ns:Debug("  Got", #tabs, "tabs from Database warband cache")
@@ -358,7 +359,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                         index = i,
                         containerID = containerID,
                         name = tab.name or string.format("Warband Tab %d", i),
-                        icon = TAB_ICON_WARBAND,
+                        icon = tab.icon or TAB_ICON_DEFAULT,  -- Use tab's actual icon
                     })
                 end
                 ns:Debug("  Got", #tabs, "tabs from C_Bank.FetchPurchasedBankTabData")
@@ -380,7 +381,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                     name = isWarband
                         and string.format("Warband Tab %d", i)
                         or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
-                    icon = isWarband and TAB_ICON_WARBAND or TAB_ICON_BANK,
+                    icon = TAB_ICON_DEFAULT,
                 })
             end
         end
@@ -396,7 +397,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                         index = i,
                         containerID = containerID,
                         name = string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
-                        icon = TAB_ICON_BANK,
+                        icon = TAB_ICON_DEFAULT,
                     })
                 end
             end
@@ -413,7 +414,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                         index = i,
                         containerID = containerID,
                         name = string.format("Warband Tab %d", i),
-                        icon = TAB_ICON_WARBAND,
+                        icon = TAB_ICON_DEFAULT,
                     })
                 end
             end
@@ -427,7 +428,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
         tabs = {{
             index = 1,
             name = isWarband and "Warband Tab 1" or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", 1),
-            icon = isWarband and TAB_ICON_WARBAND or TAB_ICON_BANK,
+            icon = TAB_ICON_DEFAULT,
         }}
     end
 
