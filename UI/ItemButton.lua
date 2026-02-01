@@ -232,7 +232,13 @@ local function CreateButton(parent)
     -- Disable button's built-in click handlers that might interfere
     -- We'll set up our own handlers
     button:EnableMouse(true)
-    button:RegisterForClicks("AnyUp", "AnyDown")
+    -- On Retail, only register for mouse up to prevent double-firing
+    -- The template already handles clicks properly on mouse up
+    if ns.IsRetail then
+        button:RegisterForClicks("AnyUp")
+    else
+        button:RegisterForClicks("AnyUp", "AnyDown")
+    end
 
     -- Hide template's built-in visual elements (we use our own)
     local normalTex = button:GetNormalTexture()
@@ -635,45 +641,11 @@ local function CreateButton(parent)
         return draggedCategory == targetButton.categoryId
     end
 
-    -- On retail, track mouse state to prevent double-firing of item use
-    -- The template fires on both MouseDown and MouseUp, causing items to be used twice
-    if ns.IsRetail then
-        button:HookScript("OnMouseDown", function(self, mouseButton)
-            self._mouseDownTime = GetTime()
-            self._mouseDownButton = mouseButton
-        end)
-
-        button:HookScript("OnMouseUp", function(self, mouseButton)
-            -- If this is a quick click (not a drag), the MouseUp might try to use the item again
-            -- We set a flag to tell PreClick to block the second use
-            if self._mouseDownTime and (GetTime() - self._mouseDownTime) < 0.3 then
-                self._blockSecondClick = true
-            end
-            self._mouseDownTime = nil
-            self._mouseDownButton = nil
-        end)
-    end
-
     -- Prevent swapping via click within the same category
     -- Also update pseudo-item slots to use current empty slot
     button:HookScript("PreClick", function(self, mouseButton)
         -- Suppress spurious "Item isn't ready yet" errors on retail
         SuppressItemErrors()
-
-        -- On retail, prevent the second click from using the item
-        -- by temporarily clearing the slot ID
-        if ns.IsRetail and self._blockSecondClick then
-            self._blockSecondClick = nil
-            self._savedSlotID = self:GetID()
-            self:SetID(0)  -- Invalid slot prevents item use
-            -- Restore slot ID after a frame
-            C_Timer.After(0, function()
-                if self._savedSlotID then
-                    self:SetID(self._savedSlotID)
-                    self._savedSlotID = nil
-                end
-            end)
-        end
 
         -- For pseudo-item buttons, update to current empty slot BEFORE secure handler runs
         if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then

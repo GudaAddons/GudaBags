@@ -62,9 +62,95 @@ end
 
 -- Collect all slots from bags in display order
 -- Returns array of {bagID, slot, itemData, needsSpacing}
-function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached)
+-- If unifiedOrder is true (for Retail Single View), collect all slots sequentially by bag ID
+-- without bag type separation, which matches Blizzard's native sorted display order
+function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unifiedOrder)
     local allSlots = {}
 
+    -- On Retail Single View, collect all non-keyring bags in sequential order (0, 1, 2, 3...)
+    -- This matches how C_Container.SortBags() organizes items across all bags
+    if unifiedOrder then
+        -- Collect unique bag IDs (excluding keyring) and sort them
+        local bagIDs = {}
+        local seenBags = {}
+        local keyringInfo = nil
+
+        for _, bagInfo in ipairs(bagsToShow) do
+            if bagInfo.isKeyring then
+                keyringInfo = bagInfo  -- Save keyring for later
+            elseif not seenBags[bagInfo.bagID] then
+                seenBags[bagInfo.bagID] = true
+                table.insert(bagIDs, bagInfo.bagID)
+            end
+        end
+        table.sort(bagIDs)
+
+        -- Collect slots in bag ID order (no section spacing)
+        for _, bagID in ipairs(bagIDs) do
+            local bagData = bags[bagID]
+            if bagData then
+                for slot = 1, bagData.numSlots do
+                    table.insert(allSlots, {
+                        bagID = bagID,
+                        slot = slot,
+                        itemData = bagData.slots[slot],
+                        needsSpacing = false,
+                    })
+                end
+            end
+        end
+
+        -- Add keyring at the end with spacing (if present)
+        if keyringInfo then
+            local bagID = keyringInfo.bagID
+            local bagData = bags[bagID]
+            if isViewingCached and bagData then
+                for slot = 1, bagData.numSlots do
+                    local needsSpacing = (slot == 1)
+                    table.insert(allSlots, {
+                        bagID = bagID,
+                        slot = slot,
+                        itemData = bagData.slots[slot],
+                        needsSpacing = needsSpacing,
+                    })
+                end
+            else
+                local numSlots = C_Container.GetContainerNumSlots(bagID)
+                if numSlots and numSlots > 0 then
+                    for slot = 1, numSlots do
+                        local needsSpacing = (slot == 1)
+                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                        local itemData = nil
+                        if itemInfo then
+                            local itemName, _, itemQuality, _, _, itemType, itemSubType = GetItemInfo(itemInfo.hyperlink or "")
+                            itemData = {
+                                bagID = bagID,
+                                slot = slot,
+                                link = itemInfo.hyperlink,
+                                texture = itemInfo.iconFileID,
+                                count = itemInfo.stackCount or 1,
+                                quality = itemInfo.quality or 0,
+                                name = itemName or "",
+                                itemType = itemType or "",
+                                itemSubType = itemSubType or "",
+                                locked = itemInfo.isLocked,
+                            }
+                        end
+                        table.insert(allSlots, {
+                            bagID = bagID,
+                            slot = slot,
+                            itemData = itemData,
+                            needsSpacing = needsSpacing,
+                        })
+                    end
+                end
+            end
+        end
+
+        return allSlots
+    end
+
+    -- Original behavior: collect in display order with bag type separation
     for _, bagInfo in ipairs(bagsToShow) do
         local bagID = bagInfo.bagID
         local bagData = bags[bagID]

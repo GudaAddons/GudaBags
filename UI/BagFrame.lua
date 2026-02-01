@@ -266,7 +266,10 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, searchText, isVi
     local iconSize = settings.iconSize
 
     -- Collect all slots
-    local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached)
+    -- On Retail, use unified order (sequential by bag ID) to match native sort behavior
+    -- This ensures profession materials don't appear after junk from regular bags
+    local unifiedOrder = ns.IsRetail and not isViewingCached
+    local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unifiedOrder)
 
     -- Calculate frame size
     local frameWidth, frameHeight = LayoutEngine:CalculateFrameSize(allSlots, settings)

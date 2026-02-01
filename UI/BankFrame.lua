@@ -293,7 +293,10 @@ end
 function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isReadOnly)
     local iconSize = settings.iconSize
 
-    local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bank, isReadOnly)
+    -- On Retail, use unified order (sequential by bag ID) to match native sort behavior
+    -- This ensures profession materials don't appear after junk from regular bags
+    local unifiedOrder = ns.IsRetail and not isReadOnly
+    local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bank, isReadOnly, unifiedOrder)
 
     local frameWidth, frameHeight = LayoutEngine:CalculateFrameSize(allSlots, settings)
     frame:SetSize(frameWidth, frameHeight)
