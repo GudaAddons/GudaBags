@@ -206,11 +206,25 @@ function BankScanner:IsBankOpen()
 end
 
 function BankScanner:GetPurchasedBankSlots()
-    return GetNumBankSlots()
+    -- Classic uses GetNumBankSlots(), Retail (TWW+) moved this to C_Bank
+    if GetNumBankSlots then
+        return GetNumBankSlots()
+    end
+    -- Retail: Try C_Bank API if available
+    if C_Bank and C_Bank.FetchNumPurchasedBankSlots then
+        return C_Bank.FetchNumPurchasedBankSlots()
+    end
+    -- Fallback for Retail: assume all slots purchased (disables purchase UI)
+    return 7
 end
 
 function BankScanner:GetBankSlotCost()
-    return GetBankSlotCost(self:GetPurchasedBankSlots() + 1)
+    if not GetBankSlotCost then
+        -- Retail doesn't have traditional bank slot purchasing
+        return nil
+    end
+    local nextSlot = self:GetPurchasedBankSlots() + 1
+    return GetBankSlotCost(nextSlot)
 end
 
 function BankScanner:CanPurchaseBankSlot()
@@ -219,7 +233,7 @@ function BankScanner:CanPurchaseBankSlot()
 end
 
 function BankScanner:PurchaseBankSlot()
-    if isBankOpen and self:CanPurchaseBankSlot() then
+    if isBankOpen and self:CanPurchaseBankSlot() and PurchaseSlot then
         PurchaseSlot()
     end
 end
