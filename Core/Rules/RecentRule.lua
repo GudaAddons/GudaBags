@@ -269,11 +269,15 @@ end
 local function OnLootReceived(event, msg, ...)
     if not msg then return end
 
-    -- Only process YOUR loot - message must start with "You "
-    -- This filters out all other player messages like:
-    -- "PlayerName receives loot: ..."
-    -- "PlayerName creates ..." (conjured items)
-    if not msg:find("^You ") then return end
+    -- Only process actual loot messages, not created/conjured items
+    -- Valid loot patterns:
+    --   "You receive loot: [Item]"  - regular loot from mobs/chests
+    --   "You receive item: [Item]"  - quest rewards, mail, etc.
+    --   "You won: [Item]"           - roll wins
+    -- Excluded patterns:
+    --   "You create: [Item]"        - conjured items (mage water, warlock stones)
+    --   "PlayerName receives loot:" - other players' loot
+    if not (msg:find("^You receive") or msg:find("^You won")) then return end
 
     -- Extract itemID directly from any item link in the message
     local itemID = msg:match("|Hitem:(%d+)")
