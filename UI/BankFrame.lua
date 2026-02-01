@@ -2216,7 +2216,13 @@ function BankFrame:SortBank()
 
     local SortEngine = ns:GetModule("SortEngine")
     if SortEngine then
-        SortEngine:SortBank()
+        -- Check if viewing Warband bank
+        local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+        if currentBankType == "warband" then
+            SortEngine:SortWarbandBank()
+        else
+            SortEngine:SortBank()
+        end
     else
         ns:Print("SortEngine not loaded")
     end
@@ -2236,7 +2242,10 @@ function BankFrame:RestackAndClean()
     -- Use SortEngine's restack function (consolidates stacks without sorting)
     local SortEngine = ns:GetModule("SortEngine")
     if SortEngine then
-        SortEngine:RestackBank(function()
+        -- Check if viewing Warband bank
+        local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+        local restackFunc = currentBankType == "warband" and SortEngine.RestackWarbandBank or SortEngine.RestackBank
+        restackFunc(SortEngine, function()
             -- Callback when restack is complete - now clean ghost slots
             C_Timer.After(0.1, function()
                 if frame and frame:IsShown() then

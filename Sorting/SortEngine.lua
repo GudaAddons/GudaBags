@@ -1254,6 +1254,42 @@ function SortEngine:SortBank()
     return true
 end
 
+function SortEngine:SortWarbandBank()
+    local BankScanner = ns:GetModule("BankScanner")
+    if not BankScanner or not BankScanner:IsBankOpen() then
+        ns:Print("Cannot sort Warband bank: not at banker")
+        return false
+    end
+
+    if sortInProgress then
+        ns:Print("Sort already in progress...")
+        return false
+    end
+
+    -- Warband bank sorting is only available on Retail
+    if not Expansion.IsRetail then
+        ns:Print("Warband bank is not available in this version")
+        return false
+    end
+
+    -- Use native Blizzard sort API for Warband/Account bank
+    if C_Container and C_Container.SortAccountBankBags then
+        C_Container.SortAccountBankBags()
+        -- Fire event after a short delay to let the sort complete
+        C_Timer.After(0.5, function()
+            if ns.OnBankUpdated then
+                ns.OnBankUpdated()
+            else
+                Events:Fire("BAGS_UPDATED")
+            end
+        end)
+        return true
+    else
+        ns:Print("Warband bank sorting not available")
+        return false
+    end
+end
+
 -------------------------------------------------
 -- Restack Only (for Category View)
 -- Consolidates stacks without sorting positions
@@ -1331,6 +1367,30 @@ function SortEngine:RestackBank(callback)
 
     restackInProgress = true
     restackBagIDs = Constants.BANK_BAG_IDS
+    restackCallback = callback
+    restackPassCount = 0
+    restackNextPassTime = 0
+
+    MutePickupSounds()
+    return true
+end
+
+function SortEngine:RestackWarbandBank(callback)
+    local BankScanner = ns:GetModule("BankScanner")
+    if not BankScanner or not BankScanner:IsBankOpen() then
+        return false
+    end
+
+    if not Expansion.IsRetail or not Constants.WARBAND_BANK_TAB_IDS then
+        return false
+    end
+
+    if sortInProgress or restackInProgress then
+        return false
+    end
+
+    restackInProgress = true
+    restackBagIDs = Constants.WARBAND_BANK_TAB_IDS
     restackCallback = callback
     restackPassCount = 0
     restackNextPassTime = 0
