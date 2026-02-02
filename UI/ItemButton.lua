@@ -43,8 +43,8 @@ local buttonIndex = 0
 
 -- Full reset function for pool (called on Release)
 local function ResetButton(pool, button)
-    button:Hide()
-    button.wrapper:Hide()
+    button:SetShown(false)  -- Use SetShown to avoid taint during combat
+    button.wrapper:SetShown(false)
     button.wrapper:ClearAllPoints()
     button.itemData = nil
     button.owner = nil
@@ -574,8 +574,11 @@ local function CreateButton(parent)
 
         local newBagID, newSlotID = FindCurrentEmptySlot(btn)
         if newBagID and newSlotID then
-            btn.wrapper:SetID(newBagID)
-            btn:SetID(newSlotID)
+            -- Skip during combat to avoid taint
+            if not InCombatLockdown() then
+                btn.wrapper:SetID(newBagID)
+                btn:SetID(newSlotID)
+            end
             if btn.itemData then
                 btn.itemData.bagID = newBagID
                 btn.itemData.slot = newSlotID
@@ -714,8 +717,8 @@ function ItemButton:Acquire(parent)
 
     local button = buttonPool:Acquire()
     button.wrapper:SetParent(parent)
-    button.wrapper:Show()
-    button:Show()
+    button.wrapper:SetShown(true)  -- Use SetShown to avoid taint during combat
+    button:SetShown(true)
     button.owner = parent
     return button
 end
@@ -760,6 +763,32 @@ function ItemButton:ReleaseAll(owner)
         -- Skip visual reset here - will be done in SetItem when button is reused
         buttonPool:ReleaseAll()
     end
+end
+
+-- Pre-create buttons so they're available during combat
+-- ContainerFrameItemButtonTemplate is a secure template that cannot be created during combat
+-- Call this on PLAYER_LOGIN before entering combat
+function ItemButton:PreWarm(parent, count)
+    count = count or 200  -- Default to 200 buttons (enough for all bag slots + buffer)
+
+    -- Initialize pool if needed
+    if not buttonPool then
+        buttonPool = CreateObjectPool(
+            function() return CreateButton(parent) end,
+            ResetButton
+        )
+    end
+
+    -- Create buttons by acquiring from pool
+    for i = 1, count do
+        local button = buttonPool:Acquire()
+        button.wrapper:SetParent(parent)
+    end
+
+    -- Release all back to pool so they're available for use (matches Baganator's pattern)
+    buttonPool:ReleaseAll()
+
+    print("|cff00ff00GudaBags:|r Pre-warmed", count, "item buttons for combat support")
 end
 
 -- Cached settings for batch updates (set by SetItemBatch or refreshed on demand)
@@ -847,8 +876,11 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- Set real bagID/slot so template's click handler places items correctly
         -- itemData now contains real bagID/slot of first empty slot
-        button.wrapper:SetID(itemData.bagID)
-        button:SetID(itemData.slot)
+        -- Skip during combat to avoid taint (SetID is protected on secure frames)
+        if not InCombatLockdown() then
+            button.wrapper:SetID(itemData.bagID)
+            button:SetID(itemData.slot)
+        end
 
         return
     end
@@ -856,7 +888,11 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     if itemData then
         -- Set IDs for ContainerFrameItemButtonTemplate's secure click handler
         -- Use invalid IDs for read-only mode to prevent interactions
-        if isReadOnly then
+        -- Skip during combat to avoid taint (SetID is protected on secure frames)
+        if InCombatLockdown() then
+            -- During combat, don't change IDs to avoid taint
+            -- Items won't be clickable but bag can still be viewed
+        elseif isReadOnly then
             button.wrapper:SetID(0)
             button:SetID(0)
         else
@@ -987,8 +1023,11 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
     else
-        button.wrapper:SetID(0)
-        button:SetID(0)
+        -- Skip during combat to avoid taint
+        if not InCombatLockdown() then
+            button.wrapper:SetID(0)
+            button:SetID(0)
+        end
 
         SetItemButtonTexture(button, nil)
         SetItemButtonCount(button, 0)
@@ -1037,12 +1076,15 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly)
 
     -- Set IDs for ContainerFrameItemButtonTemplate's secure click handler
     -- Use invalid IDs for read-only mode to prevent interactions
-    if isReadOnly then
-        button.wrapper:SetID(0)
-        button:SetID(0)
-    else
-        button.wrapper:SetID(bagID)
-        button:SetID(slot)
+    -- Skip during combat to avoid taint
+    if not InCombatLockdown() then
+        if isReadOnly then
+            button.wrapper:SetID(0)
+            button:SetID(0)
+        else
+            button.wrapper:SetID(bagID)
+            button:SetID(slot)
+        end
     end
 
     local settings = GetCachedSettings()
