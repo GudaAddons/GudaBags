@@ -17,24 +17,49 @@ local onBackCallback = nil
 local BagSlots = nil
 local Keyring = nil
 local SoulBag = nil
-local Hearthstone = nil
 local Money = nil
 
 local function LoadComponents()
     BagSlots = ns:GetModule("Footer.BagSlots")
     Keyring = ns:GetModule("Footer.Keyring")
     SoulBag = ns:GetModule("Footer.SoulBag")
-    Hearthstone = ns:GetModule("Footer.Hearthstone")
     Money = ns:GetModule("Footer.Money")
 end
 
 function Footer:Init(parent)
     LoadComponents()
 
+    -- Clean up any ghost hearthstone frames from previous versions
+    local ghostWrapper = _G["GudaBagsHearthstoneWrapper"]
+    if ghostWrapper then
+        ghostWrapper:Hide()
+        ghostWrapper:EnableMouse(false)
+        ghostWrapper:SetAlpha(0)
+        ghostWrapper:SetSize(1, 1)
+        ghostWrapper:ClearAllPoints()
+        ghostWrapper:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", -1000, -1000)
+        ghostWrapper:UnregisterAllEvents()
+    end
+    local ghostButton = _G["GudaBagsHearthstoneButton"]
+    if ghostButton then
+        ghostButton:Hide()
+        ghostButton:EnableMouse(false)
+        ghostButton:SetAlpha(0)
+        ghostButton:SetSize(1, 1)
+        ghostButton:ClearAllPoints()
+        ghostButton:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", -1000, -1000)
+        ghostButton:UnregisterAllEvents()
+        if ghostButton.SetAttribute then
+            ghostButton:SetAttribute("type", nil)
+            ghostButton:SetAttribute("item", nil)
+        end
+    end
+
     frame = CreateFrame("Frame", "GudaBagsFooter", parent)
     frame:SetHeight(Constants.FRAME.FOOTER_HEIGHT)
     frame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", Constants.FRAME.PADDING, Constants.FRAME.PADDING - 5)
     frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.PADDING - 5)
+    frame:EnableMouse(true)  -- Capture stray clicks to prevent click-through
 
     -- Initialize components
     frame.bagSlotsFrame = BagSlots:Init(frame)
@@ -48,19 +73,22 @@ function Footer:Init(parent)
     local keyringButton = Keyring:GetButton()
 
     -- Slot counter after keyring, soul bag, or bag slots (with tooltip frame for hover)
-    local slotInfoFrame = CreateFrame("Frame", nil, frame)
-    -- Anchor to rightmost special button available
+    local slotInfoFrame = CreateFrame("Button", nil, frame)
+    slotInfoFrame:EnableMouse(true)
+    -- Anchor to rightmost special button available - NO GAP to prevent click-through
     if keyringButton then
-        slotInfoFrame:SetPoint("LEFT", keyringButton, "RIGHT", 32, 0)
+        slotInfoFrame:SetPoint("LEFT", keyringButton, "RIGHT", 0, 0)
     elseif soulBagButton then
-        slotInfoFrame:SetPoint("LEFT", soulBagButton, "RIGHT", 32, 0)
+        slotInfoFrame:SetPoint("LEFT", soulBagButton, "RIGHT", 0, 0)
     else
-        slotInfoFrame:SetPoint("LEFT", BagSlots:GetAnchor(), "RIGHT", 32, 0)
+        slotInfoFrame:SetPoint("LEFT", BagSlots:GetAnchor(), "RIGHT", 0, 0)
     end
-    slotInfoFrame:SetSize(60, 16)
+    slotInfoFrame:SetSize(78, 20)  -- Includes 8px padding on left
+    -- Capture clicks to prevent propagation
+    slotInfoFrame:SetScript("OnClick", function() end)
 
     local slotInfo = slotInfoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    slotInfo:SetPoint("LEFT", slotInfoFrame, "LEFT", 0, 0)
+    slotInfo:SetPoint("LEFT", slotInfoFrame, "LEFT", 8, 0)  -- 8px visual padding from keyring
     slotInfo:SetTextColor(0.8, 0.8, 0.8)
     slotInfo:SetShadowOffset(1, -1)
     slotInfo:SetShadowColor(0, 0, 0, 1)
@@ -96,7 +124,6 @@ function Footer:Init(parent)
         GameTooltip:Hide()
     end)
 
-    frame.hearthstoneWrapper = Hearthstone:Init(frame)
     frame.moneyFrame = Money:Init(frame)
 
     -- Create back button (hidden by default, shown when viewing cached)
@@ -165,9 +192,11 @@ function Footer:Show()
         lastAnchor = keyringButton
     end
 
-    -- Position hearthstone relative to rightmost button
-    Hearthstone:SetAnchor(lastAnchor)
-    Hearthstone:Update()
+    -- Position slot counter where hearthstone used to be
+    if frame.slotInfoFrame then
+        frame.slotInfoFrame:ClearAllPoints()
+        frame.slotInfoFrame:SetPoint("LEFT", lastAnchor, "RIGHT", 0, 0)
+    end
 
     -- Show money
     Money:Show()
@@ -186,7 +215,6 @@ function Footer:Hide()
     if SoulBag:GetButton() then
         SoulBag:Hide()
     end
-    Hearthstone:Hide()
     Money:Hide()
     if backButton then
         backButton:Hide()
@@ -197,7 +225,6 @@ function Footer:Update()
     if not frame then return end
 
     BagSlots:Update()
-    Hearthstone:Update()
     Money:Update()
     if Keyring:GetButton() then
         Keyring:UpdateState()
@@ -218,18 +245,34 @@ function Footer:Update()
             SoulBag:UpdateState()
             if keyringButton then
                 Keyring:SetAnchor(soulBagButton)
-                Hearthstone:SetAnchor(keyringButton)
+                -- Position slot counter after keyring
+                if frame.slotInfoFrame then
+                    frame.slotInfoFrame:ClearAllPoints()
+                    frame.slotInfoFrame:SetPoint("LEFT", keyringButton, "RIGHT", 0, 0)
+                end
             else
-                Hearthstone:SetAnchor(soulBagButton)
+                -- Position slot counter after soul bag
+                if frame.slotInfoFrame then
+                    frame.slotInfoFrame:ClearAllPoints()
+                    frame.slotInfoFrame:SetPoint("LEFT", soulBagButton, "RIGHT", 0, 0)
+                end
             end
         else
             -- Hide soul bag and reposition chain
             SoulBag:Hide()
             if keyringButton then
                 Keyring:SetAnchor(bagAnchor)
-                Hearthstone:SetAnchor(keyringButton)
+                -- Position slot counter after keyring
+                if frame.slotInfoFrame then
+                    frame.slotInfoFrame:ClearAllPoints()
+                    frame.slotInfoFrame:SetPoint("LEFT", keyringButton, "RIGHT", 0, 0)
+                end
             else
-                Hearthstone:SetAnchor(bagAnchor)
+                -- Position slot counter after bag slots
+                if frame.slotInfoFrame then
+                    frame.slotInfoFrame:ClearAllPoints()
+                    frame.slotInfoFrame:SetPoint("LEFT", bagAnchor, "RIGHT", 0, 0)
+                end
             end
         end
     end
@@ -238,12 +281,6 @@ end
 function Footer:UpdateBagSlots()
     if BagSlots then
         BagSlots:Update()
-    end
-end
-
-function Footer:UpdateHearthstone()
-    if Hearthstone then
-        Hearthstone:Update()
     end
 end
 
@@ -346,9 +383,6 @@ function Footer:ShowCached(characterFullName)
         Keyring:SetAnchor(lastAnchor)
         Keyring:Show()
     end
-
-    -- Hide hearthstone (not relevant for cached views)
-    Hearthstone:Hide()
 
     -- Show and update money for the cached character
     Money:Show()

@@ -100,6 +100,10 @@ local function ReleaseAllCategoryHeaders()
     categoryHeaders = {}
 end
 
+-- Separate container for secure item buttons - NOT a child of the bag frame
+-- This prevents the bag frame from becoming protected
+local secureButtonContainer = nil
+
 local function CreateBagFrame()
     local f = CreateFrame("Frame", "GudaBagsBagFrame", UIParent, "BackdropTemplate")
     f:SetSize(400, 300)
@@ -124,6 +128,15 @@ local function CreateBagFrame()
     f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
     f:Hide()
 
+    -- Create separate secure button container as child of UIParent (not f)
+    -- This prevents f from becoming protected when secure buttons are added
+    if not secureButtonContainer then
+        secureButtonContainer = CreateFrame("Frame", "GudaBagsSecureContainer", UIParent)
+        secureButtonContainer:SetFrameStrata("HIGH")
+        secureButtonContainer:SetFrameLevel(51)  -- Above the bag frame
+        secureButtonContainer:Hide()  -- Start hidden
+    end
+
     -- Initialize header component
     f.titleBar = Header:Init(f)
     Header:SetDragCallback(SaveFramePosition)
@@ -134,10 +147,15 @@ local function CreateBagFrame()
         BagFrame:Refresh()
     end)
 
-    local container = CreateFrame("Frame", nil, f)
-    container:SetPoint("TOPLEFT", f, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-    container:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
-    f.container = container
+    -- Use the separate secure button container instead of creating one as child of f
+    -- This keeps f unprotected so it can be shown during combat
+    secureButtonContainer:SetPoint("TOPLEFT", f, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
+    secureButtonContainer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+    f.container = secureButtonContainer
+
+    -- Sync secure container visibility with main frame
+    f:HookScript("OnShow", function() secureButtonContainer:Show() end)
+    f:HookScript("OnHide", function() secureButtonContainer:Hide() end)
 
     -- Initialize footer component
     f.footer = Footer:Init(f)
@@ -1508,13 +1526,6 @@ Events:Register("PLAYER_MONEY", function()
     end
 end, BagFrame)
 
--- Update hearthstone cooldown
-Events:Register("BAG_UPDATE_COOLDOWN", function()
-    if frame and frame:IsShown() then
-        Footer:UpdateHearthstone()
-    end
-end, BagFrame)
-
 -- Update item lock state (when picking up/putting down items)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only
@@ -1573,6 +1584,15 @@ Events:Register("BANKFRAME_CLOSED", RefreshForInteractionWindow, BagFrame)
 Events:OnPlayerLogin(function()
     isInitialized = true
     ns:Print(string.format(L["ADDON_LOADED"], ns.version))
+
+    -- Pre-create the bag frame and pre-warm item button pool
+    -- This must happen before combat to avoid taint issues when opening bags during combat
+    -- (ContainerFrameItemButtonTemplate is a secure template that cannot be created during combat)
+    if not frame then
+        frame = CreateBagFrame()
+        RestoreFramePosition()
+    end
+    ItemButton:PreWarm(frame.container, 200)
 
     -- Override default bag functions to use GudaBags
     ToggleBackpack = function()
