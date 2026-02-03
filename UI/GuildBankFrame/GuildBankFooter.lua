@@ -307,6 +307,7 @@ end
 
 local guildBankPopup = nil
 local currentPopupTab = "log"
+local currentGuildTab = 1  -- Selected guild bank tab for Log/Info
 
 local function CreateGuildBankPopup()
     local popup = CreateFrame("Frame", "GudaGuildBankPopup", UIParent, "BackdropTemplate")
@@ -348,10 +349,19 @@ local function CreateGuildBankPopup()
     closeBtn:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -2, -2)
     closeBtn:SetScript("OnClick", function() popup:Hide() end)
 
-    -- Scroll frame for content (tabs are now outside frame, so less bottom padding needed)
+    -- Internal footer for guild tab buttons (inside the popup)
+    local internalFooter = CreateFrame("Frame", nil, popup)
+    internalFooter:SetHeight(28)
+    internalFooter:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", 8, 8)
+    internalFooter:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -8, 8)
+    popup.internalFooter = internalFooter
+    internalFooter:Hide()  -- Hidden by default, shown for Log/Info
+
+    -- Scroll frame for content (leaves room for internal footer when visible)
     local scrollFrame = CreateFrame("ScrollFrame", "GudaGuildBankPopupScrollFrame", popup, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", popup, "TOPLEFT", 8, -32)
     scrollFrame:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -28, 10)
+    popup.scrollFrame = scrollFrame
 
     local content = CreateFrame("Frame", "GudaGuildBankPopupContent", scrollFrame)
     content:SetSize(410, 1)
@@ -428,6 +438,63 @@ local function CreateGuildBankPopup()
         info = infoTab,
     }
 
+    -- Guild tab buttons (inside internal footer, shown for Log/Info)
+    popup.guildTabButtons = {}
+    local GUILD_TAB_SIZE = 26
+
+    local function CreateGuildTabButton(index)
+        local btn = CreateFrame("Button", nil, internalFooter, "BackdropTemplate")
+        btn:SetSize(GUILD_TAB_SIZE, GUILD_TAB_SIZE)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 8,
+            insets = {left = 1, right = 1, top = 1, bottom = 1},
+        })
+        btn:SetBackdropColor(0.12, 0.12, 0.12, 0.95)
+        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        btn.tabIndex = index
+
+        local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        text:SetPoint("CENTER")
+        text:SetText(tostring(index))
+        text:SetTextColor(0.7, 0.7, 0.7)
+        btn.text = text
+
+        btn:SetScript("OnClick", function(self)
+            currentGuildTab = self.tabIndex
+            GuildBankFooter:UpdateGuildTabSelection()
+            GuildBankFooter:UpdatePopupContent()
+        end)
+
+        btn:SetScript("OnEnter", function(self)
+            local scanner = ns:GetModule("GuildBankScanner")
+            local tabInfo = scanner and scanner:GetTabInfo(self.tabIndex)
+            if tabInfo and tabInfo.name then
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(tabInfo.name)
+                GameTooltip:Show()
+            end
+        end)
+
+        btn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
+        return btn
+    end
+
+    -- Create up to 8 guild tab buttons
+    for i = 1, 8 do
+        local btn = CreateGuildTabButton(i)
+        if i == 1 then
+            btn:SetPoint("LEFT", internalFooter, "LEFT", 0, 0)
+        else
+            btn:SetPoint("LEFT", popup.guildTabButtons[i-1], "RIGHT", 2, 0)
+        end
+        popup.guildTabButtons[i] = btn
+    end
+
     popup:Hide()
     tinsert(UISpecialFrames, "GudaGuildBankPopup")
 
@@ -459,7 +526,73 @@ function GuildBankFooter:UpdatePopupTabs()
             btn.text:SetTextColor(0.7, 0.7, 0.7)
         end
     end
+
+    -- Show/hide guild tab bar based on current popup tab
+    self:UpdateGuildTabBar()
     ns:Debug("UpdatePopupTabs done")
+end
+
+function GuildBankFooter:UpdateGuildTabBar()
+    if not guildBankPopup or not guildBankPopup.guildTabButtons then return end
+
+    -- Show guild tab buttons only for Log and Info tabs
+    local showGuildTabs = (currentPopupTab == "log" or currentPopupTab == "info")
+
+    -- Get available tabs from scanner
+    local scanner = ns:GetModule("GuildBankScanner")
+    local numTabs = 0
+    if scanner then
+        local cachedTabInfo = scanner:GetCachedTabInfo()
+        if cachedTabInfo then
+            for tabIndex, _ in pairs(cachedTabInfo) do
+                if type(tabIndex) == "number" and tabIndex > numTabs then
+                    numTabs = tabIndex
+                end
+            end
+        end
+    end
+
+    -- Default to at least 1 tab if none found
+    if numTabs == 0 then numTabs = 1 end
+
+    -- Show/hide internal footer and adjust scroll frame
+    if guildBankPopup.internalFooter and guildBankPopup.scrollFrame then
+        if showGuildTabs and numTabs > 1 then
+            guildBankPopup.internalFooter:Show()
+            guildBankPopup.scrollFrame:SetPoint("BOTTOMRIGHT", guildBankPopup, "BOTTOMRIGHT", -28, 38)
+        else
+            guildBankPopup.internalFooter:Hide()
+            guildBankPopup.scrollFrame:SetPoint("BOTTOMRIGHT", guildBankPopup, "BOTTOMRIGHT", -28, 10)
+        end
+    end
+
+    -- Show/hide tab buttons
+    for i, btn in ipairs(guildBankPopup.guildTabButtons) do
+        if showGuildTabs and i <= numTabs then
+            btn:Show()
+        else
+            btn:Hide()
+        end
+    end
+
+    -- Update selection
+    self:UpdateGuildTabSelection()
+end
+
+function GuildBankFooter:UpdateGuildTabSelection()
+    if not guildBankPopup or not guildBankPopup.guildTabButtons then return end
+
+    for i, btn in ipairs(guildBankPopup.guildTabButtons) do
+        if i == currentGuildTab then
+            btn:SetBackdropColor(0.15, 0.15, 0.15, 0.95)
+            btn:SetBackdropBorderColor(1, 0.82, 0, 1)  -- Gold border
+            btn.text:SetTextColor(1, 0.82, 0)  -- Gold text
+        else
+            btn:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+            btn:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+            btn.text:SetTextColor(0.7, 0.7, 0.7)
+        end
+    end
 end
 
 function GuildBankFooter:UpdatePopupContent()
@@ -500,7 +633,7 @@ end
 local pendingTabLogRefresh = false
 
 function GuildBankFooter:PopulateLogContent(content)
-    local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 1
+    local selectedTab = currentGuildTab or 1
     if selectedTab == 0 then selectedTab = 1 end
 
     QueryGuildBankLog(selectedTab)
@@ -517,7 +650,8 @@ function GuildBankFooter:PopulateLogContent(content)
         end)
     end
 
-    local tabInfo = GuildBankScanner and GuildBankScanner:GetTabInfo(selectedTab)
+    local scanner = ns:GetModule("GuildBankScanner")
+    local tabInfo = scanner and scanner:GetTabInfo(selectedTab)
     local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
     guildBankPopup.titleText:SetText("Guild Bank Log - " .. tabName)
 
@@ -661,12 +795,13 @@ function GuildBankFooter:PopulateMoneyLogContent(content)
 end
 
 function GuildBankFooter:PopulateInfoContent(content)
-    local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 1
+    local selectedTab = currentGuildTab or 1
     if selectedTab == 0 then selectedTab = 1 end
 
     QueryGuildBankText(selectedTab)
 
-    local tabInfo = GuildBankScanner and GuildBankScanner:GetTabInfo(selectedTab)
+    local scanner = ns:GetModule("GuildBankScanner")
+    local tabInfo = scanner and scanner:GetTabInfo(selectedTab)
     local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
     guildBankPopup.titleText:SetText("Guild Bank Info - " .. tabName)
 
@@ -731,6 +866,12 @@ function GuildBankFooter:ShowLogPopup()
     if not guildBankPopup then
         guildBankPopup = CreateGuildBankPopup()
     end
+    -- Initialize guild tab from scanner if not set
+    local scanner = ns:GetModule("GuildBankScanner")
+    local selectedTab = scanner and scanner:GetSelectedTab() or 1
+    if selectedTab > 0 then
+        currentGuildTab = selectedTab
+    end
     currentPopupTab = "log"
     self:UpdatePopupTabs()
     self:UpdatePopupContent()
@@ -770,6 +911,12 @@ end
 function GuildBankFooter:ShowInfoPopup()
     if not guildBankPopup then
         guildBankPopup = CreateGuildBankPopup()
+    end
+    -- Initialize guild tab from scanner if not set
+    local scanner = ns:GetModule("GuildBankScanner")
+    local selectedTab = scanner and scanner:GetSelectedTab() or 1
+    if selectedTab > 0 then
+        currentGuildTab = selectedTab
     end
     currentPopupTab = "info"
     self:UpdatePopupTabs()
