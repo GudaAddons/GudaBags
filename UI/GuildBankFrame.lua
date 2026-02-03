@@ -837,6 +837,12 @@ ns.OnGuildBankOpened = function()
     end
 
     GuildBankFrame:Show()
+
+    -- Refresh bags to update stacking (unstack when interaction window opens)
+    local BagFrameModule = ns:GetModule("BagFrame")
+    if BagFrameModule and BagFrameModule:IsShown() then
+        BagFrameModule:Refresh()
+    end
 end
 
 -- Called when guild bank is closed
@@ -860,6 +866,12 @@ ns.OnGuildBankClosed = function()
         -- Restore position (it will be repositioned when opened again anyway)
         blizzardGuildBank:ClearAllPoints()
         blizzardGuildBank:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
+    end
+
+    -- Refresh bags to update stacking (re-stack when interaction window closes)
+    local BagFrameModule = ns:GetModule("BagFrame")
+    if BagFrameModule and BagFrameModule:IsShown() then
+        BagFrameModule:Refresh()
     end
 end
 
