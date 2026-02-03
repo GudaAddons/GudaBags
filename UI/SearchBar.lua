@@ -14,8 +14,8 @@ local function CreateSearchOverlay()
 
     local overlay = CreateFrame("Button", "GudaBagsSearchOverlay", UIParent)
     overlay:SetAllPoints(UIParent)
-    overlay:SetFrameStrata("DIALOG")
-    overlay:SetFrameLevel(1)
+    overlay:SetFrameStrata("FULLSCREEN_DIALOG")
+    overlay:SetFrameLevel(100)
     overlay:EnableMouse(true)
     overlay:Hide()
 
@@ -140,7 +140,15 @@ local function CreateSearchBar(parent)
         searchOverlay:Show()
     end)
 
-    searchBox:HookScript("OnEditFocusLost", function()
+    searchBox:HookScript("OnEditFocusLost", function(self)
+        -- Clear search when clicking away (unless Enter was pressed to keep filter)
+        -- The overlay click also clears, but this handles other focus loss cases
+        if searchOverlay:IsShown() then
+            -- Focus lost while overlay is shown = user clicked on overlay, let overlay handle it
+        else
+            -- Focus lost by other means (tab, clicking a button, etc.) - but overlay should have caught it
+            -- This is a fallback in case overlay didn't catch the click
+        end
         searchOverlay:Hide()
     end)
 

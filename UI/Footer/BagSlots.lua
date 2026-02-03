@@ -14,6 +14,42 @@ local bagFlyout = nil
 local bagFlyoutExpanded = false
 local mainBagFrame = nil
 local viewingCharacter = nil
+local onBagVisibilityChanged = nil  -- Callback when bag visibility changes
+
+-- Helper to get hidden bags from database
+local function GetHiddenBags()
+    local db = GetDatabase()
+    if db then
+        return db:GetSetting("hiddenBags") or {}
+    end
+    return {}
+end
+
+-- Helper to set hidden bags in database
+local function SetHiddenBags(hiddenBags)
+    local db = GetDatabase()
+    if db then
+        db:SetSetting("hiddenBags", hiddenBags)
+    end
+end
+
+-- Check if a bag is hidden
+local function IsBagHidden(bagID)
+    local hiddenBags = GetHiddenBags()
+    return hiddenBags[bagID] == true
+end
+
+-- Toggle bag visibility
+local function ToggleBagVisibility(bagID)
+    local hiddenBags = GetHiddenBags()
+    if hiddenBags[bagID] then
+        hiddenBags[bagID] = nil
+    else
+        hiddenBags[bagID] = true
+    end
+    SetHiddenBags(hiddenBags)
+    return not hiddenBags[bagID]  -- Return new visibility state (true = visible)
+end
 
 local function CreateBagSlotButton(parent, bagID, bagSlotSize)
     local bagSlot = CreateFrame("Button", "GudaBagsBagSlot" .. bagID, parent, "BackdropTemplate")
@@ -48,11 +84,22 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
         else
             GameTooltip:SetInventoryItem("player", C_Container.ContainerIDToInventoryID(self.bagID))
         end
+
+        -- Show right-click hint for hiding bags (only in single view mode)
+        local viewType = GetDatabase():GetSetting("bagViewType") or "single"
+        if viewType == "single" and not viewingCharacter then
+            local isHidden = IsBagHidden(self.bagID)
+            if isHidden then
+                GameTooltip:AddLine(ns.L["RIGHT_CLICK_SHOW_BAG"] or "Right-click to show bag", 0.7, 0.7, 0.7)
+            else
+                GameTooltip:AddLine(ns.L["RIGHT_CLICK_HIDE_BAG"] or "Right-click to hide bag", 0.7, 0.7, 0.7)
+            end
+        end
         GameTooltip:Show()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:HighlightBagSlots(self.bagID)
+        if ItemButton and mainBagFrame and mainBagFrame.container then
+            ItemButton:HighlightBagSlots(self.bagID, mainBagFrame.container)
         end
     end)
 
@@ -60,12 +107,26 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
         GameTooltip:Hide()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:ClearHighlightedSlots(mainBagFrame)
+        if ItemButton and mainBagFrame and mainBagFrame.container then
+            ItemButton:ResetAllAlpha(mainBagFrame.container)
         end
     end)
 
-    bagSlot:SetScript("OnClick", function(self)
+    bagSlot:SetScript("OnClick", function(self, button)
+        -- Right-click to toggle bag visibility (only in single view mode, not for backpack)
+        if button == "RightButton" then
+            local viewType = GetDatabase():GetSetting("bagViewType") or "single"
+            if viewType == "single" and not viewingCharacter then
+                ToggleBagVisibility(self.bagID)
+                BagSlots:UpdateBagVisualState(self)
+                if onBagVisibilityChanged then
+                    onBagVisibilityChanged()
+                end
+            end
+            return
+        end
+
+        -- Left-click: pickup bag (not backpack)
         if self.bagID ~= 0 then
             local invID = C_Container.ContainerIDToInventoryID(self.bagID)
             if IsModifiedClick("PICKUPITEM") then
@@ -260,6 +321,8 @@ function BagSlots:Update()
                 bagSlot.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
             end
         end
+        -- Apply visual state for hidden bags
+        self:UpdateBagVisualState(bagSlot)
     end
 
     -- Update main bag slot icon
@@ -301,6 +364,8 @@ function BagSlots:UpdateFlyout()
         else
             bagSlot.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
         end
+        -- Apply visual state for hidden bags
+        self:UpdateBagVisualState(bagSlot)
     end
 end
 
@@ -340,4 +405,52 @@ end
 
 function BagSlots:GetFrame()
     return frame
+end
+
+-- Update visual state for a bag slot based on hidden status
+function BagSlots:UpdateBagVisualState(bagSlot)
+    if not bagSlot then return end
+
+    local viewType = GetDatabase():GetSetting("bagViewType") or "single"
+    local isHidden = IsBagHidden(bagSlot.bagID)
+
+    -- Only apply hidden visual in single view mode and when not viewing another character
+    if viewType == "single" and not viewingCharacter and isHidden then
+        bagSlot.icon:SetDesaturated(true)
+        bagSlot.icon:SetAlpha(0.4)
+    else
+        bagSlot.icon:SetDesaturated(false)
+        bagSlot.icon:SetAlpha(1.0)
+    end
+end
+
+-- Update all bag slot visual states
+function BagSlots:UpdateAllVisualStates()
+    if not frame or not frame.bagSlots then return end
+
+    for _, bagSlot in ipairs(frame.bagSlots) do
+        self:UpdateBagVisualState(bagSlot)
+    end
+
+    -- Also update flyout if visible
+    if bagFlyout and bagFlyout.bagSlots then
+        for _, bagSlot in ipairs(bagFlyout.bagSlots) do
+            self:UpdateBagVisualState(bagSlot)
+        end
+    end
+end
+
+-- Set callback for when bag visibility changes
+function BagSlots:SetVisibilityCallback(callback)
+    onBagVisibilityChanged = callback
+end
+
+-- Public: Check if a bag is hidden
+function BagSlots:IsBagHidden(bagID)
+    return IsBagHidden(bagID)
+end
+
+-- Public: Get all hidden bag IDs
+function BagSlots:GetHiddenBags()
+    return GetHiddenBags()
 end

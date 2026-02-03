@@ -341,6 +341,12 @@ function Footer:IsSoulBagVisible()
     return true  -- Default to showing soul bags when module not available
 end
 
+function Footer:SetBagVisibilityCallback(callback)
+    if BagSlots then
+        BagSlots:SetVisibilityCallback(callback)
+    end
+end
+
 function Footer:GetFrame()
     return frame
 end

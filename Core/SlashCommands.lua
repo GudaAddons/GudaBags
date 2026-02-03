@@ -197,6 +197,40 @@ commandHandlers["locale"] = function()
     ns:Print("Available: " .. table.concat(ns:GetAvailableLocales(), ", "))
 end
 
+-- Status - show expansion and feature detection info
+commandHandlers["status"] = function()
+    local Expansion = ns:GetModule("Expansion")
+    local Constants = ns.Constants
+
+    ns:Print("=== GudaBags Status ===")
+    ns:Print("Version: " .. (ns.version or "unknown"))
+
+    if Expansion then
+        ns:Print("Interface: " .. (Expansion.InterfaceVersion or "unknown"))
+        ns:Print("IsRetail: " .. tostring(Expansion.IsRetail))
+        ns:Print("IsClassicEra: " .. tostring(Expansion.IsClassicEra))
+        ns:Print("IsTBC: " .. tostring(Expansion.IsTBC))
+        ns:Print("IsMoP: " .. tostring(Expansion.IsMoP))
+    else
+        ns:Print("Expansion module: NOT LOADED")
+    end
+
+    if Constants and Constants.FEATURES then
+        ns:Print("Features:")
+        for k, v in pairs(Constants.FEATURES) do
+            ns:Print("  " .. k .. ": " .. tostring(v))
+        end
+    else
+        ns:Print("Constants.FEATURES: NOT LOADED")
+    end
+
+    -- Check if modules are registered
+    local scanner = ns:GetModule("GuildBankScanner")
+    local gbFrame = ns:GetModule("GuildBankFrame")
+    ns:Print("GuildBankScanner: " .. (scanner and "loaded" or "NOT LOADED"))
+    ns:Print("GuildBankFrame: " .. (gbFrame and "loaded" or "NOT LOADED"))
+end
+
 -- Help
 commandHandlers["help"] = function()
     ns:Print(L["CMD_COMMANDS"])
@@ -210,6 +244,7 @@ commandHandlers["help"] = function()
     ns:Print("  " .. L["CMD_HELP_DEBUG"])
     ns:Print("  " .. L["CMD_HELP_HELP"])
     ns:Print("  /guda locale [code|reset] - Test locale")
+    ns:Print("  /guda status - Show expansion/feature detection")
 end
 
 -------------------------------------------------

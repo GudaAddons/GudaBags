@@ -54,6 +54,3 @@ ns.IsTBC = Expansion.IsTBC
 ns.IsMoP = Expansion.IsMoP
 ns.ExpansionFeatures = Expansion.Features
 
--- Debug output (always print for troubleshooting)
-print(string.format("|cff00ccff[GudaBags]|r Expansion Detection: IsRetail=%s, IsClassicEra=%s, IsTBC=%s, IsMoP=%s, Interface=%d",
-    tostring(Expansion.IsRetail), tostring(Expansion.IsClassicEra), tostring(Expansion.IsTBC), tostring(Expansion.IsMoP), interfaceVersion))

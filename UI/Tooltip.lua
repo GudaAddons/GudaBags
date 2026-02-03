@@ -95,11 +95,20 @@ function Tooltip:ShowForItem(button)
 
     local bagID = button.itemData.bagID
     local slot = button.itemData.slot
-    local link = button.itemData.link
+    local link = button.itemData.link or button.itemData.itemLink
     local isKeyring = bagID == -2
     local isBankItem = bagID == -1 or (bagID >= 5 and bagID <= 11)
+    local isGuildBank = button.itemData.isGuildBank
 
-    if button.isReadOnly or isKeyring then
+    if isGuildBank then
+        -- Guild bank items - use SetGuildBankItem if at bank, otherwise hyperlink
+        local GuildBankScanner = ns:GetModule("GuildBankScanner")
+        if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() and GameTooltip.SetGuildBankItem then
+            GameTooltip:SetGuildBankItem(bagID, slot)  -- bagID is tab index for guild bank
+        elseif link then
+            GameTooltip:SetHyperlink(link)
+        end
+    elseif button.isReadOnly or isKeyring then
         -- Cached items and keyring use hyperlink
         if link then
             GameTooltip:SetHyperlink(link)

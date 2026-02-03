@@ -117,9 +117,25 @@ local function CreateBagFrame()
     -- Raise frame above BankFrame when clicked
     f:SetScript("OnMouseDown", function(self)
         self:SetFrameLevel(60)
+        -- Keep secure container above frame backdrop
+        if self.container then
+            self.container:SetFrameLevel(61)
+        end
+
         local BankFrameModule = ns:GetModule("BankFrame")
         if BankFrameModule and BankFrameModule:GetFrame() then
             BankFrameModule:GetFrame():SetFrameLevel(50)
+            if BankFrameModule:GetFrame().container then
+                BankFrameModule:GetFrame().container:SetFrameLevel(51)
+            end
+        end
+    end)
+
+    -- Ensure container stays above frame backdrop when mouse enters
+    f:SetScript("OnEnter", function(self)
+        if self.container then
+            local frameLevel = self:GetFrameLevel()
+            self.container:SetFrameLevel(frameLevel + 1)
         end
     end)
     f:SetBackdrop(Constants.BACKDROP)
@@ -163,6 +179,9 @@ local function CreateBagFrame()
         BagFrame:Refresh()
     end)
     Footer:SetSoulBagCallback(function(isVisible)
+        BagFrame:Refresh()
+    end)
+    Footer:SetBagVisibilityCallback(function()
         BagFrame:Refresh()
     end)
     Footer:SetBackCallback(function()
@@ -266,6 +285,21 @@ function BagFrame:Refresh()
     local showKeyring = Footer:IsKeyringVisible()
     local showSoulBag = Footer:IsSoulBagVisible()
     local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag)
+
+    -- Filter out hidden bags in single view mode (not when viewing cached character)
+    if viewType == "single" and not isViewingCached then
+        local BagSlots = ns:GetModule("Footer.BagSlots")
+        if BagSlots then
+            local filteredBags = {}
+            for _, bagInfo in ipairs(bagsToShow) do
+                -- bagsToShow contains objects like {bagID = 0, needsSpacing = false}
+                if not BagSlots:IsBagHidden(bagInfo.bagID) then
+                    table.insert(filteredBags, bagInfo)
+                end
+            end
+            bagsToShow = filteredBags
+        end
+    end
 
     if viewType == "category" then
         self:RefreshCategoryView(bags, bagsToShow, settings, searchText, isViewingCached)

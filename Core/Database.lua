@@ -326,6 +326,75 @@ function Database:GetWarbandBankTabs()
     return nil
 end
 
+-------------------------------------------------
+-- Guild Bank (TBC and later)
+-------------------------------------------------
+
+function Database:SaveGuildBank(guildName, guildBankData)
+    if not GudaBags_DB then return end
+    if not guildName then return end
+
+    if not GudaBags_DB.guildBanks then
+        GudaBags_DB.guildBanks = {}
+    end
+
+    GudaBags_DB.guildBanks[guildName] = guildBankData
+    GudaBags_DB.guildBanks[guildName].lastUpdate = time()
+end
+
+function Database:GetGuildBank(guildName)
+    if not GudaBags_DB or not GudaBags_DB.guildBanks then return nil end
+    if not guildName then return nil end
+
+    return GudaBags_DB.guildBanks[guildName]
+end
+
+function Database:GetNormalizedGuildBank(guildName)
+    local guildBankData = self:GetGuildBank(guildName)
+    if not guildBankData then return nil end
+
+    if not guildBankData.tabs then return nil end
+
+    -- Normalize tab data (numeric keys may be stored as strings in SavedVariables)
+    local normalized = {}
+    for tabKey, tabData in pairs(guildBankData.tabs) do
+        if type(tabData) == "table" then
+            local normalizedTabIndex = tonumber(tabKey) or tabKey
+            local normalizedTab = {
+                tabIndex = tabData.tabIndex,
+                name = tabData.name,
+                icon = tabData.icon,
+                numSlots = tabData.numSlots,
+                freeSlots = tabData.freeSlots,
+                slots = {},
+            }
+            if tabData.slots then
+                for slotKey, slotData in pairs(tabData.slots) do
+                    normalizedTab.slots[tonumber(slotKey) or slotKey] = slotData
+                end
+            end
+            normalized[normalizedTabIndex] = normalizedTab
+        end
+    end
+
+    return normalized
+end
+
+function Database:GetGuildBankTabInfo(guildName)
+    local guildBankData = self:GetGuildBank(guildName)
+    if guildBankData and guildBankData.tabInfo then
+        return guildBankData.tabInfo
+    end
+    return nil
+end
+
+function Database:GetAllGuildBanks()
+    if not GudaBags_DB or not GudaBags_DB.guildBanks then
+        return {}
+    end
+    return GudaBags_DB.guildBanks
+end
+
 function Database:SaveMoney(copper)
     local charData = self:GetCurrentCharacter()
     if not charData then return end

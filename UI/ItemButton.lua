@@ -235,6 +235,19 @@ local function CreateButton(parent)
     -- Only register for mouse up to prevent double-firing
     -- The template fires on both MouseDown and MouseUp with AnyDown, causing items to be used twice
     button:RegisterForClicks("AnyUp")
+    -- Enable drag for all items including guild bank
+    button:RegisterForDrag("LeftButton")
+
+    -- Handle drag start for guild bank items (hook to preserve template behavior for regular items)
+    button:HookScript("OnDragStart", function(self)
+        if self.itemData and self.itemData.isGuildBank and not self.isReadOnly then
+            local tabIndex = self.itemData.bagID
+            local slotIndex = self.itemData.slot
+            if self.itemData.itemID then  -- Only drag if there's an item
+                PickupGuildBankItem(tabIndex, slotIndex)
+            end
+        end
+    end)
 
     -- Hide template's built-in visual elements (we use our own)
     local normalTex = button:GetNormalTexture()
@@ -590,14 +603,39 @@ local function CreateButton(parent)
     end
 
     -- Ctrl+Alt+Click to track/untrack items
+    -- Also handle guild bank item clicks
     button:HookScript("OnClick", function(self, mouseButton)
         -- Wrap in pcall to prevent errors from breaking item interaction
         local success, err = pcall(function()
+            -- Track/untrack with Ctrl+Alt+Click
             if mouseButton == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
                 if self.itemData and self.itemData.itemID then
                     local TrackedBar = ns:GetModule("TrackedBar")
                     if TrackedBar then
                         TrackedBar:ToggleTrackItem(self.itemData.itemID)
+                    end
+                end
+                return
+            end
+
+            -- Handle guild bank items (not handled by ContainerFrameItemButtonTemplate)
+            if self.itemData and self.itemData.isGuildBank and not self.isReadOnly then
+                local tabIndex = self.itemData.bagID  -- bagID is actually tabIndex for guild bank
+                local slotIndex = self.itemData.slot
+
+                if mouseButton == "LeftButton" then
+                    if IsShiftKeyDown() and self.itemData.count and self.itemData.count > 1 then
+                        -- Split stack
+                        OpenStackSplitFrame(self.itemData.count, self, "BOTTOMLEFT", "TOPLEFT")
+                    else
+                        -- Pick up / place item
+                        PickupGuildBankItem(tabIndex, slotIndex)
+                    end
+                elseif mouseButton == "RightButton" then
+                    -- Right-click to auto-move to bags (if at guild bank)
+                    local GuildBankScanner = ns:GetModule("GuildBankScanner")
+                    if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
+                        AutoStoreGuildBankItem(tabIndex, slotIndex)
                     end
                 end
             end
@@ -606,6 +644,15 @@ local function CreateButton(parent)
             ns:Print("OnClick error: " .. tostring(err))
         end
     end)
+
+    -- Handle stack split for guild bank items
+    button.SplitStack = function(self, amount)
+        if self.itemData and self.itemData.isGuildBank and not self.isReadOnly then
+            local tabIndex = self.itemData.bagID
+            local slotIndex = self.itemData.slot
+            SplitGuildBankItem(tabIndex, slotIndex, amount)
+        end
+    end
 
     -- Helper function to check if dragged item is in same category as target
     local function IsSameCategoryDrop(targetButton)
@@ -666,42 +713,59 @@ local function CreateButton(parent)
 
     -- Custom OnReceiveDrag to prevent swapping items within the same category
     -- Also handles pseudo-item buttons to place items in current empty slot
-    -- NOTE: On Retail, don't replace the secure OnReceiveDrag handler
-    if not ns.IsRetail then
-        local originalReceiveDrag = button:GetScript("OnReceiveDrag")
-        button:SetScript("OnReceiveDrag", function(self)
-            -- For pseudo-item buttons (Empty/Soul), find current empty slot
-            if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
-                local cursorType = GetCursorInfo()
-                if cursorType == "item" then
-                    local newBagID, newSlotID = FindCurrentEmptySlot(self)
-                    if newBagID and newSlotID then
-                        -- Place item in the current first empty slot
-                        C_Container.PickupContainerItem(newBagID, newSlotID)
-                    end
+    -- Also handles guild bank items
+    local originalReceiveDrag = button:GetScript("OnReceiveDrag")
+    button:SetScript("OnReceiveDrag", function(self)
+        -- Handle guild bank items (works on both Classic and Retail)
+        if self.itemData and self.itemData.isGuildBank and not self.isReadOnly then
+            local cursorType = GetCursorInfo()
+            if cursorType == "item" then
+                local tabIndex = self.itemData.bagID
+                local slotIndex = self.itemData.slot
+                PickupGuildBankItem(tabIndex, slotIndex)
+            end
+            return
+        end
+
+        -- For pseudo-item buttons (Empty/Soul), find current empty slot
+        if self.isEmptySlotButton or (self.itemData and self.itemData.isEmptySlots) then
+            local cursorType = GetCursorInfo()
+            if cursorType == "item" then
+                local newBagID, newSlotID = FindCurrentEmptySlot(self)
+                if newBagID and newSlotID then
+                    -- Place item in the current first empty slot
+                    C_Container.PickupContainerItem(newBagID, newSlotID)
                 end
-                return
             end
+            return
+        end
 
-            -- If same category drop, prevent the swap
-            if IsSameCategoryDrop(self) then
-                ClearCursor()
-                return
-            end
-
-            -- Allow normal swap (different categories or non-category view)
+        -- On Retail, let secure handler deal with regular bag items
+        if ns.IsRetail then
             if originalReceiveDrag then
                 originalReceiveDrag(self)
-            else
-                -- Fallback: manually do the pickup/place
-                local bagID = self:GetParent():GetID()
-                local slotID = self:GetID()
-                if bagID and slotID and bagID >= 0 then
-                    C_Container.PickupContainerItem(bagID, slotID)
-                end
             end
-        end)
-    end
+            return
+        end
+
+        -- If same category drop, prevent the swap
+        if IsSameCategoryDrop(self) then
+            ClearCursor()
+            return
+        end
+
+        -- Allow normal swap (different categories or non-category view)
+        if originalReceiveDrag then
+            originalReceiveDrag(self)
+        else
+            -- Fallback: manually do the pickup/place
+            local bagID = self:GetParent():GetID()
+            local slotID = self:GetID()
+            if bagID and slotID and bagID >= 0 then
+                C_Container.PickupContainerItem(bagID, slotID)
+            end
+        end
+    end)
 
     return button
 end
@@ -785,10 +849,9 @@ function ItemButton:PreWarm(parent, count)
         button.wrapper:SetParent(parent)
     end
 
-    -- Release all back to pool so they're available for use (matches Baganator's pattern)
+    -- Release all back to pool so they're available for use
     buttonPool:ReleaseAll()
 
-    print("|cff00ff00GudaBags:|r Pre-warmed", count, "item buttons for combat support")
 end
 
 -- Cached settings for batch updates (set by SetItemBatch or refreshed on demand)
@@ -1062,7 +1125,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     end
 end
 
-function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly)
+function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     -- Hide Blizzard template's built-in textures (they may re-show from events)
     if button.IconBorder then button.IconBorder:Hide() end
     if button.IconOverlay then button.IconOverlay:Hide() end
@@ -1071,7 +1134,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly)
     local normalTex = button:GetNormalTexture()
     if normalTex then normalTex:Hide() end
 
-    button.itemData = {bagID = bagID, slot = slot}
+    button.itemData = {bagID = bagID, slot = slot, isGuildBank = isGuildBank or false}
     button.isReadOnly = isReadOnly or false
 
     -- Set IDs for ContainerFrameItemButtonTemplate's secure click handler
@@ -1152,12 +1215,15 @@ function ItemButton:GetActiveButtons()
     return buttonPool:EnumerateActive()
 end
 
-function ItemButton:HighlightBagSlots(bagID)
+function ItemButton:HighlightBagSlots(bagID, owner)
     if not buttonPool then return end
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
 
     for button in buttonPool:EnumerateActive() do
-        if button.itemData and button.itemData.bagID == bagID then
+        -- Only affect buttons belonging to the specified owner (if provided)
+        if owner and button.owner ~= owner then
+            -- Skip buttons from other frames
+        elseif button.itemData and button.itemData.bagID == bagID then
             button:SetAlpha(1.0)
             if button.slotBackground then
                 button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
@@ -1192,6 +1258,23 @@ function ItemButton:ClearHighlightedSlots(parentFrame)
                 end
             end
         else
+            button:SetAlpha(1.0)
+            if button.slotBackground then
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
+            end
+        end
+    end
+end
+
+-- Reset all button alphas unconditionally (no search filter check)
+-- If owner is specified, only reset buttons belonging to that owner
+function ItemButton:ResetAllAlpha(owner)
+    if not buttonPool then return end
+    local bgAlpha = Database:GetSetting("bgAlpha") / 100
+
+    for button in buttonPool:EnumerateActive() do
+        -- Only affect buttons belonging to the specified owner (if provided)
+        if not owner or button.owner == owner then
             button:SetAlpha(1.0)
             if button.slotBackground then
                 button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)

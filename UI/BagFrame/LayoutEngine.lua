@@ -20,6 +20,17 @@ local function IsInteractionWindowOpen()
         return true
     end
 
+    -- Guild Bank - check native Blizzard frame
+    if _G.GuildBankFrame and _G.GuildBankFrame:IsShown() then
+        return true
+    end
+
+    -- Also check our custom GuildBankFrame module
+    local GudaGuildBankFrame = ns:GetModule("GuildBankFrame")
+    if GudaGuildBankFrame and GudaGuildBankFrame:IsShown() then
+        return true
+    end
+
     -- Trade window
     if TradeFrame and TradeFrame:IsShown() then
         return true

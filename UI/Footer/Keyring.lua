@@ -71,8 +71,8 @@ function Keyring:Init(parent)
 
         if showKeyring then
             local ItemButton = ns:GetModule("ItemButton")
-            if ItemButton then
-                ItemButton:HighlightBagSlots(Constants.KEYRING_BAG_ID)
+            if ItemButton and mainBagFrame and mainBagFrame.container then
+                ItemButton:HighlightBagSlots(Constants.KEYRING_BAG_ID, mainBagFrame.container)
             end
         end
     end)
@@ -81,8 +81,8 @@ function Keyring:Init(parent)
         GameTooltip:Hide()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:ClearHighlightedSlots(mainBagFrame)
+        if ItemButton and mainBagFrame and mainBagFrame.container then
+            ItemButton:ResetAllAlpha(mainBagFrame.container)
         end
     end)
 

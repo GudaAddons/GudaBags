@@ -8,15 +8,29 @@ local Expansion = ns:GetModule("Expansion")
 
 -- Feature flags (enable/disable features during development)
 -- KEYRING is TBC-only (keyring was removed in later expansions)
+-- GUILD_BANK is available in TBC and later (introduced in TBC, interface 20000+)
+-- Not available in Classic Era (interface 11xxx)
+local isGuildBankSupported = false
+if Expansion and not Expansion.IsClassicEra then
+    -- Guild bank available in TBC+, check interface version >= 20000
+    if Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 20000 then
+        isGuildBankSupported = true
+    end
+end
+
 Constants.FEATURES = {
     BANK = true,
-    GUILD_BANK = false,
+    GUILD_BANK = isGuildBankSupported,
     MAIL = false,
     CHARACTERS = true,
     SEARCH = true,
     SORT = true,
     KEYRING = Expansion and Expansion.IsTBC or false,
 }
+
+-- Guild Bank Constants (TBC and later)
+Constants.GUILD_BANK_MAX_TABS = 6
+Constants.GUILD_BANK_SLOTS_PER_TAB = 98  -- 14 columns x 7 rows
 
 -- Bag ID Ranges (differ between retail and classic)
 Constants.PLAYER_BAG_MIN = 0
@@ -26,7 +40,6 @@ if Expansion and Expansion.IsRetail then
     Constants.REAGENT_BAG = 5  -- Retail only
     -- Check if modern bank tabs are active (TWW and later)
     Constants.CHARACTER_BANK_TABS_ACTIVE = Enum and Enum.BagIndex and Enum.BagIndex.CharacterBankTab_1 ~= nil
-    print("|cff00ccff[GudaBags]|r Bank Tabs Detection: CHARACTER_BANK_TABS_ACTIVE=" .. tostring(Constants.CHARACTER_BANK_TABS_ACTIVE))
     if Constants.CHARACTER_BANK_TABS_ACTIVE then
         -- Modern Retail: Each bank tab is a separate container
         Constants.BANK_BAG_MIN = Enum.BagIndex.CharacterBankTab_1
@@ -159,6 +172,7 @@ Constants.DEFAULTS = {
     -- General
     bagColumns = 10,
     bankColumns = 10,
+    guildBankColumns = 14,
     bgAlpha = 85,
     locked = false,
     showBorders = true,
@@ -202,6 +216,12 @@ Constants.DEFAULTS = {
     bankFrameRelativePoint = nil,
     bankFrameX = nil,
     bankFrameY = nil,
+
+    -- Guild Bank frame position
+    guildBankFramePoint = nil,
+    guildBankFrameRelativePoint = nil,
+    guildBankFrameX = nil,
+    guildBankFrameY = nil,
 }
 
 Constants.ICON = {

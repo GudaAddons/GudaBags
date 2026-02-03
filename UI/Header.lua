@@ -36,14 +36,25 @@ local function CreateHeader(parent)
 
     titleBar:SetScript("OnMouseDown", function(self, button)
         -- Raise parent frame above other bag/bank frames when clicked
+        -- BUT keep secure container above the frame backdrop
         parent:SetFrameLevel(60)
+        if parent.container then
+            parent.container:SetFrameLevel(61)
+        end
+
         local BankFrameModule = ns:GetModule("BankFrame")
         if BankFrameModule and BankFrameModule:GetFrame() and BankFrameModule:GetFrame() ~= parent then
             BankFrameModule:GetFrame():SetFrameLevel(50)
+            if BankFrameModule:GetFrame().container then
+                BankFrameModule:GetFrame().container:SetFrameLevel(51)
+            end
         end
         local BagFrameModule = ns:GetModule("BagFrame")
         if BagFrameModule and BagFrameModule:GetFrame() and BagFrameModule:GetFrame() ~= parent then
             BagFrameModule:GetFrame():SetFrameLevel(50)
+            if BagFrameModule:GetFrame().container then
+                BagFrameModule:GetFrame().container:SetFrameLevel(51)
+            end
         end
     end)
 
@@ -57,6 +68,14 @@ local function CreateHeader(parent)
         parent:StopMovingOrSizing()
         if onDragStop then
             onDragStop()
+        end
+    end)
+
+    -- Ensure container stays above frame backdrop when mouse enters header
+    titleBar:SetScript("OnEnter", function()
+        if parent.container then
+            local frameLevel = parent:GetFrameLevel()
+            parent.container:SetFrameLevel(frameLevel + 1)
         end
     end)
 
@@ -97,11 +116,14 @@ local function CreateHeader(parent)
         lastLeftButton = chestButton
     end
 
-    if Constants.FEATURES.GUILD_BANK then
+    if Constants.FEATURES.GUILD_BANK and IsInGuild() then
         local guildButton = IconButton:Create(titleBar, "guild", {
             tooltip = L["TOOLTIP_GUILD_BANK"],
             onClick = function()
-                -- TODO: Toggle guild bank view
+                local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
+                if GuildBankFrameModule then
+                    GuildBankFrameModule:Toggle()
+                end
             end,
         })
         if lastLeftButton then

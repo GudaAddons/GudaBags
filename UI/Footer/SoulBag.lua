@@ -97,12 +97,12 @@ function SoulBag:Init(parent)
         if IsShowingSoulBag() then
             local ItemButton = ns:GetModule("ItemButton")
             local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
-            if ItemButton and BagClassifier then
+            if ItemButton and BagClassifier and mainBagFrame and mainBagFrame.container then
                 -- Highlight all soul bag slots
                 local classifiedBags = BagClassifier:ClassifyBags()
                 if classifiedBags.soul then
                     for _, bagID in ipairs(classifiedBags.soul) do
-                        ItemButton:HighlightBagSlots(bagID)
+                        ItemButton:HighlightBagSlots(bagID, mainBagFrame.container)
                     end
                 end
             end
@@ -113,8 +113,8 @@ function SoulBag:Init(parent)
         GameTooltip:Hide()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:ClearHighlightedSlots(mainBagFrame)
+        if ItemButton and mainBagFrame and mainBagFrame.container then
+            ItemButton:ResetAllAlpha(mainBagFrame.container)
         end
     end)
 
