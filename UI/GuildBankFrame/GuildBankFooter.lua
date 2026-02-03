@@ -318,15 +318,6 @@ local function CreateGuildBankPopup()
     popup:SetFrameStrata("DIALOG")
     popup:SetFrameLevel(100)
 
-    -- Register for log update events to refresh content when data arrives
-    popup:RegisterEvent("GUILD_BANK_LOG_UPDATE")
-    popup:SetScript("OnEvent", function(self, event)
-        if event == "GUILD_BANK_LOG_UPDATE" and self:IsShown() then
-            ns:Debug("GUILD_BANK_LOG_UPDATE received, refreshing popup content")
-            GuildBankFooter:UpdatePopupContent()
-        end
-    end)
-
     popup:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -505,11 +496,26 @@ function GuildBankFooter:UpdatePopupContent()
     ns:Debug("UpdatePopupContent done")
 end
 
+-- Track if we're waiting for tab log data
+local pendingTabLogRefresh = false
+
 function GuildBankFooter:PopulateLogContent(content)
     local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 1
     if selectedTab == 0 then selectedTab = 1 end
 
     QueryGuildBankLog(selectedTab)
+
+    -- Schedule a refresh after data arrives (async query)
+    if not pendingTabLogRefresh then
+        pendingTabLogRefresh = true
+        C_Timer.After(0.2, function()
+            pendingTabLogRefresh = false
+            if guildBankPopup and guildBankPopup:IsShown() and currentPopupTab == "log" then
+                ns:Debug("Refreshing tab log after delay")
+                GuildBankFooter:UpdatePopupContent()
+            end
+        end)
+    end
 
     local tabInfo = GuildBankScanner and GuildBankScanner:GetTabInfo(selectedTab)
     local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
@@ -564,6 +570,9 @@ function GuildBankFooter:PopulateLogContent(content)
     content:SetHeight(math.abs(yOffset) + 10)
 end
 
+-- Track if we're waiting for log data
+local pendingLogRefresh = false
+
 function GuildBankFooter:PopulateMoneyLogContent(content)
     ns:Debug("PopulateMoneyLogContent called")
     -- Query money log using the correct API (tab index = MAX_GUILDBANK_TABS + 1 for money)
@@ -571,6 +580,18 @@ function GuildBankFooter:PopulateMoneyLogContent(content)
     if QueryGuildBankLog then
         QueryGuildBankLog(MAX_GUILDBANK_TABS + 1)
         ns:Debug("Queried guild bank money log (tab", MAX_GUILDBANK_TABS + 1, ")")
+
+        -- Schedule a refresh after data arrives (async query)
+        if not pendingLogRefresh then
+            pendingLogRefresh = true
+            C_Timer.After(0.2, function()
+                pendingLogRefresh = false
+                if guildBankPopup and guildBankPopup:IsShown() and currentPopupTab == "moneyLog" then
+                    ns:Debug("Refreshing money log after delay")
+                    GuildBankFooter:UpdatePopupContent()
+                end
+            end)
+        end
     end
 
     guildBankPopup.titleText:SetText("Guild Bank Money Log")
