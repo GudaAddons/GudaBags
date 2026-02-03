@@ -501,6 +501,7 @@ end, GuildBankScanner)
 local blizzardFrameHooked = false
 local blizzardOnShowScript = nil
 local blizzardOnHideScript = nil
+local weAreHidingBlizzardFrame = false  -- Flag to track when WE hide vs Blizzard hides
 
 local function HookBlizzardGuildBankFrame()
     if blizzardFrameHooked then return end
@@ -520,14 +521,16 @@ local function HookBlizzardGuildBankFrame()
 
     -- Replace OnShow to hide Blizzard frame immediately
     blizzFrame:SetScript("OnShow", function(self)
-        ns:Debug("Blizzard GuildBankFrame OnShow triggered - hiding immediately")
+        ns:Debug("Blizzard GuildBankFrame OnShow triggered")
 
-        -- Hide Blizzard frame immediately to prevent flash
+        -- Make Blizzard frame invisible but keep it "shown"
+        -- This prevents OnHide from firing unexpectedly
         self:SetAlpha(0)
         self:ClearAllPoints()
         self:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, 10000)
+        self:EnableMouse(false)  -- Prevent mouse interaction
 
-        -- Call original if exists
+        -- Call original if exists (let Blizzard do its setup)
         if blizzardOnShowScript then
             blizzardOnShowScript(self)
         end
@@ -536,19 +539,20 @@ local function HookBlizzardGuildBankFrame()
         HandleGuildBankOpened()
     end)
 
-    -- Replace OnHide
+    -- Replace OnHide - this only fires when player walks away or game closes interaction
     blizzFrame:SetScript("OnHide", function(self)
         ns:Debug("Blizzard GuildBankFrame OnHide triggered")
 
-        -- Restore alpha for next time
+        -- Restore for next time
         self:SetAlpha(1)
+        self:EnableMouse(true)
 
         -- Call original if exists
         if blizzardOnHideScript then
             blizzardOnHideScript(self)
         end
 
-        -- Handle close
+        -- Close our frame
         HandleGuildBankClosed()
     end)
 end

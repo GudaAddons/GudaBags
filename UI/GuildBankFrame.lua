@@ -33,12 +33,9 @@ local cachedItemData = {}
 local cachedItemCount = {}
 local layoutCached = false
 
--- Hidden frame to reparent Blizzard guild bank UI
+-- Hidden frame to reparent Blizzard guild bank UI (used by some versions)
 local hiddenParent = CreateFrame("Frame")
 hiddenParent:Hide()
-
--- Store Blizzard's original scripts for restoration
-local blizzardOnHideScript = nil
 
 local function LoadComponents()
     GuildBankHeader = ns:GetModule("GuildBankFrame.GuildBankHeader")
@@ -369,28 +366,29 @@ local function CreateGuildBankFrame()
     -- Register for Escape key to close
     tinsert(UISpecialFrames, "GudaGuildBankFrame")
 
-    -- Close guild bank interaction when frame is hidden
+    -- Close guild bank interaction when frame is hidden by user (Escape, close button, etc.)
     f:SetScript("OnHide", function()
         ns:Debug("GudaGuildBankFrame OnHide triggered")
 
-        -- Debug: Check UI panel state
-        if GetUIPanel then
-            ns:Debug("GetUIPanel('left'):", GetUIPanel("left") and GetUIPanel("left"):GetName() or "nil")
-            ns:Debug("GetUIPanel('center'):", GetUIPanel("center") and GetUIPanel("center"):GetName() or "nil")
-            ns:Debug("GetUIPanel('right'):", GetUIPanel("right") and GetUIPanel("right"):GetName() or "nil")
-        end
+        local scanner = ns:GetModule("GuildBankScanner")
+        local wasOpen = scanner and scanner:IsGuildBankOpen() or false
+        ns:Debug("  wasOpen:", wasOpen)
 
-        -- Close the interaction
-        C_Timer.After(0.1, function()
-            local scanner = ns:GetModule("GuildBankScanner")
-            if scanner and scanner:IsGuildBankOpen() then
-                if C_PlayerInteractionManager and C_PlayerInteractionManager.ClearInteraction and Enum and Enum.PlayerInteractionType then
-                    C_PlayerInteractionManager.ClearInteraction(Enum.PlayerInteractionType.GuildBanker)
-                elseif CloseGuildBankFrame then
-                    CloseGuildBankFrame()
+        -- Only close the interaction if it's still open (user closed our frame)
+        -- Don't close if the game already closed it (walked away, etc.)
+        if wasOpen then
+            C_Timer.After(0.05, function()
+                -- Check again in case state changed
+                if scanner and scanner:IsGuildBankOpen() then
+                    ns:Debug("  Closing guild bank interaction")
+                    if C_PlayerInteractionManager and C_PlayerInteractionManager.ClearInteraction and Enum and Enum.PlayerInteractionType then
+                        C_PlayerInteractionManager.ClearInteraction(Enum.PlayerInteractionType.GuildBanker)
+                    elseif CloseGuildBankFrame then
+                        CloseGuildBankFrame()
+                    end
                 end
-            end
-        end)
+            end)
+        end
     end)
 
     -- Header
@@ -814,28 +812,7 @@ ns.OnGuildBankOpened = function()
     ns:Debug("OnGuildBankOpened callback triggered")
     LoadComponents()
 
-    -- Hide Blizzard's guild bank frame
-    local blizzardGuildBank = _G.GuildBankFrame
-    if blizzardGuildBank then
-        ns:Debug("Hiding Blizzard GuildBankFrame")
-        -- Store and remove OnHide script to prevent interference
-        if not blizzardOnHideScript then
-            blizzardOnHideScript = blizzardGuildBank:GetScript("OnHide")
-        end
-        blizzardGuildBank:SetScript("OnHide", nil)
-
-        -- Try to hide through panel system first (important for Escape key handling)
-        if HideUIPanel then
-            HideUIPanel(blizzardGuildBank)
-        else
-            blizzardGuildBank:Hide()
-        end
-
-        -- Move off-screen as backup
-        blizzardGuildBank:ClearAllPoints()
-        blizzardGuildBank:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, 10000)
-    end
-
+    -- Show our guild bank frame (Blizzard's frame is hidden by GuildBankScanner)
     GuildBankFrame:Show()
 
     -- Refresh bags to update stacking (unstack when interaction window opens)
@@ -849,24 +826,6 @@ end
 ns.OnGuildBankClosed = function()
     ns:Debug("OnGuildBankClosed callback triggered")
     GuildBankFrame:Hide()
-
-    -- Debug: Check UI panel state after close
-    if GetUIPanel then
-        ns:Debug("After close - GetUIPanel('left'):", GetUIPanel("left") and GetUIPanel("left"):GetName() or "nil")
-        ns:Debug("After close - GetUIPanel('center'):", GetUIPanel("center") and GetUIPanel("center"):GetName() or "nil")
-    end
-
-    -- Restore Blizzard's guild bank frame to normal state
-    local blizzardGuildBank = _G.GuildBankFrame
-    if blizzardGuildBank then
-        -- Restore OnHide script
-        if blizzardOnHideScript then
-            blizzardGuildBank:SetScript("OnHide", blizzardOnHideScript)
-        end
-        -- Restore position (it will be repositioned when opened again anyway)
-        blizzardGuildBank:ClearAllPoints()
-        blizzardGuildBank:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
-    end
 
     -- Refresh bags to update stacking (re-stack when interaction window closes)
     local BagFrameModule = ns:GetModule("BagFrame")
