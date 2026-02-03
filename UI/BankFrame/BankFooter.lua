@@ -108,8 +108,8 @@ local function CreateMainBankButton(parent)
         GameTooltip:Show()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:HighlightBagSlots(-1)
+        if ItemButton and mainBankFrame and mainBankFrame.container then
+            ItemButton:HighlightBagSlots(-1, mainBankFrame.container)
         end
     end)
 
@@ -117,8 +117,8 @@ local function CreateMainBankButton(parent)
         GameTooltip:Hide()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:ClearHighlightedSlots(mainBankFrame)
+        if ItemButton and mainBankFrame and mainBankFrame.container then
+            ItemButton:ResetAllAlpha(mainBankFrame.container)
         end
     end)
 
@@ -193,8 +193,8 @@ local function CreateBagSlotButton(parent, index)
             GameTooltip:Show()
 
             local ItemButton = ns:GetModule("ItemButton")
-            if ItemButton then
-                ItemButton:HighlightBagSlots(bagID)
+            if ItemButton and mainBankFrame and mainBankFrame.container then
+                ItemButton:HighlightBagSlots(bagID, mainBankFrame.container)
             end
         end
     end)
@@ -203,8 +203,8 @@ local function CreateBagSlotButton(parent, index)
         GameTooltip:Hide()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:ClearHighlightedSlots(mainBankFrame)
+        if ItemButton and mainBankFrame and mainBankFrame.container then
+            ItemButton:ResetAllAlpha(mainBankFrame.container)
         end
     end)
 

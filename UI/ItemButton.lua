@@ -1215,23 +1215,35 @@ function ItemButton:GetActiveButtons()
     return buttonPool:EnumerateActive()
 end
 
-function ItemButton:HighlightBagSlots(bagID)
+function ItemButton:HighlightBagSlots(bagID, owner)
     if not buttonPool then return end
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
 
+    ns:Debug("HighlightBagSlots: bagID=", bagID, "owner=", owner and owner:GetName() or "nil")
+
+    local matchCount = 0
+    local totalCount = 0
     for button in buttonPool:EnumerateActive() do
-        if button.itemData and button.itemData.bagID == bagID then
-            button:SetAlpha(1.0)
-            if button.slotBackground then
-                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
-            end
+        -- Only affect buttons belonging to the specified owner (if provided)
+        if owner and button.owner ~= owner then
+            -- Skip buttons from other frames
         else
-            button:SetAlpha(0.25)
-            if button.slotBackground then
-                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.25)
+            totalCount = totalCount + 1
+            if button.itemData and button.itemData.bagID == bagID then
+                matchCount = matchCount + 1
+                button:SetAlpha(1.0)
+                if button.slotBackground then
+                    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
+                end
+            else
+                button:SetAlpha(0.25)
+                if button.slotBackground then
+                    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.25)
+                end
             end
         end
     end
+    ns:Debug("HighlightBagSlots: matched", matchCount, "of", totalCount, "buttons")
 end
 
 function ItemButton:ClearHighlightedSlots(parentFrame)
@@ -1264,14 +1276,18 @@ function ItemButton:ClearHighlightedSlots(parentFrame)
 end
 
 -- Reset all button alphas unconditionally (no search filter check)
-function ItemButton:ResetAllAlpha()
+-- If owner is specified, only reset buttons belonging to that owner
+function ItemButton:ResetAllAlpha(owner)
     if not buttonPool then return end
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
 
     for button in buttonPool:EnumerateActive() do
-        button:SetAlpha(1.0)
-        if button.slotBackground then
-            button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
+        -- Only affect buttons belonging to the specified owner (if provided)
+        if not owner or button.owner == owner then
+            button:SetAlpha(1.0)
+            if button.slotBackground then
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
+            end
         end
     end
 end

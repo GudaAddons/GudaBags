@@ -288,10 +288,40 @@ local function CreateSideTab(parent, index, isAllTab)
             GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", self.tabIndex))
         end
         GameTooltip:Show()
+
+        -- Skip hover highlighting if a specific tab is already selected (not "All")
+        local scanner = ns:GetModule("RetailBankScanner")
+        local selectedTab = scanner and scanner:GetSelectedTab() or 0
+        if selectedTab ~= 0 then
+            return  -- A single tab is already shown, no need to highlight
+        end
+
+        -- Highlight items from this tab (only when viewing "All" tabs)
+        local ItemButton = ns:GetModule("ItemButton")
+        if ItemButton and scanner and frame and frame.container and self.tabIndex > 0 then
+            -- Convert tab index to container ID for retail bank (uses scanner's current bank type)
+            local containerID = scanner:GetTabContainerID(self.tabIndex)
+            ns:Debug("Tab hover: tabIndex=", self.tabIndex, "containerID=", containerID)
+            if containerID then
+                ItemButton:HighlightBagSlots(containerID, frame.container)
+            end
+        end
     end)
 
-    button:SetScript("OnLeave", function()
+    button:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
+
+        -- Reset item highlighting (only if we were highlighting)
+        local scanner = ns:GetModule("RetailBankScanner")
+        local selectedTab = scanner and scanner:GetSelectedTab() or 0
+        if selectedTab ~= 0 then
+            return  -- A single tab is already shown, nothing to reset
+        end
+
+        local ItemButton = ns:GetModule("ItemButton")
+        if ItemButton and frame and frame.container then
+            ItemButton:ResetAllAlpha(frame.container)
+        end
     end)
 
     button:SetScript("OnClick", function(self)

@@ -51,8 +51,8 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
         GameTooltip:Show()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:HighlightBagSlots(self.bagID)
+        if ItemButton and mainBagFrame and mainBagFrame.container then
+            ItemButton:HighlightBagSlots(self.bagID, mainBagFrame.container)
         end
     end)
 
@@ -60,8 +60,8 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
         GameTooltip:Hide()
 
         local ItemButton = ns:GetModule("ItemButton")
-        if ItemButton then
-            ItemButton:ResetAllAlpha()
+        if ItemButton and mainBagFrame and mainBagFrame.container then
+            ItemButton:ResetAllAlpha(mainBagFrame.container)
         end
     end)
 

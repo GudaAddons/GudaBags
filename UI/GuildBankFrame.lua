@@ -196,10 +196,34 @@ local function CreateSideTab(parent, index, isAllTab)
             GameTooltip:SetText(string.format(ns.L["TOOLTIP_GUILD_TAB"] or "Tab %d", self.tabIndex))
         end
         GameTooltip:Show()
+
+        -- Skip hover highlighting if a specific tab is already selected (not "All")
+        local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 0
+        if selectedTab ~= 0 then
+            return  -- A single tab is already shown, no need to highlight
+        end
+
+        -- Highlight items from this tab (only when viewing "All" tabs)
+        local ItemButton = ns:GetModule("ItemButton")
+        if ItemButton and frame and frame.container and self.tabIndex > 0 then
+            -- For guild bank, bagID equals tabIndex
+            ItemButton:HighlightBagSlots(self.tabIndex, frame.container)
+        end
     end)
 
-    button:SetScript("OnLeave", function()
+    button:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
+
+        -- Reset item highlighting (only if we were highlighting)
+        local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 0
+        if selectedTab ~= 0 then
+            return  -- A single tab is already shown, nothing to reset
+        end
+
+        local ItemButton = ns:GetModule("ItemButton")
+        if ItemButton and frame and frame.container then
+            ItemButton:ResetAllAlpha(frame.container)
+        end
     end)
 
     button:SetScript("OnClick", function(self)
