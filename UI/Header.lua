@@ -116,7 +116,7 @@ local function CreateHeader(parent)
         lastLeftButton = chestButton
     end
 
-    if Constants.FEATURES.GUILD_BANK then
+    if Constants.FEATURES.GUILD_BANK and IsInGuild() then
         local guildButton = IconButton:Create(titleBar, "guild", {
             tooltip = L["TOOLTIP_GUILD_BANK"],
             onClick = function()
