@@ -101,7 +101,7 @@ function GuildBankFooter:Init(parent)
     slotInfoFrame:SetScript("OnEnter", function(self)
         if frame.tabSlotData then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine(L["TITLE_GUILD_BANK"] or "Guild Bank Slots", 1, 1, 1)
+            GameTooltip:AddLine("Guild Bank", 1, 1, 1)
             GameTooltip:AddLine(" ")
 
             -- Show per-tab slot info
