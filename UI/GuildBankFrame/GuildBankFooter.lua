@@ -360,11 +360,11 @@ local function CreateGuildBankPopup()
     popup:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
     popup:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 
-    -- Title bar
+    -- Title bar (leave room for close button on right)
     local titleBar = CreateFrame("Frame", nil, popup)
     titleBar:SetHeight(24)
     titleBar:SetPoint("TOPLEFT", popup, "TOPLEFT", 4, -4)
-    titleBar:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -4, -4)
+    titleBar:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -28, -4)  -- Leave space for close button
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
     titleBar:SetScript("OnDragStart", function() popup:StartMoving() end)
@@ -376,8 +376,9 @@ local function CreateGuildBankPopup()
     titleText:SetTextColor(1, 0.82, 0)
     popup.titleText = titleText
 
-    -- Close button
+    -- Close button (smaller, matching other close buttons in the addon)
     local closeBtn = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
+    closeBtn:SetSize(24, 24)
     closeBtn:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -2, -2)
     closeBtn:SetScript("OnClick", function() popup:Hide() end)
 

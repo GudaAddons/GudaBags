@@ -433,10 +433,10 @@ end
 -- Event Handlers
 -------------------------------------------------
 
-Events:Register("GUILDBANKFRAME_OPENED", function()
-    -- Skip if already handled by PLAYER_INTERACTION_MANAGER_FRAME_SHOW (Retail)
+-- Common handler for guild bank opened (used by multiple detection methods)
+local function HandleGuildBankOpened()
     if isGuildBankOpen then
-        ns:Debug("GUILDBANKFRAME_OPENED: Already open via PLAYER_INTERACTION_MANAGER, skipping")
+        ns:Debug("HandleGuildBankOpened: Already open, skipping")
         return
     end
 
@@ -444,7 +444,7 @@ Events:Register("GUILDBANKFRAME_OPENED", function()
     currentGuildName = GetGuildInfo("player")
     selectedTabIndex = 0  -- Reset to show all tabs
 
-    ns:Debug("GUILDBANKFRAME_OPENED fired for:", currentGuildName or "unknown")
+    ns:Debug("Guild bank opened for:", currentGuildName or "unknown")
 
     -- Cache tab info
     GuildBankScanner:CacheTabInfo()
@@ -466,12 +466,12 @@ Events:Register("GUILDBANKFRAME_OPENED", function()
 
     -- Save initial data to database
     GuildBankScanner:SaveToDatabase()
-end, GuildBankScanner)
+end
 
-Events:Register("GUILDBANKFRAME_CLOSED", function()
-    -- Skip if already handled by PLAYER_INTERACTION_MANAGER_FRAME_HIDE (Retail)
+-- Common handler for guild bank closed
+local function HandleGuildBankClosed()
     if not isGuildBankOpen then
-        ns:Debug("GUILDBANKFRAME_CLOSED: Already closed via PLAYER_INTERACTION_MANAGER, skipping")
+        ns:Debug("HandleGuildBankClosed: Already closed, skipping")
         return
     end
 
@@ -483,7 +483,89 @@ Events:Register("GUILDBANKFRAME_CLOSED", function()
     if ns.OnGuildBankClosed then
         ns.OnGuildBankClosed()
     end
+end
+
+-- Try to register GUILDBANKFRAME_OPENED/CLOSED events (works on some versions)
+Events:Register("GUILDBANKFRAME_OPENED", function()
+    ns:Debug("GUILDBANKFRAME_OPENED event fired")
+    HandleGuildBankOpened()
 end, GuildBankScanner)
+
+Events:Register("GUILDBANKFRAME_CLOSED", function()
+    ns:Debug("GUILDBANKFRAME_CLOSED event fired")
+    HandleGuildBankClosed()
+end, GuildBankScanner)
+
+-- TBC/Classic fallback: Hook into Blizzard's GuildBankFrame when it loads
+-- The GUILDBANKFRAME_OPENED event doesn't exist in TBC, so we hook the frame
+local blizzardFrameHooked = false
+local blizzardOnShowScript = nil
+local blizzardOnHideScript = nil
+
+local function HookBlizzardGuildBankFrame()
+    if blizzardFrameHooked then return end
+
+    local blizzFrame = _G.GuildBankFrame
+    if not blizzFrame then
+        ns:Debug("HookBlizzardGuildBankFrame: GuildBankFrame not found")
+        return
+    end
+
+    ns:Debug("Hooking Blizzard GuildBankFrame OnShow/OnHide")
+    blizzardFrameHooked = true
+
+    -- Store original scripts
+    blizzardOnShowScript = blizzFrame:GetScript("OnShow")
+    blizzardOnHideScript = blizzFrame:GetScript("OnHide")
+
+    -- Replace OnShow to hide Blizzard frame immediately
+    blizzFrame:SetScript("OnShow", function(self)
+        ns:Debug("Blizzard GuildBankFrame OnShow triggered - hiding immediately")
+
+        -- Hide Blizzard frame immediately to prevent flash
+        self:SetAlpha(0)
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, 10000)
+
+        -- Call original if exists
+        if blizzardOnShowScript then
+            blizzardOnShowScript(self)
+        end
+
+        -- Now handle our guild bank open
+        HandleGuildBankOpened()
+    end)
+
+    -- Replace OnHide
+    blizzFrame:SetScript("OnHide", function(self)
+        ns:Debug("Blizzard GuildBankFrame OnHide triggered")
+
+        -- Restore alpha for next time
+        self:SetAlpha(1)
+
+        -- Call original if exists
+        if blizzardOnHideScript then
+            blizzardOnHideScript(self)
+        end
+
+        -- Handle close
+        HandleGuildBankClosed()
+    end)
+end
+
+-- Listen for Blizzard_GuildBankUI addon loading (TBC loads it on demand)
+Events:Register("ADDON_LOADED", function(event, addonName)
+    if addonName == "Blizzard_GuildBankUI" then
+        ns:Debug("Blizzard_GuildBankUI loaded, hooking frame")
+        -- Hook immediately - no delay needed
+        HookBlizzardGuildBankFrame()
+    end
+end, GuildBankScanner)
+
+-- Also try to hook immediately if addon is already loaded
+if IsAddOnLoaded and IsAddOnLoaded("Blizzard_GuildBankUI") then
+    HookBlizzardGuildBankFrame()
+end
 
 -- Debounce timer for guild bank slot changes
 local slotChangeTimer = nil
