@@ -509,7 +509,7 @@ function GuildBankFrame:Refresh()
         frame.emptyMessage:Show()
         self:HideSideTabs()
 
-        local columns = Database:GetSetting("bankColumns")
+        local columns = Database:GetSetting("guildBankColumns")
         local iconSize = Database:GetSetting("iconSize")
         local spacing = Database:GetSetting("iconSpacing")
         local minWidth = (iconSize * columns) + (Constants.FRAME.PADDING * 2)
@@ -528,7 +528,7 @@ function GuildBankFrame:Refresh()
 
     local iconSize = Database:GetSetting("iconSize")
     local spacing = Database:GetSetting("iconSpacing")
-    local columns = Database:GetSetting("bankColumns")
+    local columns = Database:GetSetting("guildBankColumns")
     local searchText = SearchBar:GetSearchText(frame)
     local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 0
 
@@ -883,3 +883,31 @@ ns.OnGuildBankTabsUpdated = function()
         GuildBankFrame:ShowSideTabs()
     end
 end
+
+-------------------------------------------------
+-- Settings Change Handler
+-------------------------------------------------
+
+-- Settings that only need appearance update
+local appearanceSettings = {
+    bgAlpha = true,
+    showBorders = true,
+}
+
+-- Handle setting changes (live update)
+local function OnSettingChanged(event, key, value)
+    if not frame or not frame:IsShown() then return end
+
+    if appearanceSettings[key] then
+        UpdateFrameAppearance()
+    elseif key == "guildBankColumns" or key == "iconSize" or key == "iconSpacing" then
+        -- Column/size changes need full refresh
+        UpdateFrameAppearance()
+        GuildBankFrame:Refresh()
+    elseif key == "showFooter" or key == "showSearchBar" then
+        UpdateFrameAppearance()
+        GuildBankFrame:Refresh()
+    end
+end
+
+Events:Register("SETTING_CHANGED", OnSettingChanged, GuildBankFrame)

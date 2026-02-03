@@ -171,6 +171,7 @@ Constants.DEFAULTS = {
     -- General
     bagColumns = 10,
     bankColumns = 10,
+    guildBankColumns = 14,
     bgAlpha = 85,
     locked = false,
     showBorders = true,
