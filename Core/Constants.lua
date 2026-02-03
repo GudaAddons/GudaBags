@@ -38,7 +38,6 @@ if Expansion and Expansion.IsRetail then
     Constants.REAGENT_BAG = 5  -- Retail only
     -- Check if modern bank tabs are active (TWW and later)
     Constants.CHARACTER_BANK_TABS_ACTIVE = Enum and Enum.BagIndex and Enum.BagIndex.CharacterBankTab_1 ~= nil
-    print("|cff00ccff[GudaBags]|r Bank Tabs Detection: CHARACTER_BANK_TABS_ACTIVE=" .. tostring(Constants.CHARACTER_BANK_TABS_ACTIVE))
     if Constants.CHARACTER_BANK_TABS_ACTIVE then
         -- Modern Retail: Each bank tab is a separate container
         Constants.BANK_BAG_MIN = Enum.BagIndex.CharacterBankTab_1

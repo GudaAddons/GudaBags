@@ -61,23 +61,7 @@ end
 commandHandlers["debug"] = function()
     ns.debugMode = not ns.debugMode
     ns:Print(L["CMD_DEBUG_MODE"], ns.debugMode and L["CMD_ON"] or L["CMD_OFF"])
-    if ns.debugMode then
-        ns:Print("Debug logs will be saved to WTF/Account/.../SavedVariables/GudaBags.lua (GudaBags_DebugLog)")
-    end
 end
-
--- View debug log in popup window
-commandHandlers["debuglog"] = function()
-    ns:ShowDebugLogViewer()
-end
-
--- Clear debug log
-commandHandlers["debugclear"] = function()
-    ns:ClearDebugLog()
-end
-
--- Alias for debug log
-commandHandlers["log"] = commandHandlers["debuglog"]
 
 -- Debug item button frames (for retail overlay issues)
 commandHandlers["debugbutton"] = function()
@@ -224,8 +208,6 @@ commandHandlers["help"] = function()
     ns:Print("  " .. L["CMD_HELP_SAVE"])
     ns:Print("  " .. L["CMD_HELP_COUNT"])
     ns:Print("  " .. L["CMD_HELP_DEBUG"])
-    ns:Print("  /guda debuglog - Open debug log viewer (1000 lines, copy/paste)")
-    ns:Print("  /guda debugclear - Clear debug log")
     ns:Print("  " .. L["CMD_HELP_HELP"])
     ns:Print("  /guda locale [code|reset] - Test locale")
 end

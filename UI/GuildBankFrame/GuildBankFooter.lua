@@ -1030,7 +1030,7 @@ function GuildBankFooter:UpdateWithdrawInfo()
             local guildMoney = GetGuildBankMoney and GetGuildBankMoney() or 0
             local withdrawLimit = GetGuildBankWithdrawMoney and GetGuildBankWithdrawMoney() or 0
 
-            -- Cap the displayed amount at the actual guild money (like Baganator does)
+            -- Cap the displayed amount at the actual guild money
             local withdrawMoney = math.min(withdrawLimit, guildMoney)
 
             -- Check if player can actually withdraw money

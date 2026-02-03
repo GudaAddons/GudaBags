@@ -13,8 +13,6 @@ local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 
--- Debug: Confirm module is loading
-print("|cff00ccff[GudaBags]|r GuildBankScanner module loading...")
 
 -- Cache for scanned guild bank data
 local cachedGuildBank = {}
@@ -699,7 +697,6 @@ if Expansion and Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 50
             end
         end, GuildBankScanner)
 
-        print("|cff00ccff[GudaBags]|r GuildBankScanner: PLAYER_INTERACTION_MANAGER events registered")
     end
 end
 
@@ -712,5 +709,3 @@ Events:OnPlayerLogin(function()
     end
 end, GuildBankScanner)
 
--- Debug: Confirm events are registered
-print("|cff00ccff[GudaBags]|r GuildBankScanner events registered (GUILDBANKFRAME_OPENED, etc.)")
