@@ -160,10 +160,21 @@ function CategoryDropIndicator:IsOverValidButton()
     return false
 end
 
+-- Check if button is in the bank (not bags)
+local function IsBankButton(button)
+    if not button.containerFrame then return false end
+    local containerName = button.containerFrame:GetName()
+    -- Bank container is named "GudaBankContainer", bag container is "GudaBagsSecureContainer"
+    return containerName == "GudaBankContainer"
+end
+
 -- Called when hovering over an item button while dragging
 function CategoryDropIndicator:OnItemButtonEnter(button)
     if not self:CursorHasItem() then return end
     if not button.categoryId or button.categoryId == "Empty" or button.categoryId == "Home" or button.categoryId == "Recent" or button.categoryId == "Soul" then return end
+
+    -- Don't show indicator for bank items - allow normal swap behavior
+    if IsBankButton(button) then return end
 
     -- Don't show indicator if dragged item is already in this category
     if self:IsDraggedItemInCategory(button.categoryId) then return end
@@ -178,6 +189,12 @@ function CategoryDropIndicator:OnItemButtonUpdate(button)
         return
     end
     if not button.categoryId or button.categoryId == "Empty" or button.categoryId == "Home" or button.categoryId == "Recent" or button.categoryId == "Soul" then return end
+
+    -- Don't show indicator for bank items - allow normal swap behavior
+    if IsBankButton(button) then
+        self:Hide()
+        return
+    end
 
     -- Don't update if cursor is over the indicator itself
     if indicator and indicator:IsMouseOver() then
