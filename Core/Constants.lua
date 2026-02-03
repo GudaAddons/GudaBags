@@ -8,15 +8,27 @@ local Expansion = ns:GetModule("Expansion")
 
 -- Feature flags (enable/disable features during development)
 -- KEYRING is TBC-only (keyring was removed in later expansions)
+-- GUILD_BANK is available in TBC and later (introduced in TBC, interface 20000+)
+-- Not available in Classic Era (interface 11xxx)
+local isGuildBankSupported = Expansion and (Expansion.IsTBC or Expansion.IsMoP or Expansion.IsRetail) or false
+-- Also check interface version as fallback for expansions not explicitly detected (Wrath, Cata, etc)
+if not isGuildBankSupported and Expansion and Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 20000 then
+    isGuildBankSupported = true
+end
+
 Constants.FEATURES = {
     BANK = true,
-    GUILD_BANK = false,
+    GUILD_BANK = isGuildBankSupported,
     MAIL = false,
     CHARACTERS = true,
     SEARCH = true,
     SORT = true,
     KEYRING = Expansion and Expansion.IsTBC or false,
 }
+
+-- Guild Bank Constants (TBC and later)
+Constants.GUILD_BANK_MAX_TABS = 6
+Constants.GUILD_BANK_SLOTS_PER_TAB = 98  -- 14 columns x 7 rows
 
 -- Bag ID Ranges (differ between retail and classic)
 Constants.PLAYER_BAG_MIN = 0
@@ -202,6 +214,12 @@ Constants.DEFAULTS = {
     bankFrameRelativePoint = nil,
     bankFrameX = nil,
     bankFrameY = nil,
+
+    -- Guild Bank frame position
+    guildBankFramePoint = nil,
+    guildBankFrameRelativePoint = nil,
+    guildBankFrameX = nil,
+    guildBankFrameY = nil,
 }
 
 Constants.ICON = {

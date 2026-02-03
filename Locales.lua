@@ -244,6 +244,8 @@ L["TOOLTIP_BANK"] = "Bank"
 L["TOOLTIP_BANK_ALL_TABS"] = "All Tabs"
 L["TOOLTIP_BANK_TAB"] = "Tab %d"
 L["TOOLTIP_GUILD_BANK"] = "Guild Bank"
+L["TOOLTIP_GUILD_ALL_TABS"] = "All Tabs"
+L["TOOLTIP_GUILD_TAB"] = "Tab %d"
 L["TOOLTIP_MAIL"] = "Mail"
 L["TOOLTIP_SETTINGS"] = "Settings"
 L["TOOLTIP_SORT_BAGS"] = "Sort Bags"
@@ -254,12 +256,17 @@ L["TOOLTIP_CHARACTERS_BANK"] = "Characters (Bank)"
 -- Frame Titles
 L["TITLE_BAGS"] = "'s Bags"
 L["TITLE_BANK"] = "'s Bank"
+L["TITLE_GUILD_BANK"] = "'s Guild Bank"
 
 -- Bank Frame
 L["BANK_NO_DATA"] = "No bank data cached"
 L["BANK_VISIT_BANKER"] = "Visit a banker to cache your bank"
 L["BANK_NOT_VISITED"] = "This character hasn't visited a banker yet"
 L["BANK_PURCHASE_SLOT"] = "Purchase bank bag slot for %s?"
+
+-- Guild Bank Frame
+L["GUILD_BANK_NO_DATA"] = "No guild bank data cached"
+L["GUILD_BANK_VISIT"] = "Visit your guild vault to cache items"
 
 -- Character List
 L["BACK_TO_CURRENT"] = "< Back to Current"

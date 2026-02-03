@@ -102,6 +102,12 @@ UI\BankFrame\BankHeader.lua
 UI\BankFrame\BankFooter.lua
 UI\BankFrame.lua
 
+# GuildBankFrame Components
+Data\GuildBankScanner.lua
+UI\GuildBankFrame\GuildBankHeader.lua
+UI\GuildBankFrame\GuildBankFooter.lua
+UI\GuildBankFrame.lua
+
 # Tracked Item Bar
 UI\TrackedBar.lua
 

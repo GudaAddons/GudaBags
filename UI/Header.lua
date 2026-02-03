@@ -101,7 +101,10 @@ local function CreateHeader(parent)
         local guildButton = IconButton:Create(titleBar, "guild", {
             tooltip = L["TOOLTIP_GUILD_BANK"],
             onClick = function()
-                -- TODO: Toggle guild bank view
+                local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
+                if GuildBankFrameModule then
+                    GuildBankFrameModule:Toggle()
+                end
             end,
         })
         if lastLeftButton then
