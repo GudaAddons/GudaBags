@@ -1219,31 +1219,22 @@ function ItemButton:HighlightBagSlots(bagID, owner)
     if not buttonPool then return end
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
 
-    ns:Debug("HighlightBagSlots: bagID=", bagID, "owner=", owner and owner:GetName() or "nil")
-
-    local matchCount = 0
-    local totalCount = 0
     for button in buttonPool:EnumerateActive() do
         -- Only affect buttons belonging to the specified owner (if provided)
         if owner and button.owner ~= owner then
             -- Skip buttons from other frames
+        elseif button.itemData and button.itemData.bagID == bagID then
+            button:SetAlpha(1.0)
+            if button.slotBackground then
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
+            end
         else
-            totalCount = totalCount + 1
-            if button.itemData and button.itemData.bagID == bagID then
-                matchCount = matchCount + 1
-                button:SetAlpha(1.0)
-                if button.slotBackground then
-                    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
-                end
-            else
-                button:SetAlpha(0.25)
-                if button.slotBackground then
-                    button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.25)
-                end
+            button:SetAlpha(0.25)
+            if button.slotBackground then
+                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.25)
             end
         end
     end
-    ns:Debug("HighlightBagSlots: matched", matchCount, "of", totalCount, "buttons")
 end
 
 function ItemButton:ClearHighlightedSlots(parentFrame)

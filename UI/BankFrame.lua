@@ -301,7 +301,6 @@ local function CreateSideTab(parent, index, isAllTab)
         if ItemButton and scanner and frame and frame.container and self.tabIndex > 0 then
             -- Convert tab index to container ID for retail bank (uses scanner's current bank type)
             local containerID = scanner:GetTabContainerID(self.tabIndex)
-            ns:Debug("Tab hover: tabIndex=", self.tabIndex, "containerID=", containerID)
             if containerID then
                 ItemButton:HighlightBagSlots(containerID, frame.container)
             end

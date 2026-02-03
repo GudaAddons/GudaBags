@@ -181,6 +181,9 @@ local function CreateBagFrame()
     Footer:SetSoulBagCallback(function(isVisible)
         BagFrame:Refresh()
     end)
+    Footer:SetBagVisibilityCallback(function()
+        BagFrame:Refresh()
+    end)
     Footer:SetBackCallback(function()
         BagFrame:ViewCharacter(nil, nil)
     end)
@@ -282,6 +285,21 @@ function BagFrame:Refresh()
     local showKeyring = Footer:IsKeyringVisible()
     local showSoulBag = Footer:IsSoulBagVisible()
     local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag)
+
+    -- Filter out hidden bags in single view mode (not when viewing cached character)
+    if viewType == "single" and not isViewingCached then
+        local BagSlots = ns:GetModule("Footer.BagSlots")
+        if BagSlots then
+            local filteredBags = {}
+            for _, bagInfo in ipairs(bagsToShow) do
+                -- bagsToShow contains objects like {bagID = 0, needsSpacing = false}
+                if not BagSlots:IsBagHidden(bagInfo.bagID) then
+                    table.insert(filteredBags, bagInfo)
+                end
+            end
+            bagsToShow = filteredBags
+        end
+    end
 
     if viewType == "category" then
         self:RefreshCategoryView(bags, bagsToShow, settings, searchText, isViewingCached)
