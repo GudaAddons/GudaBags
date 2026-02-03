@@ -487,27 +487,133 @@ Events:Register("GUILDBANKFRAME_CLOSED", function()
     end
 end, GuildBankScanner)
 
+-- Debounce timer for guild bank slot changes
+local slotChangeTimer = nil
+local scanTimer = nil
+local isQueryingTabs = false  -- Track when we initiated queries (to ignore resulting events)
+local queryStartTime = 0
+
 Events:Register("GUILDBANKBAGSLOTS_CHANGED", function()
     if not isGuildBankOpen then return end
 
-    ns:Debug("GUILDBANKBAGSLOTS_CHANGED fired")
+    local now = GetTime()
+    ns:Debug("GUILDBANKBAGSLOTS_CHANGED fired, querying:", isQueryingTabs, "elapsed:", now - queryStartTime)
 
-    -- Rescan all tabs when slots change
-    local numTabs = GuildBankScanner:GetNumTabs()
-    ns:Debug("  numTabs =", numTabs)
-
-    -- Scan all tabs immediately (this event means data is now available)
-    for i = 1, numTabs do
-        GuildBankScanner:ScanTab(i)
+    -- If this event is from our own query (within 0.5s), ignore it
+    if isQueryingTabs and (now - queryStartTime) < 0.5 then
+        ns:Debug("  Ignoring event from our own query")
+        return
     end
 
-    -- Save to database
-    ScheduleDeferredSave()
-
-    -- Notify UI to refresh
-    if ns.OnGuildBankUpdated then
-        ns.OnGuildBankUpdated()
+    -- Cancel any pending timers
+    if slotChangeTimer then
+        slotChangeTimer:Cancel()
+        slotChangeTimer = nil
     end
+    if scanTimer then
+        scanTimer:Cancel()
+        scanTimer = nil
+    end
+
+    -- First phase: Query all tabs to request fresh data from server
+    slotChangeTimer = C_Timer.NewTimer(0.1, function()
+        slotChangeTimer = nil
+
+        if not isGuildBankOpen then return end
+
+        local numTabs = GuildBankScanner:GetNumTabs()
+        ns:Debug("  Querying", numTabs, "tabs for fresh data")
+
+        isQueryingTabs = true
+        queryStartTime = GetTime()
+
+        -- Query all tabs
+        for i = 1, numTabs do
+            QueryGuildBankTab(i)
+        end
+
+        -- Second phase: After queries, scan the data
+        scanTimer = C_Timer.NewTimer(0.3, function()
+            scanTimer = nil
+            isQueryingTabs = false
+
+            if not isGuildBankOpen then return end
+
+            ns:Debug("  Scanning", numTabs, "tabs after query")
+
+            -- Scan all tabs
+            for i = 1, numTabs do
+                GuildBankScanner:ScanTab(i)
+            end
+
+            -- Save to database
+            ScheduleDeferredSave()
+
+            -- Notify UI to refresh
+            if ns.OnGuildBankUpdated then
+                ns.OnGuildBankUpdated()
+            end
+        end)
+    end)
+end, GuildBankScanner)
+
+-- Item lock changed (item picked up or placed down)
+Events:Register("GUILDBANK_ITEM_LOCK_CHANGED", function(event, tabIndex, slotIndex)
+    if not isGuildBankOpen then return end
+
+    ns:Debug("GUILDBANK_ITEM_LOCK_CHANGED fired, tab:", tabIndex, "slot:", slotIndex)
+
+    -- This event is more specific - we know exactly which tab changed
+    -- Cancel existing timers and start fresh
+    if slotChangeTimer then
+        slotChangeTimer:Cancel()
+        slotChangeTimer = nil
+    end
+    if scanTimer then
+        scanTimer:Cancel()
+        scanTimer = nil
+    end
+
+    local targetTab = tabIndex
+
+    -- Query the specific tab, then scan
+    slotChangeTimer = C_Timer.NewTimer(0.1, function()
+        slotChangeTimer = nil
+
+        if not isGuildBankOpen then return end
+
+        -- Query the specific tab
+        if targetTab and QueryGuildBankTab then
+            ns:Debug("  Querying tab", targetTab, "after item lock change")
+            isQueryingTabs = true
+            queryStartTime = GetTime()
+            QueryGuildBankTab(targetTab)
+        end
+
+        -- Scan after query
+        scanTimer = C_Timer.NewTimer(0.2, function()
+            scanTimer = nil
+            isQueryingTabs = false
+
+            if not isGuildBankOpen then return end
+
+            -- Rescan all tabs
+            local numTabs = GuildBankScanner:GetNumTabs()
+            ns:Debug("  Scanning", numTabs, "tabs after lock change")
+
+            for i = 1, numTabs do
+                GuildBankScanner:ScanTab(i)
+            end
+
+            -- Save to database
+            ScheduleDeferredSave()
+
+            -- Notify UI to refresh
+            if ns.OnGuildBankUpdated then
+                ns.OnGuildBankUpdated()
+            end
+        end)
+    end)
 end, GuildBankScanner)
 
 Events:Register("GUILDBANK_UPDATE_TABS", function()
