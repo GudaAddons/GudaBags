@@ -117,9 +117,25 @@ local function CreateBagFrame()
     -- Raise frame above BankFrame when clicked
     f:SetScript("OnMouseDown", function(self)
         self:SetFrameLevel(60)
+        -- Keep secure container above frame backdrop
+        if self.container then
+            self.container:SetFrameLevel(61)
+        end
+
         local BankFrameModule = ns:GetModule("BankFrame")
         if BankFrameModule and BankFrameModule:GetFrame() then
             BankFrameModule:GetFrame():SetFrameLevel(50)
+            if BankFrameModule:GetFrame().container then
+                BankFrameModule:GetFrame().container:SetFrameLevel(51)
+            end
+        end
+    end)
+
+    -- Ensure container stays above frame backdrop when mouse enters
+    f:SetScript("OnEnter", function(self)
+        if self.container then
+            local frameLevel = self:GetFrameLevel()
+            self.container:SetFrameLevel(frameLevel + 1)
         end
     end)
     f:SetBackdrop(Constants.BACKDROP)

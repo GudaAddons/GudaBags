@@ -1263,6 +1263,19 @@ function ItemButton:ClearHighlightedSlots(parentFrame)
     end
 end
 
+-- Reset all button alphas unconditionally (no search filter check)
+function ItemButton:ResetAllAlpha()
+    if not buttonPool then return end
+    local bgAlpha = Database:GetSetting("bgAlpha") / 100
+
+    for button in buttonPool:EnumerateActive() do
+        button:SetAlpha(1.0)
+        if button.slotBackground then
+            button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
+        end
+    end
+end
+
 -- Update lock state for a specific item (called on ITEM_LOCK_CHANGED)
 function ItemButton:UpdateLockForItem(bagID, slotID)
     if not buttonPool then return end

@@ -61,7 +61,7 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
 
         local ItemButton = ns:GetModule("ItemButton")
         if ItemButton then
-            ItemButton:ClearHighlightedSlots(mainBagFrame)
+            ItemButton:ResetAllAlpha()
         end
     end)
 

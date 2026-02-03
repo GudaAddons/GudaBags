@@ -25,6 +25,10 @@ local function CreateHeader(parent)
         local BagFrameModule = ns:GetModule("BagFrame")
         if BagFrameModule and BagFrameModule:GetFrame() then
             BagFrameModule:GetFrame():SetFrameLevel(50)
+            -- Also lower BagFrame's secure container (it's parented to UIParent, not BagFrame)
+            if BagFrameModule:GetFrame().container then
+                BagFrameModule:GetFrame().container:SetFrameLevel(51)
+            end
         end
         local BankFrameModule = ns:GetModule("BankFrame")
         if BankFrameModule and BankFrameModule:GetFrame() then
