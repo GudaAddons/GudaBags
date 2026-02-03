@@ -30,46 +30,31 @@ function GuildBankFooter:Init(parent)
     frame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", Constants.FRAME.PADDING, Constants.FRAME.PADDING - 2)
     frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.PADDING - 2)
 
-    -- Withdraw button
-    local withdrawBtn = CreateFrame("Button", "GudaGuildBankWithdrawBtn", frame, "BackdropTemplate")
-    withdrawBtn:SetSize(22, 22)
+    -- Withdraw button (UIPanelButtonTemplate style like Warband)
+    local withdrawBtn = CreateFrame("Button", "GudaGuildBankWithdrawBtn", frame, "UIPanelButtonTemplate")
+    withdrawBtn:SetSize(70, 22)
     withdrawBtn:SetPoint("LEFT", frame, "LEFT", 0, 0)
-    withdrawBtn:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 8,
-        insets = {left = 2, right = 2, top = 2, bottom = 2},
-    })
-    withdrawBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    withdrawBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
-
-    local withdrawIcon = withdrawBtn:CreateTexture(nil, "ARTWORK")
-    withdrawIcon:SetSize(14, 14)
-    withdrawIcon:SetPoint("CENTER")
-    withdrawIcon:SetTexture("Interface\\MONEYFRAME\\Arrow-Left-Up")
-    withdrawBtn.icon = withdrawIcon
+    withdrawBtn:SetText(L["WITHDRAW"] or "Withdraw")
 
     withdrawBtn:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(0, 0.8, 0.4, 1)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(L["GUILD_BANK_WITHDRAW"] or "Withdraw Money")
         if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
             local withdrawLimit = GetGuildBankWithdrawMoney and GetGuildBankWithdrawMoney() or 0
             if withdrawLimit == -1 then
-                GameTooltip:AddLine(L["GUILD_BANK_WITHDRAW_UNLIMITED"] or "Unlimited withdrawals", 0.5, 0.5, 0.5)
+                GameTooltip:AddLine(L["GUILD_BANK_WITHDRAW_UNLIMITED"] or "Unlimited withdrawals", 1, 1, 1, true)
             elseif withdrawLimit > 0 then
                 local gold = math.floor(withdrawLimit / 10000)
-                GameTooltip:AddLine(string.format(L["GUILD_BANK_WITHDRAW_REMAINING"] or "Remaining today: %dg", gold), 0.5, 0.5, 0.5)
+                GameTooltip:AddLine(string.format(L["GUILD_BANK_WITHDRAW_REMAINING"] or "Remaining today: %dg", gold), 1, 1, 1, true)
             else
-                GameTooltip:AddLine(L["GUILD_BANK_WITHDRAW_NONE"] or "No withdrawal limit remaining", 1, 0.3, 0.3)
+                GameTooltip:AddLine(L["GUILD_BANK_WITHDRAW_NONE"] or "No withdrawal limit remaining", 1, 0.3, 0.3, true)
             end
         else
-            GameTooltip:AddLine(L["GUILD_BANK_OFFLINE"] or "Guild bank must be open", 1, 0.3, 0.3)
+            GameTooltip:AddLine(L["GUILD_BANK_OFFLINE"] or "Guild bank must be open", 1, 0.3, 0.3, true)
         end
         GameTooltip:Show()
     end)
     withdrawBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
         GameTooltip:Hide()
     end)
     withdrawBtn:SetScript("OnClick", function()
@@ -79,36 +64,21 @@ function GuildBankFooter:Init(parent)
     end)
     frame.withdrawBtn = withdrawBtn
 
-    -- Deposit button
-    local depositBtn = CreateFrame("Button", "GudaGuildBankDepositBtn", frame, "BackdropTemplate")
-    depositBtn:SetSize(22, 22)
+    -- Deposit button (UIPanelButtonTemplate style like Warband)
+    local depositBtn = CreateFrame("Button", "GudaGuildBankDepositBtn", frame, "UIPanelButtonTemplate")
+    depositBtn:SetSize(70, 22)
     depositBtn:SetPoint("LEFT", withdrawBtn, "RIGHT", 4, 0)
-    depositBtn:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 8,
-        insets = {left = 2, right = 2, top = 2, bottom = 2},
-    })
-    depositBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    depositBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
-
-    local depositIcon = depositBtn:CreateTexture(nil, "ARTWORK")
-    depositIcon:SetSize(14, 14)
-    depositIcon:SetPoint("CENTER")
-    depositIcon:SetTexture("Interface\\MONEYFRAME\\Arrow-Right-Up")
-    depositBtn.icon = depositIcon
+    depositBtn:SetText(L["DEPOSIT"] or "Deposit")
 
     depositBtn:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(0, 0.8, 0.4, 1)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(L["GUILD_BANK_DEPOSIT"] or "Deposit Money")
         if not GuildBankScanner or not GuildBankScanner:IsGuildBankOpen() then
-            GameTooltip:AddLine(L["GUILD_BANK_OFFLINE"] or "Guild bank must be open", 1, 0.3, 0.3)
+            GameTooltip:AddLine(L["GUILD_BANK_OFFLINE"] or "Guild bank must be open", 1, 0.3, 0.3, true)
         end
         GameTooltip:Show()
     end)
     depositBtn:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
         GameTooltip:Hide()
     end)
     depositBtn:SetScript("OnClick", function()
@@ -118,10 +88,104 @@ function GuildBankFooter:Init(parent)
     end)
     frame.depositBtn = depositBtn
 
+    -- Center buttons container (Log | Money Log | Info)
+    local centerBtns = CreateFrame("Frame", nil, frame)
+    centerBtns:SetSize(220, 22)  -- Wider to fit all buttons
+    centerBtns:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    frame.centerBtns = centerBtns
+
+    -- Log button
+    local logBtn = CreateFrame("Button", "GudaGuildBankLogBtn", centerBtns)
+    logBtn:SetSize(40, 18)
+    logBtn:SetPoint("LEFT", centerBtns, "LEFT", 0, 0)
+    local logText = logBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    logText:SetPoint("CENTER")
+    logText:SetText("Log")
+    logText:SetTextColor(0.8, 0.8, 0.8)
+    logBtn.text = logText
+    logBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(1, 1, 1)
+    end)
+    logBtn:SetScript("OnLeave", function(self)
+        self.text:SetTextColor(0.8, 0.8, 0.8)
+    end)
+    logBtn:SetScript("OnClick", function()
+        local scanner = ns:GetModule("GuildBankScanner")
+        if scanner and scanner:IsGuildBankOpen() then
+            GuildBankFooter:ShowLogPopup()
+        end
+    end)
+    frame.logBtn = logBtn
+
+    -- Separator 1
+    local sep1 = centerBtns:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sep1:SetPoint("LEFT", logBtn, "RIGHT", 4, 0)
+    sep1:SetText("|")
+    sep1:SetTextColor(0.5, 0.5, 0.5)
+    frame.sep1 = sep1
+
+    -- Money Log button
+    local moneyLogBtn = CreateFrame("Button", "GudaGuildBankMoneyLogBtn", centerBtns)
+    moneyLogBtn:SetSize(70, 18)
+    moneyLogBtn:SetPoint("LEFT", sep1, "RIGHT", 4, 0)
+    moneyLogBtn:EnableMouse(true)
+    moneyLogBtn:RegisterForClicks("AnyUp")
+    local moneyLogText = moneyLogBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    moneyLogText:SetPoint("CENTER")
+    moneyLogText:SetText("Money Log")
+    moneyLogText:SetTextColor(0.8, 0.8, 0.8)
+    moneyLogBtn.text = moneyLogText
+    moneyLogBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(1, 1, 1)
+    end)
+    moneyLogBtn:SetScript("OnLeave", function(self)
+        self.text:SetTextColor(0.8, 0.8, 0.8)
+    end)
+    moneyLogBtn:SetScript("OnClick", function(self, button)
+        ns:Debug("Money Log button clicked!")
+        local scanner = ns:GetModule("GuildBankScanner")
+        ns:Debug("Scanner:", scanner and "found" or "nil", "IsOpen:", scanner and scanner:IsGuildBankOpen())
+        if scanner and scanner:IsGuildBankOpen() then
+            ns:Debug("Calling ShowMoneyLogPopup")
+            GuildBankFooter:ShowMoneyLogPopup()
+        end
+    end)
+    frame.moneyLogBtn = moneyLogBtn
+
+    -- Separator 2
+    local sep2 = centerBtns:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sep2:SetPoint("LEFT", moneyLogBtn, "RIGHT", 4, 0)
+    sep2:SetText("|")
+    sep2:SetTextColor(0.5, 0.5, 0.5)
+    frame.sep2 = sep2
+
+    -- Info button
+    local infoBtn = CreateFrame("Button", "GudaGuildBankInfoBtn", centerBtns)
+    infoBtn:SetSize(30, 18)
+    infoBtn:SetPoint("LEFT", sep2, "RIGHT", 4, 0)
+    local infoText = infoBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    infoText:SetPoint("CENTER")
+    infoText:SetText("Info")
+    infoText:SetTextColor(0.8, 0.8, 0.8)
+    infoBtn.text = infoText
+    infoBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(1, 1, 1)
+    end)
+    infoBtn:SetScript("OnLeave", function(self)
+        self.text:SetTextColor(0.8, 0.8, 0.8)
+    end)
+    infoBtn:SetScript("OnClick", function()
+        local scanner = ns:GetModule("GuildBankScanner")
+        if scanner and scanner:IsGuildBankOpen() then
+            GuildBankFooter:ShowInfoPopup()
+        end
+    end)
+    frame.infoBtn = infoBtn
+
     -- Slot counter (used/total)
     local slotInfoFrame = CreateFrame("Frame", nil, frame)
-    slotInfoFrame:SetPoint("LEFT", depositBtn, "RIGHT", 8, 0)
-    slotInfoFrame:SetSize(100, 16)
+    slotInfoFrame:SetPoint("LEFT", depositBtn, "RIGHT", 12, 0)
+    slotInfoFrame:SetSize(60, 16)
 
     local slotInfo = slotInfoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     slotInfo:SetPoint("LEFT", slotInfoFrame, "LEFT", 0, 0)
@@ -214,27 +278,482 @@ function GuildBankFooter:UpdateButtonStates(isOpen)
         -- Enable buttons
         if frame.withdrawBtn then
             frame.withdrawBtn:Enable()
-            frame.withdrawBtn.icon:SetDesaturated(false)
-            frame.withdrawBtn.icon:SetAlpha(1)
         end
         if frame.depositBtn then
             frame.depositBtn:Enable()
-            frame.depositBtn.icon:SetDesaturated(false)
-            frame.depositBtn.icon:SetAlpha(1)
+        end
+        -- Show center buttons
+        if frame.centerBtns then
+            frame.centerBtns:Show()
         end
     else
         -- Disable buttons (but keep them visible for offline viewing)
         if frame.withdrawBtn then
             frame.withdrawBtn:Disable()
-            frame.withdrawBtn.icon:SetDesaturated(true)
-            frame.withdrawBtn.icon:SetAlpha(0.5)
         end
         if frame.depositBtn then
             frame.depositBtn:Disable()
-            frame.depositBtn.icon:SetDesaturated(true)
-            frame.depositBtn.icon:SetAlpha(0.5)
+        end
+        -- Hide center buttons in offline mode
+        if frame.centerBtns then
+            frame.centerBtns:Hide()
         end
     end
+end
+
+-------------------------------------------------
+-- Popup Window with Tabs
+-------------------------------------------------
+
+local guildBankPopup = nil
+local currentPopupTab = "log"
+
+local function CreateGuildBankPopup()
+    local popup = CreateFrame("Frame", "GudaGuildBankPopup", UIParent, "BackdropTemplate")
+    popup:SetSize(450, 380)
+    popup:SetPoint("CENTER", UIParent, "CENTER", 0, 100)
+    popup:SetMovable(true)
+    popup:EnableMouse(true)
+    popup:SetClampedToScreen(true)
+    popup:SetFrameStrata("DIALOG")
+    popup:SetFrameLevel(100)
+
+    -- Register for log update events to refresh content when data arrives
+    popup:RegisterEvent("GUILD_BANK_LOG_UPDATE")
+    popup:SetScript("OnEvent", function(self, event)
+        if event == "GUILD_BANK_LOG_UPDATE" and self:IsShown() then
+            ns:Debug("GUILD_BANK_LOG_UPDATE received, refreshing popup content")
+            GuildBankFooter:UpdatePopupContent()
+        end
+    end)
+
+    popup:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14,
+        insets = {left = 3, right = 3, top = 3, bottom = 3},
+    })
+    popup:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
+    popup:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+    -- Title bar
+    local titleBar = CreateFrame("Frame", nil, popup)
+    titleBar:SetHeight(24)
+    titleBar:SetPoint("TOPLEFT", popup, "TOPLEFT", 4, -4)
+    titleBar:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -4, -4)
+    titleBar:EnableMouse(true)
+    titleBar:RegisterForDrag("LeftButton")
+    titleBar:SetScript("OnDragStart", function() popup:StartMoving() end)
+    titleBar:SetScript("OnDragStop", function() popup:StopMovingOrSizing() end)
+
+    local titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleText:SetPoint("LEFT", titleBar, "LEFT", 4, 0)
+    titleText:SetText("Guild Bank")
+    titleText:SetTextColor(1, 0.82, 0)
+    popup.titleText = titleText
+
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -2, -2)
+    closeBtn:SetScript("OnClick", function() popup:Hide() end)
+
+    -- Scroll frame for content (tabs are now outside frame, so less bottom padding needed)
+    local scrollFrame = CreateFrame("ScrollFrame", "GudaGuildBankPopupScrollFrame", popup, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", popup, "TOPLEFT", 8, -32)
+    scrollFrame:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -28, 10)
+
+    local content = CreateFrame("Frame", "GudaGuildBankPopupContent", scrollFrame)
+    content:SetSize(410, 1)
+    scrollFrame:SetScrollChild(content)
+    popup.content = content
+    popup.scrollFrame = scrollFrame
+
+    -- Bottom tab bar (below the frame, like Bank | Warband tabs)
+    local TAB_WIDTH = 90
+    local TAB_HEIGHT = 26
+    local TAB_SPACING = 2
+
+    local tabBar = CreateFrame("Frame", nil, popup)
+    tabBar:SetHeight(TAB_HEIGHT)
+    tabBar:SetPoint("TOPLEFT", popup, "BOTTOMLEFT", 8, 0)
+    tabBar:SetWidth(TAB_WIDTH * 3 + TAB_SPACING * 2)
+    popup.tabBar = tabBar
+
+    -- Tab buttons (same style as Bank | Warband bottom tabs)
+    local function CreateTabButton(tabName, label)
+        local btn = CreateFrame("Button", "GudaGuildBankPopupTab" .. tabName, tabBar, "BackdropTemplate")
+        btn:SetSize(TAB_WIDTH, TAB_HEIGHT)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 10,
+            insets = {left = 2, right = 2, top = 2, bottom = 2},
+        })
+        btn:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
+        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        btn.tabName = tabName
+
+        local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetPoint("CENTER", 0, 0)
+        text:SetText(label)
+        text:SetTextColor(0.8, 0.8, 0.8)
+        btn.text = text
+
+        local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints()
+        highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+        highlight:SetBlendMode("ADD")
+
+        -- Selection indicator (gold, like Bank | Warband)
+        local selected = btn:CreateTexture(nil, "BACKGROUND", nil, 1)
+        selected:SetPoint("TOPLEFT", 2, -2)
+        selected:SetPoint("BOTTOMRIGHT", -2, 2)
+        selected:SetColorTexture(1, 0.82, 0, 0.15)
+        selected:Hide()
+        btn.selected = selected
+
+        btn:SetScript("OnClick", function(self)
+            currentPopupTab = self.tabName
+            GuildBankFooter:UpdatePopupContent()
+            GuildBankFooter:UpdatePopupTabs()
+        end)
+
+        return btn
+    end
+
+    -- Create tabs
+    local logTab = CreateTabButton("log", "Log")
+    local moneyLogTab = CreateTabButton("moneyLog", "Money Log")
+    local infoTab = CreateTabButton("info", "Info")
+
+    -- Position tabs side by side at bottom
+    logTab:SetPoint("LEFT", tabBar, "LEFT", 0, 0)
+    moneyLogTab:SetPoint("LEFT", logTab, "RIGHT", TAB_SPACING, 0)
+    infoTab:SetPoint("LEFT", moneyLogTab, "RIGHT", TAB_SPACING, 0)
+
+    popup.tabs = {
+        log = logTab,
+        moneyLog = moneyLogTab,
+        info = infoTab,
+    }
+
+    popup:Hide()
+    tinsert(UISpecialFrames, "GudaGuildBankPopup")
+
+    return popup
+end
+
+function GuildBankFooter:UpdatePopupTabs()
+    ns:Debug("UpdatePopupTabs called")
+    if not guildBankPopup then
+        ns:Debug("UpdatePopupTabs: no popup")
+        return
+    end
+    if not guildBankPopup.tabs then
+        ns:Debug("UpdatePopupTabs: no tabs table")
+        return
+    end
+
+    for name, btn in pairs(guildBankPopup.tabs) do
+        ns:Debug("UpdatePopupTabs: processing tab", name)
+        if name == currentPopupTab then
+            btn.selected:Show()
+            btn:SetBackdropColor(0.12, 0.12, 0.12, 0.95)  -- Slightly lighter background
+            btn:SetBackdropBorderColor(1, 0.82, 0, 1)  -- Gold border
+            btn.text:SetTextColor(1, 0.82, 0)  -- Gold text
+        else
+            btn.selected:Hide()
+            btn:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
+            btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+            btn.text:SetTextColor(0.7, 0.7, 0.7)
+        end
+    end
+    ns:Debug("UpdatePopupTabs done")
+end
+
+function GuildBankFooter:UpdatePopupContent()
+    ns:Debug("UpdatePopupContent called, currentPopupTab:", currentPopupTab)
+    if not guildBankPopup then
+        ns:Debug("UpdatePopupContent: no popup")
+        return
+    end
+
+    -- Clear content
+    local content = guildBankPopup.content
+    if not content then
+        ns:Debug("UpdatePopupContent: no content frame")
+        return
+    end
+
+    for _, region in pairs({content:GetRegions()}) do
+        region:Hide()
+    end
+    for _, child in pairs({content:GetChildren()}) do
+        child:Hide()
+    end
+
+    if currentPopupTab == "log" then
+        ns:Debug("Populating log content")
+        self:PopulateLogContent(content)
+    elseif currentPopupTab == "moneyLog" then
+        ns:Debug("Populating money log content")
+        self:PopulateMoneyLogContent(content)
+    elseif currentPopupTab == "info" then
+        ns:Debug("Populating info content")
+        self:PopulateInfoContent(content)
+    end
+    ns:Debug("UpdatePopupContent done")
+end
+
+function GuildBankFooter:PopulateLogContent(content)
+    local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 1
+    if selectedTab == 0 then selectedTab = 1 end
+
+    QueryGuildBankLog(selectedTab)
+
+    local tabInfo = GuildBankScanner and GuildBankScanner:GetTabInfo(selectedTab)
+    local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
+    guildBankPopup.titleText:SetText("Guild Bank Log - " .. tabName)
+
+    local numTransactions = GetNumGuildBankTransactions(selectedTab) or 0
+    local yOffset = 0
+    local entryHeight = 16
+
+    if numTransactions == 0 then
+        local noData = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        noData:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+        noData:SetText("No transactions found.")
+        noData:SetTextColor(0.6, 0.6, 0.6)
+        yOffset = -entryHeight
+    else
+        for i = numTransactions, 1, -1 do
+            local transType, name, itemLink, count, tab1, tab2, year, month, day, hour = GetGuildBankTransaction(selectedTab, i)
+
+            local entry = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            entry:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+            entry:SetWidth(400)
+            entry:SetJustifyH("LEFT")
+
+            -- Use Blizzard's RecentTimeDate for proper relative time formatting
+            local timeStr
+            if RecentTimeDate then
+                timeStr = RecentTimeDate(year, month, day, hour)
+            else
+                timeStr = string.format("%02d/%02d %02d:00", month or 0, day or 0, hour or 0)
+            end
+
+            local actionStr = ""
+
+            if transType == "deposit" then
+                actionStr = string.format("|cff00ff00%s|r deposited %s", name or UNKNOWN or "Unknown", itemLink or "item")
+                if count and count > 1 then actionStr = actionStr .. " x" .. count end
+            elseif transType == "withdraw" then
+                actionStr = string.format("|cffff0000%s|r withdrew %s", name or UNKNOWN or "Unknown", itemLink or "item")
+                if count and count > 1 then actionStr = actionStr .. " x" .. count end
+            elseif transType == "move" then
+                actionStr = string.format("|cffffff00%s|r moved %s", name or UNKNOWN or "Unknown", itemLink or "item")
+            else
+                actionStr = string.format("%s: %s - %s", transType or "?", name or UNKNOWN or "Unknown", itemLink or "item")
+            end
+
+            entry:SetText(string.format("%s |cff888888%s|r", actionStr, timeStr))
+            yOffset = yOffset - entryHeight
+        end
+    end
+
+    content:SetHeight(math.abs(yOffset) + 10)
+end
+
+function GuildBankFooter:PopulateMoneyLogContent(content)
+    ns:Debug("PopulateMoneyLogContent called")
+    -- Query money log using the correct API (tab index = MAX_GUILDBANK_TABS + 1 for money)
+    local MAX_GUILDBANK_TABS = MAX_GUILDBANK_TABS or 8
+    if QueryGuildBankLog then
+        QueryGuildBankLog(MAX_GUILDBANK_TABS + 1)
+        ns:Debug("Queried guild bank money log (tab", MAX_GUILDBANK_TABS + 1, ")")
+    end
+
+    guildBankPopup.titleText:SetText("Guild Bank Money Log")
+
+    local numTransactions = GetNumGuildBankMoneyTransactions and GetNumGuildBankMoneyTransactions() or 0
+    ns:Debug("Number of money transactions:", numTransactions)
+    local yOffset = 0
+    local entryHeight = 16
+
+    if numTransactions == 0 then
+        local noData = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        noData:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+        noData:SetText("No money transactions found.")
+        noData:SetTextColor(0.6, 0.6, 0.6)
+        yOffset = -entryHeight
+    else
+        for i = numTransactions, 1, -1 do
+            local transType, name, amount, year, month, day, hour = GetGuildBankMoneyTransaction(i)
+
+            local entry = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            entry:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+            entry:SetWidth(400)
+            entry:SetJustifyH("LEFT")
+
+            -- Use Blizzard's RecentTimeDate for proper relative time formatting
+            local timeStr
+            if RecentTimeDate then
+                timeStr = RecentTimeDate(year, month, day, hour)
+            else
+                -- Fallback formatting
+                timeStr = string.format("%02d/%02d %02d:00", month or 0, day or 0, hour or 0)
+            end
+
+            -- Format money using GetDenominationsFromCopper if available, otherwise manual
+            local moneyStr
+            if GetDenominationsFromCopper then
+                moneyStr = GetDenominationsFromCopper(amount or 0)
+            else
+                local gold = math.floor((amount or 0) / 10000)
+                local silver = math.floor(((amount or 0) % 10000) / 100)
+                local copper = (amount or 0) % 100
+                moneyStr = ""
+                if gold > 0 then moneyStr = gold .. "g " end
+                if silver > 0 then moneyStr = moneyStr .. silver .. "s " end
+                if copper > 0 or moneyStr == "" then moneyStr = moneyStr .. copper .. "c" end
+            end
+
+            local actionStr = ""
+            if transType == "deposit" then
+                actionStr = string.format("|cff00ff00%s|r deposited |cffffd700%s|r", name or UNKNOWN or "Unknown", moneyStr)
+            elseif transType == "withdraw" then
+                actionStr = string.format("|cffff0000%s|r withdrew |cffffd700%s|r", name or UNKNOWN or "Unknown", moneyStr)
+            elseif transType == "repair" then
+                actionStr = string.format("|cffffff00%s|r repaired for |cffffd700%s|r", name or UNKNOWN or "Unknown", moneyStr)
+            elseif transType == "withdrawForTab" then
+                actionStr = string.format("|cffff8800%s|r bought tab for |cffffd700%s|r", name or UNKNOWN or "Unknown", moneyStr)
+            else
+                actionStr = string.format("%s: %s - %s", transType or "?", name or UNKNOWN or "Unknown", moneyStr)
+            end
+
+            entry:SetText(string.format("%s |cff888888%s|r", actionStr, timeStr))
+            yOffset = yOffset - entryHeight
+        end
+    end
+
+    content:SetHeight(math.abs(yOffset) + 10)
+end
+
+function GuildBankFooter:PopulateInfoContent(content)
+    local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 1
+    if selectedTab == 0 then selectedTab = 1 end
+
+    QueryGuildBankText(selectedTab)
+
+    local tabInfo = GuildBankScanner and GuildBankScanner:GetTabInfo(selectedTab)
+    local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
+    guildBankPopup.titleText:SetText("Guild Bank Info - " .. tabName)
+
+    local yOffset = 0
+    local lineHeight = 18
+
+    if tabInfo then
+        local infoLine = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        infoLine:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+        infoLine:SetText("|cffffd700Tab Name:|r " .. (tabInfo.name or "Unknown"))
+        yOffset = yOffset - lineHeight
+
+        if tabInfo.canDeposit ~= nil then
+            local depositLine = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            depositLine:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+            depositLine:SetText("Can Deposit: " .. (tabInfo.canDeposit and "|cff00ff00Yes|r" or "|cffff0000No|r"))
+            yOffset = yOffset - lineHeight
+        end
+
+        if tabInfo.numWithdrawals then
+            local withdrawLine = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            withdrawLine:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+            local remaining = tabInfo.remainingWithdrawals or 0
+            local total = tabInfo.numWithdrawals or 0
+            if total == -1 then
+                withdrawLine:SetText("Withdrawals: |cff00ff00Unlimited|r")
+            else
+                withdrawLine:SetText(string.format("Withdrawals: %d remaining of %d", remaining, total))
+            end
+            yOffset = yOffset - lineHeight
+        end
+    end
+
+    yOffset = yOffset - 10
+
+    local tabText = GetGuildBankText(selectedTab)
+    if tabText and tabText ~= "" then
+        local descLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        descLabel:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+        descLabel:SetText("|cffffd700Tab Description:|r")
+        yOffset = yOffset - lineHeight
+
+        local descText = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        descText:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+        descText:SetWidth(400)
+        descText:SetJustifyH("LEFT")
+        descText:SetText(tabText)
+        descText:SetTextColor(0.9, 0.9, 0.9)
+        yOffset = yOffset - (descText:GetStringHeight() + 10)
+    else
+        local noDesc = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        noDesc:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
+        noDesc:SetText("No description set for this tab.")
+        noDesc:SetTextColor(0.6, 0.6, 0.6)
+        yOffset = yOffset - lineHeight
+    end
+
+    content:SetHeight(math.abs(yOffset) + 10)
+end
+
+function GuildBankFooter:ShowLogPopup()
+    if not guildBankPopup then
+        guildBankPopup = CreateGuildBankPopup()
+    end
+    currentPopupTab = "log"
+    self:UpdatePopupTabs()
+    self:UpdatePopupContent()
+    guildBankPopup:Show()
+end
+
+function GuildBankFooter:ShowMoneyLogPopup()
+    ns:Debug("ShowMoneyLogPopup called")
+    if not guildBankPopup then
+        ns:Debug("Creating popup")
+        local success, result = pcall(CreateGuildBankPopup)
+        if success then
+            guildBankPopup = result
+            ns:Debug("Popup created:", guildBankPopup and "success" or "nil")
+        else
+            ns:Debug("ERROR creating popup:", result)
+            return
+        end
+    end
+    if not guildBankPopup then
+        ns:Debug("ERROR: guildBankPopup is nil after creation!")
+        return
+    end
+    currentPopupTab = "moneyLog"
+    ns:Debug("currentPopupTab set to:", currentPopupTab)
+    ns:Debug("Calling UpdatePopupTabs")
+    local ok1, err1 = pcall(function() self:UpdatePopupTabs() end)
+    if not ok1 then ns:Debug("ERROR in UpdatePopupTabs:", err1) return end
+    ns:Debug("Calling UpdatePopupContent")
+    local ok2, err2 = pcall(function() self:UpdatePopupContent() end)
+    if not ok2 then ns:Debug("ERROR in UpdatePopupContent:", err2) return end
+    ns:Debug("Calling Show on popup")
+    guildBankPopup:Show()
+    ns:Debug("Popup shown, IsShown:", guildBankPopup:IsShown())
+end
+
+function GuildBankFooter:ShowInfoPopup()
+    if not guildBankPopup then
+        guildBankPopup = CreateGuildBankPopup()
+    end
+    currentPopupTab = "info"
+    self:UpdatePopupTabs()
+    self:UpdatePopupContent()
+    guildBankPopup:Show()
 end
 
 function GuildBankFooter:UpdateMoney()
