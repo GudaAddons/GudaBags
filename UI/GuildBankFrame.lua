@@ -584,10 +584,11 @@ function GuildBankFrame:Refresh()
         end
     end
 
-    local rows = math.ceil(numSlots / columns) + headerCount
+    local itemRows = math.ceil(numSlots / columns)
     local contentWidth = (iconSize * columns) + (spacing * (columns - 1))
     local headerHeight = 20
-    local actualContentHeight = (iconSize * rows) + (spacing * math.max(0, rows - 1)) + (headerCount * headerHeight)
+    -- Calculate height: item rows + spacing between rows + headers (not double-counted)
+    local actualContentHeight = (iconSize * itemRows) + (spacing * math.max(0, itemRows - 1)) + (headerCount * headerHeight)
 
     -- Calculate frame dimensions
     local showSearchBar = Database:GetSetting("showSearchBar")
