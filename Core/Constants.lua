@@ -10,10 +10,12 @@ local Expansion = ns:GetModule("Expansion")
 -- KEYRING is TBC-only (keyring was removed in later expansions)
 -- GUILD_BANK is available in TBC and later (introduced in TBC, interface 20000+)
 -- Not available in Classic Era (interface 11xxx)
-local isGuildBankSupported = Expansion and (Expansion.IsTBC or Expansion.IsMoP or Expansion.IsRetail) or false
--- Also check interface version as fallback for expansions not explicitly detected (Wrath, Cata, etc)
-if not isGuildBankSupported and Expansion and Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 20000 then
-    isGuildBankSupported = true
+local isGuildBankSupported = false
+if Expansion and not Expansion.IsClassicEra then
+    -- Guild bank available in TBC+, check interface version >= 20000
+    if Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 20000 then
+        isGuildBankSupported = true
+    end
 end
 
 Constants.FEATURES = {
