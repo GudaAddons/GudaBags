@@ -101,13 +101,13 @@ function GuildBankFooter:Init(parent)
     local logText = logBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     logText:SetPoint("CENTER")
     logText:SetText("Log")
-    logText:SetTextColor(0.8, 0.8, 0.8)
+    logText:SetTextColor(1, 0.82, 0)  -- Gold
     logBtn.text = logText
     logBtn:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(1, 1, 1)
+        self.text:SetTextColor(1, 1, 0.6)  -- Brighter gold
     end)
     logBtn:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(0.8, 0.8, 0.8)
+        self.text:SetTextColor(1, 0.82, 0)  -- Gold
     end)
     logBtn:SetScript("OnClick", function()
         local scanner = ns:GetModule("GuildBankScanner")
@@ -121,7 +121,7 @@ function GuildBankFooter:Init(parent)
     local sep1 = centerBtns:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sep1:SetPoint("LEFT", logBtn, "RIGHT", 4, 0)
     sep1:SetText("|")
-    sep1:SetTextColor(0.5, 0.5, 0.5)
+    sep1:SetTextColor(0.7, 0.6, 0)  -- Darker gold
     frame.sep1 = sep1
 
     -- Money Log button
@@ -133,13 +133,13 @@ function GuildBankFooter:Init(parent)
     local moneyLogText = moneyLogBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     moneyLogText:SetPoint("CENTER")
     moneyLogText:SetText("Money Log")
-    moneyLogText:SetTextColor(0.8, 0.8, 0.8)
+    moneyLogText:SetTextColor(1, 0.82, 0)  -- Gold
     moneyLogBtn.text = moneyLogText
     moneyLogBtn:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(1, 1, 1)
+        self.text:SetTextColor(1, 1, 0.6)  -- Brighter gold
     end)
     moneyLogBtn:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(0.8, 0.8, 0.8)
+        self.text:SetTextColor(1, 0.82, 0)  -- Gold
     end)
     moneyLogBtn:SetScript("OnClick", function(self, button)
         ns:Debug("Money Log button clicked!")
@@ -156,7 +156,7 @@ function GuildBankFooter:Init(parent)
     local sep2 = centerBtns:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sep2:SetPoint("LEFT", moneyLogBtn, "RIGHT", 4, 0)
     sep2:SetText("|")
-    sep2:SetTextColor(0.5, 0.5, 0.5)
+    sep2:SetTextColor(0.7, 0.6, 0)  -- Darker gold
     frame.sep2 = sep2
 
     -- Info button
@@ -166,13 +166,13 @@ function GuildBankFooter:Init(parent)
     local infoText = infoBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     infoText:SetPoint("CENTER")
     infoText:SetText("Info")
-    infoText:SetTextColor(0.8, 0.8, 0.8)
+    infoText:SetTextColor(1, 0.82, 0)  -- Gold
     infoBtn.text = infoText
     infoBtn:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(1, 1, 1)
+        self.text:SetTextColor(1, 1, 0.6)  -- Brighter gold
     end)
     infoBtn:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(0.8, 0.8, 0.8)
+        self.text:SetTextColor(1, 0.82, 0)  -- Gold
     end)
     infoBtn:SetScript("OnClick", function()
         local scanner = ns:GetModule("GuildBankScanner")
