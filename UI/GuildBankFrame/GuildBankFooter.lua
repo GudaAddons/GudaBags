@@ -25,17 +25,42 @@ function GuildBankFooter:Init(parent)
     -- Store reference to main GuildBankFrame
     mainGuildBankFrame = parent
 
+    -- Extended footer with two rows
+    local FOOTER_HEIGHT = 40  -- Two rows
+
     frame = CreateFrame("Frame", "GudaGuildBankFooter", parent)
-    frame:SetHeight(Constants.FRAME.FOOTER_HEIGHT)
+    frame:SetHeight(FOOTER_HEIGHT)
     frame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", Constants.FRAME.PADDING, Constants.FRAME.PADDING - 2)
     frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.PADDING - 2)
 
-    -- Withdraw button (UIPanelButtonTemplate style like Warband)
+    -- === TOP ROW ===
+
+    -- Deposit button (left side)
+    local depositBtn = CreateFrame("Button", "GudaGuildBankDepositBtn", frame, "UIPanelButtonTemplate")
+    depositBtn:SetSize(70, 22)
+    depositBtn:SetPoint("LEFT", frame, "LEFT", 0, 8)
+    depositBtn:SetText(L["DEPOSIT"] or "Deposit")
+    depositBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(L["GUILD_BANK_DEPOSIT"] or "Deposit Money")
+        if not GuildBankScanner or not GuildBankScanner:IsGuildBankOpen() then
+            GameTooltip:AddLine(L["GUILD_BANK_OFFLINE"] or "Guild bank must be open", 1, 0.3, 0.3, true)
+        end
+        GameTooltip:Show()
+    end)
+    depositBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    depositBtn:SetScript("OnClick", function()
+        if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
+            StaticPopup_Show("GUILDBANK_DEPOSIT")
+        end
+    end)
+    frame.depositBtn = depositBtn
+
+    -- Withdraw button (after deposit)
     local withdrawBtn = CreateFrame("Button", "GudaGuildBankWithdrawBtn", frame, "UIPanelButtonTemplate")
     withdrawBtn:SetSize(70, 22)
-    withdrawBtn:SetPoint("LEFT", frame, "LEFT", 0, 0)
+    withdrawBtn:SetPoint("LEFT", depositBtn, "RIGHT", 4, 0)
     withdrawBtn:SetText(L["WITHDRAW"] or "Withdraw")
-
     withdrawBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(L["GUILD_BANK_WITHDRAW"] or "Withdraw Money")
@@ -54,9 +79,7 @@ function GuildBankFooter:Init(parent)
         end
         GameTooltip:Show()
     end)
-    withdrawBtn:SetScript("OnLeave", function(self)
-        GameTooltip:Hide()
-    end)
+    withdrawBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     withdrawBtn:SetScript("OnClick", function()
         if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
             StaticPopup_Show("GUILDBANK_WITHDRAW")
@@ -64,34 +87,42 @@ function GuildBankFooter:Init(parent)
     end)
     frame.withdrawBtn = withdrawBtn
 
-    -- Deposit button (UIPanelButtonTemplate style like Warband)
-    local depositBtn = CreateFrame("Button", "GudaGuildBankDepositBtn", frame, "UIPanelButtonTemplate")
-    depositBtn:SetSize(70, 22)
-    depositBtn:SetPoint("LEFT", withdrawBtn, "RIGHT", 4, 0)
-    depositBtn:SetText(L["DEPOSIT"] or "Deposit")
+    -- Slot counter (after withdraw button)
+    local slotInfoFrame = CreateFrame("Frame", nil, frame)
+    slotInfoFrame:SetPoint("LEFT", withdrawBtn, "RIGHT", 8, 0)
+    slotInfoFrame:SetSize(50, 16)
+    local slotInfo = slotInfoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    slotInfo:SetPoint("LEFT", slotInfoFrame, "LEFT", 0, 0)
+    slotInfo:SetTextColor(0.8, 0.8, 0.8)
+    slotInfo:SetShadowOffset(1, -1)
+    slotInfo:SetShadowColor(0, 0, 0, 1)
+    frame.slotInfo = slotInfo
+    frame.slotInfoFrame = slotInfoFrame
+    slotInfoFrame:SetScript("OnEnter", function(self)
+        if frame.tabSlotData then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(L["TITLE_GUILD_BANK"] or "Guild Bank Slots", 1, 1, 1)
+            GameTooltip:AddLine(" ")
 
-    depositBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(L["GUILD_BANK_DEPOSIT"] or "Deposit Money")
-        if not GuildBankScanner or not GuildBankScanner:IsGuildBankOpen() then
-            GameTooltip:AddLine(L["GUILD_BANK_OFFLINE"] or "Guild bank must be open", 1, 0.3, 0.3, true)
+            -- Show per-tab slot info
+            for tabIndex, data in pairs(frame.tabSlotData) do
+                local used = data.total - data.free
+                local tabName = data.name or string.format("Tab %d", tabIndex)
+                GameTooltip:AddDoubleLine(tabName .. ":", string.format("%d/%d", used, data.total), 0, 0.8, 0.4, 0.8, 0.8, 0.8)
+            end
+
+            GameTooltip:Show()
         end
-        GameTooltip:Show()
     end)
-    depositBtn:SetScript("OnLeave", function(self)
+    slotInfoFrame:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
-    depositBtn:SetScript("OnClick", function()
-        if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
-            StaticPopup_Show("GUILDBANK_DEPOSIT")
-        end
-    end)
-    frame.depositBtn = depositBtn
 
-    -- Center buttons container (Log | Money Log | Info)
+    -- Center buttons container (Log | Money Log | Info) - bottom row center
     local centerBtns = CreateFrame("Frame", nil, frame)
-    centerBtns:SetSize(220, 22)  -- Wider to fit all buttons
-    centerBtns:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    centerBtns:SetSize(220, 22)
+    centerBtns:SetPoint("CENTER", frame, "CENTER", 0, -13)
+    centerBtns:Hide()  -- Hidden by default, shown when guild bank is open
     frame.centerBtns = centerBtns
 
     -- Log button
@@ -182,47 +213,33 @@ function GuildBankFooter:Init(parent)
     end)
     frame.infoBtn = infoBtn
 
-    -- Slot counter (used/total)
-    local slotInfoFrame = CreateFrame("Frame", nil, frame)
-    slotInfoFrame:SetPoint("LEFT", depositBtn, "RIGHT", 12, 0)
-    slotInfoFrame:SetSize(60, 16)
-
-    local slotInfo = slotInfoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    slotInfo:SetPoint("LEFT", slotInfoFrame, "LEFT", 0, 0)
-    slotInfo:SetTextColor(0.8, 0.8, 0.8)
-    slotInfo:SetShadowOffset(1, -1)
-    slotInfo:SetShadowColor(0, 0, 0, 1)
-    frame.slotInfo = slotInfo
-    frame.slotInfoFrame = slotInfoFrame
-
-    -- Tooltip on hover for slot info
-    slotInfoFrame:SetScript("OnEnter", function(self)
-        if frame.tabSlotData then
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine(L["TITLE_GUILD_BANK"] or "Guild Bank Slots", 1, 1, 1)
-            GameTooltip:AddLine(" ")
-
-            -- Show per-tab slot info
-            for tabIndex, data in pairs(frame.tabSlotData) do
-                local used = data.total - data.free
-                local tabName = data.name or string.format("Tab %d", tabIndex)
-                GameTooltip:AddDoubleLine(tabName .. ":", string.format("%d/%d", used, data.total), 0, 0.8, 0.4, 0.8, 0.8, 0.8)
-            end
-
-            GameTooltip:Show()
-        end
-    end)
-    slotInfoFrame:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    -- Guild money display (guild bank balance)
+    -- Guild money display (guild bank balance) - top row right
     local moneyText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    moneyText:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+    moneyText:SetPoint("RIGHT", frame, "RIGHT", 0, 8)
     moneyText:SetTextColor(1, 0.82, 0)
     moneyText:SetShadowOffset(1, -1)
     moneyText:SetShadowColor(0, 0, 0, 1)
     frame.moneyText = moneyText
+
+    -- === BOTTOM ROW (money info) ===
+
+    -- Money withdrawal info display - bottom row left
+    local moneyWithdrawInfo = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    moneyWithdrawInfo:SetPoint("LEFT", frame, "LEFT", 0, -13)
+    moneyWithdrawInfo:SetTextColor(0.8, 0.8, 0.8)
+    moneyWithdrawInfo:SetShadowOffset(1, -1)
+    moneyWithdrawInfo:SetShadowColor(0, 0, 0, 1)
+    moneyWithdrawInfo:Hide()  -- Hidden by default, shown when guild bank is open
+    frame.moneyWithdrawInfo = moneyWithdrawInfo
+
+    -- Items info (right side of bottom row)
+    local itemWithdrawInfo = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    itemWithdrawInfo:SetPoint("RIGHT", frame, "RIGHT", 0, -13)
+    itemWithdrawInfo:SetTextColor(0.8, 0.8, 0.8)
+    itemWithdrawInfo:SetShadowOffset(1, -1)
+    itemWithdrawInfo:SetShadowColor(0, 0, 0, 1)
+    itemWithdrawInfo:Hide()  -- Hidden by default, shown when guild bank is open
+    frame.itemWithdrawInfo = itemWithdrawInfo
 
     return frame
 end
@@ -269,6 +286,9 @@ function GuildBankFooter:Update()
 
     -- Update guild money display
     self:UpdateMoney()
+
+    -- Update withdrawal info
+    self:UpdateWithdrawInfo()
 end
 
 function GuildBankFooter:UpdateButtonStates(isOpen)
@@ -282,9 +302,15 @@ function GuildBankFooter:UpdateButtonStates(isOpen)
         if frame.depositBtn then
             frame.depositBtn:Enable()
         end
-        -- Show center buttons
+        -- Show second row (center buttons and info)
         if frame.centerBtns then
             frame.centerBtns:Show()
+        end
+        if frame.moneyWithdrawInfo then
+            frame.moneyWithdrawInfo:Show()
+        end
+        if frame.itemWithdrawInfo then
+            frame.itemWithdrawInfo:Show()
         end
     else
         -- Disable buttons (but keep them visible for offline viewing)
@@ -294,9 +320,15 @@ function GuildBankFooter:UpdateButtonStates(isOpen)
         if frame.depositBtn then
             frame.depositBtn:Disable()
         end
-        -- Hide center buttons in offline mode
+        -- Hide second row in offline/view mode
         if frame.centerBtns then
             frame.centerBtns:Hide()
+        end
+        if frame.moneyWithdrawInfo then
+            frame.moneyWithdrawInfo:Hide()
+        end
+        if frame.itemWithdrawInfo then
+            frame.itemWithdrawInfo:Hide()
         end
     end
 end
@@ -955,6 +987,117 @@ function GuildBankFooter:UpdateMoney()
         frame.moneyText:SetText(result)
     else
         frame.moneyText:SetText("")
+    end
+end
+
+function GuildBankFooter:UpdateWithdrawInfo()
+    if not frame then return end
+
+    local scanner = ns:GetModule("GuildBankScanner")
+    local isOpen = scanner and scanner:IsGuildBankOpen() or false
+
+    -- Update item withdrawal info
+    if frame.itemWithdrawInfo then
+        if isOpen then
+            local selectedTab = scanner and scanner:GetSelectedTab() or 1
+            if selectedTab == 0 then selectedTab = 1 end
+
+            -- GetGuildBankTabInfo returns: name, icon, isViewable, canDeposit, numWithdrawals, remainingWithdrawals
+            local _, _, _, canDeposit, numWithdrawals, remainingWithdrawals = GetGuildBankTabInfo(selectedTab)
+
+            local withdrawText
+            if remainingWithdrawals == -1 then
+                withdrawText = "|cff00ff00Unlimited|r"  -- Green
+            elseif remainingWithdrawals == 0 then
+                withdrawText = "|cffff0000None|r"  -- Red
+            else
+                withdrawText = "|cffffffff" .. (remainingWithdrawals or 0) .. "|r"
+            end
+
+            local depositText = canDeposit and "|cff00ff00Yes|r" or "|cffff0000No|r"
+
+            frame.itemWithdrawInfo:SetText("Items: " .. withdrawText .. " | Deposit: " .. depositText)
+            frame.itemWithdrawInfo:Show()
+        else
+            frame.itemWithdrawInfo:SetText("")
+            frame.itemWithdrawInfo:Hide()
+        end
+    end
+
+    -- Update money withdrawal info
+    if frame.moneyWithdrawInfo then
+        if isOpen then
+            local guildMoney = GetGuildBankMoney and GetGuildBankMoney() or 0
+            local withdrawLimit = GetGuildBankWithdrawMoney and GetGuildBankWithdrawMoney() or 0
+
+            -- Cap the displayed amount at the actual guild money (like Baganator does)
+            local withdrawMoney = math.min(withdrawLimit, guildMoney)
+
+            -- Check if player can actually withdraw money
+            local canWithdraw = CanWithdrawGuildBankMoney and CanWithdrawGuildBankMoney() or false
+
+            -- -1 means unlimited withdrawal rights
+            if withdrawLimit == -1 then
+                -- Unlimited rights - show actual guild money available
+                if guildMoney > 0 then
+                    local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:12|t"
+                    local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:12|t"
+                    local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:12|t"
+
+                    local gold = math.floor(guildMoney / 10000)
+                    local silver = math.floor((guildMoney % 10000) / 100)
+                    local copper = guildMoney % 100
+
+                    local moneyStr = ""
+                    if gold > 0 then
+                        moneyStr = gold .. GOLD_ICON
+                    end
+                    if silver > 0 then
+                        if moneyStr ~= "" then moneyStr = moneyStr .. " " end
+                        moneyStr = moneyStr .. silver .. SILVER_ICON
+                    end
+                    if copper > 0 or moneyStr == "" then
+                        if moneyStr ~= "" then moneyStr = moneyStr .. " " end
+                        moneyStr = moneyStr .. copper .. COPPER_ICON
+                    end
+                    frame.moneyWithdrawInfo:SetText("Available: |cff00ff00Unlimited|r (" .. moneyStr .. ")")
+                else
+                    frame.moneyWithdrawInfo:SetText("Available: |cff00ff00Unlimited|r (0)")
+                end
+            elseif not canWithdraw or withdrawMoney == 0 then
+                -- Cannot withdraw - either no permission or limit reached
+                local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:12|t"
+                frame.moneyWithdrawInfo:SetText("Available: |cffff00000|r " .. COPPER_ICON)
+            else
+                -- Has a limit and can withdraw
+                local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:12|t"
+                local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:12|t"
+                local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:12|t"
+
+                local gold = math.floor(withdrawMoney / 10000)
+                local silver = math.floor((withdrawMoney % 10000) / 100)
+                local copper = withdrawMoney % 100
+
+                local moneyStr = ""
+                if gold > 0 then
+                    moneyStr = gold .. GOLD_ICON
+                end
+                if silver > 0 then
+                    if moneyStr ~= "" then moneyStr = moneyStr .. " " end
+                    moneyStr = moneyStr .. silver .. SILVER_ICON
+                end
+                if copper > 0 or moneyStr == "" then
+                    if moneyStr ~= "" then moneyStr = moneyStr .. " " end
+                    moneyStr = moneyStr .. copper .. COPPER_ICON
+                end
+
+                frame.moneyWithdrawInfo:SetText("Available: " .. moneyStr)
+            end
+            frame.moneyWithdrawInfo:Show()
+        else
+            frame.moneyWithdrawInfo:SetText("")
+            frame.moneyWithdrawInfo:Hide()
+        end
     end
 end
 
