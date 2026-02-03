@@ -723,6 +723,18 @@ Events:Register("GUILDBANK_UPDATE_TEXT", function(event, tabIndex)
     end
 end, GuildBankScanner)
 
+-- Guild bank money changed (deposit/withdraw)
+Events:Register("GUILDBANK_UPDATE_MONEY", function()
+    if not isGuildBankOpen then return end
+
+    ns:Debug("GUILDBANK_UPDATE_MONEY fired")
+
+    -- Notify UI to update money display
+    if ns.OnGuildBankMoneyUpdated then
+        ns.OnGuildBankMoneyUpdated()
+    end
+end, GuildBankScanner)
+
 -- PLAYER_INTERACTION_MANAGER for modern WoW (MoP Remix+, Retail, TWW)
 -- This fires BEFORE Blizzard's frame shows, allowing preemptive hiding
 local Expansion = ns:GetModule("Expansion")

@@ -855,6 +855,14 @@ ns.OnGuildBankTabsUpdated = function()
     end
 end
 
+-- Called when guild bank money changes
+ns.OnGuildBankMoneyUpdated = function()
+    if frame and frame:IsShown() then
+        GuildBankFooter:UpdateMoney()
+        GuildBankFooter:UpdateWithdrawInfo()
+    end
+end
+
 -------------------------------------------------
 -- Settings Change Handler
 -------------------------------------------------
