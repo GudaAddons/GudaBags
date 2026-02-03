@@ -466,6 +466,9 @@ local function CreateButton(parent)
     button:SetScript("OnEnter", function(self)
         -- Wrap in pcall to prevent errors from breaking interaction
         local success, err = pcall(function()
+            -- Initialize shift state tracking for tooltip refresh
+            self.lastShiftState = IsShiftKeyDown()
+
             -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
             -- Skip for pseudo-items (Empty/Soul) which don't have real bag slots
             if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
@@ -500,6 +503,9 @@ local function CreateButton(parent)
     button:SetScript("OnLeave", function(self)
         -- Wrap in pcall to prevent errors
         local success, err = pcall(function()
+            -- Clear shift state tracking
+            self.lastShiftState = nil
+
             -- Call Blizzard's handler to clear cursor state (may not exist on retail)
             if ContainerFrameItemButton_OnLeave then
                 ContainerFrameItemButton_OnLeave(self)
@@ -520,8 +526,21 @@ local function CreateButton(parent)
     end)
 
     -- Update indicator position while hovering with dragged item
-    -- Only runs when indicator is visible AND mouse is over this button
+    -- Also refresh tooltip when shift key state changes (for price display)
     button:SetScript("OnUpdate", function(self)
+        -- Track shift key state for tooltip refresh
+        if self:IsMouseOver() then
+            local shiftDown = IsShiftKeyDown()
+            if self.lastShiftState ~= shiftDown then
+                self.lastShiftState = shiftDown
+                -- Refresh tooltip when shift state changes (for stack price vs single price)
+                if self.itemData and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
+                    Tooltip:ShowForItem(self)
+                end
+            end
+        end
+
+        -- Update drag-drop indicator position
         if self.categoryId and self.containerFrame and self:IsMouseOver() then
             local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
             if CategoryDropIndicator and CategoryDropIndicator:IsShown() then
