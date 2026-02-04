@@ -673,6 +673,39 @@ local function CreateButton(parent)
         end
     end
 
+    -- Helper function to find where the cursor item is coming from
+    -- Returns "bag", "bank", or nil if unknown
+    local function GetCursorItemSource()
+        -- Check player bags (0 to NUM_BAG_SLOTS) for locked slot
+        for bagID = 0, NUM_BAG_SLOTS do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if itemInfo and itemInfo.isLocked then
+                    return "bag"
+                end
+            end
+        end
+
+        -- Check bank slots for locked slot
+        local bankBags = { BANK_CONTAINER }
+        for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+            table.insert(bankBags, i)
+        end
+
+        for _, bagID in ipairs(bankBags) do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if itemInfo and itemInfo.isLocked then
+                    return "bank"
+                end
+            end
+        end
+
+        return nil
+    end
+
     -- Helper function to check if swap should be BLOCKED
     -- Returns true to BLOCK swap (same container - no swapping within bag or within bank)
     -- Returns false to ALLOW swap (cross-container only - bag↔bank)
@@ -692,17 +725,24 @@ local function CreateButton(parent)
         -- Same-container swaps (bag→bag or bank→bank) are BLOCKED
         if targetButton.containerFrame then
             local containerName = targetButton.containerFrame:GetName()
-            local BankScanner = ns:GetModule("BankScanner")
-            local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+            local cursorSource = GetCursorItemSource()
 
             if containerName == "GudaBankContainer" then
-                -- Target is in bank - allow swap (item coming from bag)
-                return false
+                -- Target is in bank
+                if cursorSource == "bag" then
+                    return false  -- Bag to Bank - ALLOW
+                else
+                    return true   -- Bank to Bank - BLOCK
+                end
             end
 
-            if containerName == "GudaBagsSecureContainer" and isBankOpen then
-                -- Target is in bag and bank is open - allow swap (item coming from bank)
-                return false
+            if containerName == "GudaBagsSecureContainer" then
+                -- Target is in bag
+                if cursorSource == "bank" then
+                    return false  -- Bank to Bag - ALLOW
+                else
+                    return true   -- Bag to Bag - BLOCK
+                end
             end
         end
 
@@ -765,15 +805,8 @@ local function CreateButton(parent)
             return
         end
 
-        -- On Retail, let secure handler deal with regular bag items
-        if ns.IsRetail then
-            if originalReceiveDrag then
-                originalReceiveDrag(self)
-            end
-            return
-        end
-
         -- Block same-container swaps (only allow cross-container bag↔bank)
+        -- This check applies to both Classic and Retail
         if ShouldBlockSwap(self) then
             ClearCursor()
             return

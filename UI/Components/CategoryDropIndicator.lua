@@ -15,44 +15,38 @@ local currentHoveredButton = nil
 local currentContainer = nil
 
 -------------------------------------------------
--- Create Indicator (horizontal bar above hovered item)
+-- Create Indicator (square, same size as icon, above hovered item)
 -------------------------------------------------
 
 local function CreateIndicator()
     if indicator then return indicator end
 
-    -- Create a horizontal bar indicator above the hovered item
+    -- Create a square indicator (same size as icon) above the hovered item
     local frame = CreateFrame("Frame", "GudaBagsCategoryDropIndicator", UIParent)
-    frame:SetSize(36, 14)  -- Wide bar, short height
+    frame:SetSize(36, 36)  -- Will be resized to match icon
     frame:SetFrameStrata("HIGH")
     frame:SetFrameLevel(100)
 
-    -- Bar background
-    local barBg = frame:CreateTexture(nil, "BACKGROUND")
-    barBg:SetAllPoints()
-    barBg:SetColorTexture(0.2, 0.6, 0.2, 0.9)  -- Green background
-    frame.barBg = barBg
-
-    -- Plus icon on the left
-    local plus = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    plus:SetPoint("LEFT", frame, "LEFT", 4, 0)
-    plus:SetText("+")
-    plus:SetTextColor(1, 1, 1, 1)
-    frame.plus = plus
-
-    -- Border
+    -- Border (green outline)
     local border = frame:CreateTexture(nil, "BORDER")
     border:SetPoint("TOPLEFT", -1, 1)
     border:SetPoint("BOTTOMRIGHT", 1, -1)
     border:SetColorTexture(0.3, 0.8, 0.3, 1)
     frame.border = border
 
-    -- Inner background (creates border effect)
+    -- Inner background
     local inner = frame:CreateTexture(nil, "ARTWORK")
     inner:SetPoint("TOPLEFT", 1, -1)
     inner:SetPoint("BOTTOMRIGHT", -1, 1)
-    inner:SetColorTexture(0.15, 0.4, 0.15, 0.95)
+    inner:SetColorTexture(0.15, 0.4, 0.15, 0.9)
     frame.inner = inner
+
+    -- Plus icon centered (using texture)
+    local plus = frame:CreateTexture(nil, "OVERLAY")
+    plus:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    plus:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\plus.png")
+    plus:SetSize(20, 20)  -- Will be resized based on icon size
+    frame.plus = plus
 
     -- Make it clickable for dropping items
     frame:EnableMouse(true)
@@ -118,10 +112,14 @@ function CategoryDropIndicator:Show(hoveredButton)
     local container = hoveredButton.containerFrame
     local iconSize = hoveredButton.iconSize or 36
 
-    -- Size the indicator bar (same width as item, fixed height)
-    local barHeight = 14
-    local barGap = 2  -- Gap between bar and item
-    ind:SetSize(iconSize, barHeight)
+    -- Size the indicator to match icon size
+    ind:SetSize(iconSize, iconSize)
+
+    -- Update plus icon size based on icon size (60% of icon size)
+    if ind.plus then
+        local plusSize = math.max(16, iconSize * 0.6)
+        ind.plus:SetSize(plusSize, plusSize)
+    end
 
     -- Parent to the container
     ind:SetParent(container)
@@ -129,6 +127,7 @@ function CategoryDropIndicator:Show(hoveredButton)
     ind:SetFrameLevel(200)
 
     -- Position indicator ABOVE the hovered item
+    local barGap = 2
     ind:ClearAllPoints()
     ind:SetPoint("BOTTOMLEFT", container, "TOPLEFT", hoveredButton.layoutX, hoveredButton.layoutY + barGap)
 
@@ -172,21 +171,10 @@ function CategoryDropIndicator:IsOverValidButton()
     return false
 end
 
--- Check if button is in the bank (not bags)
-local function IsBankButton(button)
-    if not button.containerFrame then return false end
-    local containerName = button.containerFrame:GetName()
-    -- Bank container is named "GudaBankContainer", bag container is "GudaBagsSecureContainer"
-    return containerName == "GudaBankContainer"
-end
-
 -- Called when hovering over an item button while dragging
 function CategoryDropIndicator:OnItemButtonEnter(button)
     if not self:CursorHasItem() then return end
     if not button.categoryId or button.categoryId == "Empty" or button.categoryId == "Home" or button.categoryId == "Recent" or button.categoryId == "Soul" then return end
-
-    -- Don't show indicator for bank items - allow normal swap behavior
-    if IsBankButton(button) then return end
 
     -- Don't show indicator if dragged item is already in this category
     if self:IsDraggedItemInCategory(button.categoryId) then return end
@@ -201,12 +189,6 @@ function CategoryDropIndicator:OnItemButtonUpdate(button)
         return
     end
     if not button.categoryId or button.categoryId == "Empty" or button.categoryId == "Home" or button.categoryId == "Recent" or button.categoryId == "Soul" then return end
-
-    -- Don't show indicator for bank items - allow normal swap behavior
-    if IsBankButton(button) then
-        self:Hide()
-        return
-    end
 
     -- Don't show indicator if dragged item is already in this category
     if self:IsDraggedItemInCategory(button.categoryId) then
@@ -264,6 +246,8 @@ function CategoryDropIndicator:HandleDrop()
 
     if isBankOpen and currentHoveredButton and currentHoveredButton.containerFrame then
         local containerName = currentHoveredButton.containerFrame:GetName()
+
+        -- Bank to Bag: indicator is on bag item, item coming from bank
         if containerName == "GudaBagsSecureContainer" then
             -- Assign item to category FIRST (before moving to bag)
             -- This ensures the item won't be categorized as "Recent"
@@ -279,6 +263,39 @@ function CategoryDropIndicator:HandleDrop()
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                     if not itemInfo then
                         -- Empty slot found - place item here (moves from bank to bag)
+                        C_Container.PickupContainerItem(bagID, slot)
+                        self:Hide()
+                        return true
+                    end
+                end
+            end
+            -- No empty slot found
+            ClearCursor()
+            self:Hide()
+            return false
+        end
+
+        -- Bag to Bank: indicator is on bank item, item coming from bag
+        if containerName == "GudaBankContainer" then
+            -- Assign item to category FIRST (before moving to bank)
+            local CategoryManager = ns:GetModule("CategoryManager")
+            if CategoryManager then
+                CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
+            end
+
+            -- Find first empty bank slot and place item there
+            -- Check main bank container first, then bank bags
+            local bankBags = { BANK_CONTAINER }
+            for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+                table.insert(bankBags, i)
+            end
+
+            for _, bagID in ipairs(bankBags) do
+                local numSlots = C_Container.GetContainerNumSlots(bagID)
+                for slot = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                    if not itemInfo then
+                        -- Empty slot found - place item here (moves from bag to bank)
                         C_Container.PickupContainerItem(bagID, slot)
                         self:Hide()
                         return true
