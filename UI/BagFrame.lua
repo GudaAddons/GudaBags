@@ -100,6 +100,32 @@ local function ReleaseAllCategoryHeaders()
     categoryHeaders = {}
 end
 
+-------------------------------------------------
+-- Container Drop Handling (empty space acts as drop zone)
+-------------------------------------------------
+
+-- Handle drops on empty space in the bag container
+function BagFrame:HandleContainerDrop()
+    local infoType, itemID = GetCursorInfo()
+    if infoType ~= "item" or not itemID then return end
+
+    -- Find first empty bag slot (bags 0 to NUM_BAG_SLOTS)
+    for bagID = 0, NUM_BAG_SLOTS do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for slot = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+            if not itemInfo then
+                -- Empty slot found, place item here
+                C_Container.PickupContainerItem(bagID, slot)
+                return
+            end
+        end
+    end
+
+    -- If no empty slot found, clear cursor
+    ClearCursor()
+end
+
 -- Separate container for secure item buttons - NOT a child of the bag frame
 -- This prevents the bag frame from becoming protected
 local secureButtonContainer = nil
@@ -172,6 +198,19 @@ local function CreateBagFrame()
     -- Sync secure container visibility with main frame
     f:HookScript("OnShow", function() secureButtonContainer:Show() end)
     f:HookScript("OnHide", function() secureButtonContainer:Hide() end)
+
+    -- Enable container as drop zone for empty space
+    secureButtonContainer:EnableMouse(true)
+
+    secureButtonContainer:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            BagFrame:HandleContainerDrop()
+        end
+    end)
+
+    secureButtonContainer:SetScript("OnReceiveDrag", function(self)
+        BagFrame:HandleContainerDrop()
+    end)
 
     -- Initialize footer component
     f.footer = Footer:Init(f)
