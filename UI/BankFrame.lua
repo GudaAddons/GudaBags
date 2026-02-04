@@ -227,7 +227,7 @@ local function CreateBankFrame()
     -- Create scroll frame for large bank contents
     local scrollFrame = CreateFrame("ScrollFrame", "GudaBankScrollFrame", f, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING)
     f.scrollFrame = scrollFrame
 
     -- Style the scroll bar
@@ -1140,11 +1140,34 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local unifiedOrder = ns.IsRetail and not isReadOnly
     local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bank, isReadOnly, unifiedOrder)
 
-    -- Calculate content dimensions
+    -- Calculate content dimensions accounting for needsSpacing (soul bags, etc. start new rows)
     local numSlots = #allSlots
-    local rows = math.ceil(numSlots / columns)
     local contentWidth = (iconSize * columns) + (spacing * (columns - 1))
-    local actualContentHeight = (iconSize * rows) + (spacing * math.max(0, rows - 1))
+
+    -- Count actual rows including spacing breaks (same logic as CalculateButtonPositions)
+    local totalRows = 0
+    local sectionCount = 0
+    local col = 0
+    for _, slotInfo in ipairs(allSlots) do
+        if slotInfo.needsSpacing then
+            if col > 0 then
+                totalRows = totalRows + 1  -- Complete the partial row
+                col = 0
+            end
+            sectionCount = sectionCount + 1
+        end
+        col = col + 1
+        if col >= columns then
+            col = 0
+            totalRows = totalRows + 1
+        end
+    end
+    if col > 0 then
+        totalRows = totalRows + 1  -- Final partial row
+    end
+    if totalRows < 1 then totalRows = 1 end
+
+    local actualContentHeight = (iconSize * totalRows) + (spacing * math.max(0, totalRows - 1)) + (Constants.SECTION_SPACING * sectionCount)
 
     -- Calculate frame chrome heights (must match scroll frame positioning in UpdateFrameAppearance)
     local showSearchBar = settings.showSearchBar
@@ -1154,8 +1177,10 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
         and (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6)
         or (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2)
     -- Bottom offset: same as scroll frame SetPoint BOTTOMRIGHT
+    -- Footer is at PADDING-2 from bottom with height FOOTER_HEIGHT, so top is at (PADDING-2)+FOOTER_HEIGHT
+    -- Add extra padding (10) above footer for clearance
     local bottomOffset = showFooter
-        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING)
         or Constants.FRAME.PADDING
     local chromeHeight = topOffset + bottomOffset
 
@@ -1163,8 +1188,8 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local frameWidth = math.max(contentWidth + (Constants.FRAME.PADDING * 2), Constants.FRAME.MIN_WIDTH)
     local frameHeightNeeded = actualContentHeight + chromeHeight
 
-    -- Apply minimum height (6 rows of icons + spacing + chrome)
-    local minFrameHeight = (6 * iconSize) + (5 * spacing) + chromeHeight
+    -- Apply minimum height (2 rows of icons + spacing + chrome)
+    local minFrameHeight = (2 * iconSize) + (1 * spacing) + chromeHeight
     local adjustedFrameHeight = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check screen limits
@@ -1322,15 +1347,15 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, searchText, isReadO
     local containerHeight = -currentY
     local frameWidth = contentWidth + Constants.FRAME.PADDING * 2
 
-    -- Calculate chrome heights (must match scroll frame positioning in UpdateFrameAppearance)
+    -- Calculate chrome heights (must match scroll frame positioning)
     -- For tab sections view, search bar and footer are always shown
     local topOffset = Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6
-    local bottomOffset = Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6
+    local bottomOffset = Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING
     local chromeHeight = topOffset + bottomOffset
     local frameHeightNeeded = containerHeight + chromeHeight
 
-    -- Apply minimum height (6 rows of icons + spacing + chrome)
-    local minFrameHeight = (6 * iconSize) + (5 * spacing) + chromeHeight
+    -- Apply minimum height (2 rows of icons + spacing + chrome)
+    local minFrameHeight = (2 * iconSize) + (1 * spacing) + chromeHeight
     local adjustedFrameHeight = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check screen limits
@@ -1479,8 +1504,10 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     local topOffset = showSearchBar
         and (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6)
         or (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2)
+    -- Footer is at PADDING-2 from bottom with height FOOTER_HEIGHT
+    -- Add extra padding (10) above footer for clearance
     local bottomOffset = showFooter
-        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING)
         or Constants.FRAME.PADDING
     local chromeHeight = topOffset + bottomOffset
 
@@ -1493,8 +1520,8 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     -- Recalculate frame height using our scroll frame chrome (may differ from LayoutEngine)
     local correctFrameHeight = contentHeight + chromeHeight
 
-    -- Apply minimum frame height (6 rows of icons + chrome)
-    local minFrameHeight = (6 * iconSize) + chromeHeight
+    -- Apply minimum frame height (2 rows of icons + chrome)
+    local minFrameHeight = (2 * iconSize) + chromeHeight
     local adjustedFrameHeight = math.max(correctFrameHeight, minFrameHeight)
 
     -- Check screen limits
