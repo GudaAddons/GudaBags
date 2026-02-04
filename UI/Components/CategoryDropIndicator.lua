@@ -188,6 +188,9 @@ function CategoryDropIndicator:OnItemButtonEnter(button)
     -- Don't show indicator for bank items - allow normal swap behavior
     if IsBankButton(button) then return end
 
+    -- Don't show indicator if dragged item is already in this category
+    if self:IsDraggedItemInCategory(button.categoryId) then return end
+
     self:Show(button)
 end
 
@@ -201,6 +204,12 @@ function CategoryDropIndicator:OnItemButtonUpdate(button)
 
     -- Don't show indicator for bank items - allow normal swap behavior
     if IsBankButton(button) then
+        self:Hide()
+        return
+    end
+
+    -- Don't show indicator if dragged item is already in this category
+    if self:IsDraggedItemInCategory(button.categoryId) then
         self:Hide()
         return
     end
@@ -248,7 +257,42 @@ function CategoryDropIndicator:HandleDrop()
         return false
     end
 
-    -- Add item to category
+    -- Check if this is a cross-container drop (bank to bag)
+    -- If bank is open and indicator is on a bag item, move item to bag first
+    local BankScanner = ns:GetModule("BankScanner")
+    local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+
+    if isBankOpen and currentHoveredButton and currentHoveredButton.containerFrame then
+        local containerName = currentHoveredButton.containerFrame:GetName()
+        if containerName == "GudaBagsSecureContainer" then
+            -- Assign item to category FIRST (before moving to bag)
+            -- This ensures the item won't be categorized as "Recent"
+            local CategoryManager = ns:GetModule("CategoryManager")
+            if CategoryManager then
+                CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
+            end
+
+            -- Find first empty bag slot and place item there
+            for bagID = 0, NUM_BAG_SLOTS do
+                local numSlots = C_Container.GetContainerNumSlots(bagID)
+                for slot = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                    if not itemInfo then
+                        -- Empty slot found - place item here (moves from bank to bag)
+                        C_Container.PickupContainerItem(bagID, slot)
+                        self:Hide()
+                        return true
+                    end
+                end
+            end
+            -- No empty slot found
+            ClearCursor()
+            self:Hide()
+            return false
+        end
+    end
+
+    -- Regular drop (within same container) - just assign category
     local CategoryManager = ns:GetModule("CategoryManager")
     if CategoryManager then
         local success = CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
