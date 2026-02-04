@@ -119,6 +119,11 @@ function BagClassifier:ClassifyBags(bags, isViewingCached, bagIDs)
         classified[bagType] = {}
     end
 
+    -- Guard against nil bags (can happen during loading or race conditions)
+    if not bags then
+        return classified
+    end
+
     bagIDs = bagIDs or Constants.BAG_IDS
 
     for _, bagID in ipairs(bagIDs) do
