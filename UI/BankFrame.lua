@@ -1745,8 +1745,8 @@ function BankFrame:Toggle()
         if BankScanner:IsBankOpen() then
             BankScanner:ScanAllBank()
         end
-        self:Refresh()
-        UpdateFrameAppearance()
+        UpdateFrameAppearance()  -- Set search bar/footer visibility first
+        self:Refresh()           -- Then calculate layout with correct scroll positioning
         frame:Show()
     end
 end
@@ -1762,8 +1762,8 @@ function BankFrame:Show()
     if BankScanner:IsBankOpen() then
         BankScanner:ScanAllBank()
     end
-    self:Refresh()
-    UpdateFrameAppearance()
+    UpdateFrameAppearance()  -- Set search bar/footer visibility first
+    self:Refresh()           -- Then calculate layout with correct scroll positioning
     frame:Show()
 end
 
@@ -2231,19 +2231,13 @@ UpdateFrameAppearance = function()
 
     local showSearchBar = Database:GetSetting("showSearchBar")
     local showFooter = Database:GetSetting("showFooter")
-    local footerHeight = (not showFooter and isBankOpen and not isViewingCached) and Constants.FRAME.PADDING or (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
 
-    -- Position the scroll frame (container's parent)
-    if frame.scrollFrame then
-        frame.scrollFrame:ClearAllPoints()
-        if showSearchBar then
-            SearchBar:Show(frame)
-            frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-        else
-            SearchBar:Hide(frame)
-            frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2))
-        end
-        frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, footerHeight)
+    -- Only toggle search bar visibility here - scroll frame positioning is handled by Refresh()
+    -- This prevents overwriting the correct scrollbar width calculation from Refresh()
+    if showSearchBar then
+        SearchBar:Show(frame)
+    else
+        SearchBar:Hide(frame)
     end
 
     if isViewingCached then
