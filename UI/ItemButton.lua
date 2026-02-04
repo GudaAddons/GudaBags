@@ -673,8 +673,65 @@ local function CreateButton(parent)
         end
     end
 
-    -- Helper function to check if dragged item is in same category as target
-    local function IsSameCategoryDrop(targetButton)
+    -- Helper function to find where the cursor item is coming from
+    -- Returns "bag", "bank", or nil if unknown
+    local function GetCursorItemSource()
+        -- Check player bags (0 to NUM_BAG_SLOTS) for locked slot
+        for bagID = 0, NUM_BAG_SLOTS do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if itemInfo and itemInfo.isLocked then
+                    return "bag"
+                end
+            end
+        end
+
+        -- Check bank slots for locked slot
+        -- Build bank bag list based on game version
+        local bankBags = {}
+
+        -- On modern Retail (12.0+), use Character Bank Tabs
+        if Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+            for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+                table.insert(bankBags, tabID)
+            end
+        end
+
+        -- Also check Warband/Account bank tabs
+        if Constants.WARBAND_BANK_TAB_IDS and #Constants.WARBAND_BANK_TAB_IDS > 0 then
+            for _, tabID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+                table.insert(bankBags, tabID)
+            end
+        end
+
+        -- Use BANK_BAG_IDS as fallback (works for older Retail and Classic)
+        if #bankBags == 0 and Constants.BANK_BAG_IDS and #Constants.BANK_BAG_IDS > 0 then
+            for _, bagID in ipairs(Constants.BANK_BAG_IDS) do
+                table.insert(bankBags, bagID)
+            end
+        end
+
+        for _, bagID in ipairs(bankBags) do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots and numSlots > 0 then
+                for slot = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                    if itemInfo and itemInfo.isLocked then
+                        return "bank"
+                    end
+                end
+            end
+        end
+
+        return nil
+    end
+
+    -- Helper function to check if swap should be BLOCKED
+    -- Returns true to BLOCK swap (same container - no swapping within bag or within bank)
+    -- Returns false to ALLOW swap (cross-container only - bag↔bank)
+    local function ShouldBlockSwap(targetButton)
+        -- Only block in category view with valid target
         if not targetButton.categoryId or not targetButton.itemData then
             return false
         end
@@ -684,29 +741,38 @@ local function CreateButton(parent)
             return false
         end
 
-        local CategoryManager = ns:GetModule("CategoryManager")
-        if not CategoryManager then return false end
+        -- Determine if this is a cross-container operation
+        -- Cross-container swaps (bag↔bank) are ALLOWED
+        -- Same-container swaps (bag→bag or bank→bank) are BLOCKED
+        if targetButton.containerFrame then
+            local containerName = targetButton.containerFrame:GetName()
+            local cursorSource = GetCursorItemSource()
 
-        -- Build minimal itemData for the dragged item
-        local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType,
-              itemStackCount, itemEquipLoc = GetItemInfo(cursorItemID)
-        if not itemName then return false end
+            if containerName == "GudaBankContainer" then
+                -- Target is in bank
+                if cursorSource == "bag" then
+                    return false  -- Bag to Bank - ALLOW
+                else
+                    return true   -- Bank to Bank - BLOCK
+                end
+            end
 
-        local draggedItemData = {
-            itemID = cursorItemID,
-            name = itemName,
-            link = itemLink,
-            quality = itemQuality,
-            itemType = itemType,
-            itemSubType = itemSubType,
-            equipSlot = itemEquipLoc,
-        }
+            if containerName == "GudaBagsSecureContainer" then
+                -- Target is in bag
+                if cursorSource == "bank" then
+                    return false  -- Bank to Bag - ALLOW
+                else
+                    return true   -- Bag to Bag - BLOCK
+                end
+            end
+        end
 
-        local draggedCategory = CategoryManager:CategorizeItem(draggedItemData)
-        return draggedCategory == targetButton.categoryId
+        -- Same container operation - block the swap
+        return true
     end
 
-    -- Prevent swapping via click within the same category
+    -- Prevent swapping via click within the same container (bag or bank)
+    -- Only allow cross-container swaps (bag↔bank)
     -- Also update pseudo-item slots to use current empty slot
     -- NOTE: On Retail, skip these operations to avoid tainting the secure click handler
     button:HookScript("PreClick", function(self, mouseButton)
@@ -725,12 +791,13 @@ local function CreateButton(parent)
             return  -- Don't check same-category for pseudo-items
         end
 
-        if mouseButton == "LeftButton" and IsSameCategoryDrop(self) then
+        if mouseButton == "LeftButton" and ShouldBlockSwap(self) then
             ClearCursor()
         end
     end)
 
-    -- Custom OnReceiveDrag to prevent swapping items within the same category
+    -- Custom OnReceiveDrag to prevent swapping items within the same container
+    -- Only allows cross-container swaps (bag↔bank)
     -- Also handles pseudo-item buttons to place items in current empty slot
     -- Also handles guild bank items
     local originalReceiveDrag = button:GetScript("OnReceiveDrag")
@@ -759,30 +826,19 @@ local function CreateButton(parent)
             return
         end
 
-        -- On Retail, let secure handler deal with regular bag items
-        if ns.IsRetail then
-            if originalReceiveDrag then
-                originalReceiveDrag(self)
-            end
-            return
-        end
-
-        -- If same category drop, prevent the swap
-        if IsSameCategoryDrop(self) then
+        -- Block same-container swaps (only allow cross-container bag↔bank)
+        -- This check applies to both Classic and Retail
+        if ShouldBlockSwap(self) then
             ClearCursor()
             return
         end
 
-        -- Allow normal swap (different categories or non-category view)
-        if originalReceiveDrag then
+        -- Allow cross-container swap (bag↔bank)
+        -- Use itemData for bag/slot since GudaBags uses pooled buttons
+        if self.itemData and self.itemData.bagID and self.itemData.slot then
+            C_Container.PickupContainerItem(self.itemData.bagID, self.itemData.slot)
+        elseif originalReceiveDrag then
             originalReceiveDrag(self)
-        else
-            -- Fallback: manually do the pickup/place
-            local bagID = self:GetParent():GetID()
-            local slotID = self:GetID()
-            if bagID and slotID and bagID >= 0 then
-                C_Container.PickupContainerItem(bagID, slotID)
-            end
         end
     end)
 

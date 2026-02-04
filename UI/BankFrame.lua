@@ -94,6 +94,76 @@ local function ReleaseAllCategoryHeaders()
     categoryHeaders = {}
 end
 
+-------------------------------------------------
+-- Container Drop Handling (empty space acts as drop zone)
+-------------------------------------------------
+
+-- Handle drops on empty space in the bank container
+function BankFrame:HandleContainerDrop()
+    local infoType, itemID = GetCursorInfo()
+    if infoType ~= "item" or not itemID then return end
+
+    -- Determine which bank type we're viewing (character or warband)
+    local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+    local isWarband = currentBankType == "warband"
+
+    -- Find an empty bank slot and place the item there
+    -- Build bank bag list based on game version and bank type
+    local bankBags = {}
+
+    if isWarband and Constants.WARBAND_BANK_TAB_IDS and #Constants.WARBAND_BANK_TAB_IDS > 0 then
+        -- Warband bank tabs
+        for _, tabID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    elseif Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+        -- Modern Retail (12.0+) Character Bank Tabs
+        for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    elseif Enum and Enum.BagIndex and Enum.BagIndex.Bank then
+        -- Older Retail fallback
+        table.insert(bankBags, Enum.BagIndex.Bank)
+        if Enum.BagIndex.BankBag_1 then
+            for i = Enum.BagIndex.BankBag_1, Enum.BagIndex.BankBag_7 do
+                table.insert(bankBags, i)
+            end
+        end
+    else
+        -- Classic fallback
+        if BANK_CONTAINER then
+            table.insert(bankBags, BANK_CONTAINER)
+        end
+        if NUM_BANKBAGSLOTS then
+            for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+                table.insert(bankBags, i)
+            end
+        end
+    end
+
+    local placed = false
+    for _, bagID in ipairs(bankBags) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        if numSlots and numSlots > 0 then
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if not itemInfo then
+                    -- Empty slot found, place item here
+                    C_Container.PickupContainerItem(bagID, slot)
+                    placed = true
+                    break
+                end
+            end
+        end
+        if placed then break end
+    end
+
+    -- If no empty slot found, just clear cursor
+    if not placed then
+        ClearCursor()
+    end
+end
+
 local UpdateFrameAppearance
 local SaveFramePosition
 local RestoreFramePosition
@@ -157,7 +227,7 @@ local function CreateBankFrame()
     -- Create scroll frame for large bank contents
     local scrollFrame = CreateFrame("ScrollFrame", "GudaBankScrollFrame", f, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING)
     f.scrollFrame = scrollFrame
 
     -- Style the scroll bar
@@ -171,6 +241,19 @@ local function CreateBankFrame()
     container:SetSize(1, 1)  -- Will be resized based on content
     scrollFrame:SetScrollChild(container)
     f.container = container
+
+    -- Enable container as drop zone for empty space
+    container:EnableMouse(true)
+
+    container:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            BankFrame:HandleContainerDrop()
+        end
+    end)
+
+    container:SetScript("OnReceiveDrag", function(self)
+        BankFrame:HandleContainerDrop()
+    end)
 
     local emptyMessage = CreateFrame("Frame", nil, f)
     emptyMessage:SetAllPoints(scrollFrame)
@@ -280,12 +363,55 @@ local function CreateSideTab(parent, index, isAllTab)
 
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        local scanner = ns:GetModule("RetailBankScanner")
+
         if self.tabIndex == 0 then
+            -- "All Tabs" - show combined total
             GameTooltip:SetText(ns.L["TOOLTIP_BANK_ALL_TABS"] or "All Tabs")
-        elseif self.tabName then
-            GameTooltip:SetText(self.tabName)
+            if scanner then
+                local totalSlots, occupiedSlots = 0, 0
+                local bankType = scanner:GetCurrentBankType()
+                local tabs = scanner:GetBankTabs(bankType)
+                if tabs then
+                    for _, tab in ipairs(tabs) do
+                        local containerID = scanner:GetTabContainerID(tab.tabIndex, bankType)
+                        if containerID then
+                            local numSlots = C_Container.GetContainerNumSlots(containerID)
+                            totalSlots = totalSlots + numSlots
+                            for slot = 1, numSlots do
+                                local itemInfo = C_Container.GetContainerItemInfo(containerID, slot)
+                                if itemInfo then
+                                    occupiedSlots = occupiedSlots + 1
+                                end
+                            end
+                        end
+                    end
+                end
+                if totalSlots > 0 then
+                    GameTooltip:AddLine(string.format("%d / %d", occupiedSlots, totalSlots), 0.7, 0.7, 0.7)
+                end
+            end
         else
-            GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", self.tabIndex))
+            -- Specific tab - show that tab's slots
+            if self.tabName then
+                GameTooltip:SetText(self.tabName)
+            else
+                GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", self.tabIndex))
+            end
+            if scanner then
+                local containerID = scanner:GetTabContainerID(self.tabIndex)
+                if containerID then
+                    local numSlots = C_Container.GetContainerNumSlots(containerID)
+                    local occupiedSlots = 0
+                    for slot = 1, numSlots do
+                        local itemInfo = C_Container.GetContainerItemInfo(containerID, slot)
+                        if itemInfo then
+                            occupiedSlots = occupiedSlots + 1
+                        end
+                    end
+                    GameTooltip:AddLine(string.format("%d / %d", occupiedSlots, numSlots), 0.7, 0.7, 0.7)
+                end
+            end
         end
         GameTooltip:Show()
 
@@ -1014,11 +1140,34 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local unifiedOrder = ns.IsRetail and not isReadOnly
     local allSlots = LayoutEngine:CollectAllSlots(bagsToShow, bank, isReadOnly, unifiedOrder)
 
-    -- Calculate content dimensions
+    -- Calculate content dimensions accounting for needsSpacing (soul bags, etc. start new rows)
     local numSlots = #allSlots
-    local rows = math.ceil(numSlots / columns)
     local contentWidth = (iconSize * columns) + (spacing * (columns - 1))
-    local actualContentHeight = (iconSize * rows) + (spacing * math.max(0, rows - 1))
+
+    -- Count actual rows including spacing breaks (same logic as CalculateButtonPositions)
+    local totalRows = 0
+    local sectionCount = 0
+    local col = 0
+    for _, slotInfo in ipairs(allSlots) do
+        if slotInfo.needsSpacing then
+            if col > 0 then
+                totalRows = totalRows + 1  -- Complete the partial row
+                col = 0
+            end
+            sectionCount = sectionCount + 1
+        end
+        col = col + 1
+        if col >= columns then
+            col = 0
+            totalRows = totalRows + 1
+        end
+    end
+    if col > 0 then
+        totalRows = totalRows + 1  -- Final partial row
+    end
+    if totalRows < 1 then totalRows = 1 end
+
+    local actualContentHeight = (iconSize * totalRows) + (spacing * math.max(0, totalRows - 1)) + (Constants.SECTION_SPACING * sectionCount)
 
     -- Calculate frame chrome heights (must match scroll frame positioning in UpdateFrameAppearance)
     local showSearchBar = settings.showSearchBar
@@ -1028,8 +1177,10 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
         and (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6)
         or (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2)
     -- Bottom offset: same as scroll frame SetPoint BOTTOMRIGHT
+    -- Footer is at PADDING-2 from bottom with height FOOTER_HEIGHT, so top is at (PADDING-2)+FOOTER_HEIGHT
+    -- Add extra padding (10) above footer for clearance
     local bottomOffset = showFooter
-        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING)
         or Constants.FRAME.PADDING
     local chromeHeight = topOffset + bottomOffset
 
@@ -1037,8 +1188,8 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, searchText, isR
     local frameWidth = math.max(contentWidth + (Constants.FRAME.PADDING * 2), Constants.FRAME.MIN_WIDTH)
     local frameHeightNeeded = actualContentHeight + chromeHeight
 
-    -- Apply minimum height (6 rows of icons + spacing + chrome)
-    local minFrameHeight = (6 * iconSize) + (5 * spacing) + chromeHeight
+    -- Apply minimum height (2 rows of icons + spacing + chrome)
+    local minFrameHeight = (2 * iconSize) + (1 * spacing) + chromeHeight
     local adjustedFrameHeight = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check screen limits
@@ -1196,15 +1347,15 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, searchText, isReadO
     local containerHeight = -currentY
     local frameWidth = contentWidth + Constants.FRAME.PADDING * 2
 
-    -- Calculate chrome heights (must match scroll frame positioning in UpdateFrameAppearance)
+    -- Calculate chrome heights (must match scroll frame positioning)
     -- For tab sections view, search bar and footer are always shown
     local topOffset = Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6
-    local bottomOffset = Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6
+    local bottomOffset = Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING
     local chromeHeight = topOffset + bottomOffset
     local frameHeightNeeded = containerHeight + chromeHeight
 
-    -- Apply minimum height (6 rows of icons + spacing + chrome)
-    local minFrameHeight = (6 * iconSize) + (5 * spacing) + chromeHeight
+    -- Apply minimum height (2 rows of icons + spacing + chrome)
+    local minFrameHeight = (2 * iconSize) + (1 * spacing) + chromeHeight
     local adjustedFrameHeight = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check screen limits
@@ -1353,8 +1504,10 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     local topOffset = showSearchBar
         and (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6)
         or (Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2)
+    -- Footer is at PADDING-2 from bottom with height FOOTER_HEIGHT
+    -- Add extra padding (10) above footer for clearance
     local bottomOffset = showFooter
-        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
+        and (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING)
         or Constants.FRAME.PADDING
     local chromeHeight = topOffset + bottomOffset
 
@@ -1367,8 +1520,8 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, searchText, i
     -- Recalculate frame height using our scroll frame chrome (may differ from LayoutEngine)
     local correctFrameHeight = contentHeight + chromeHeight
 
-    -- Apply minimum frame height (6 rows of icons + chrome)
-    local minFrameHeight = (6 * iconSize) + chromeHeight
+    -- Apply minimum frame height (2 rows of icons + chrome)
+    local minFrameHeight = (2 * iconSize) + chromeHeight
     local adjustedFrameHeight = math.max(correctFrameHeight, minFrameHeight)
 
     -- Check screen limits
@@ -1619,8 +1772,8 @@ function BankFrame:Toggle()
         if BankScanner:IsBankOpen() then
             BankScanner:ScanAllBank()
         end
-        self:Refresh()
-        UpdateFrameAppearance()
+        UpdateFrameAppearance()  -- Set search bar/footer visibility first
+        self:Refresh()           -- Then calculate layout with correct scroll positioning
         frame:Show()
     end
 end
@@ -1636,8 +1789,8 @@ function BankFrame:Show()
     if BankScanner:IsBankOpen() then
         BankScanner:ScanAllBank()
     end
-    self:Refresh()
-    UpdateFrameAppearance()
+    UpdateFrameAppearance()  -- Set search bar/footer visibility first
+    self:Refresh()           -- Then calculate layout with correct scroll positioning
     frame:Show()
 end
 
@@ -2105,19 +2258,13 @@ UpdateFrameAppearance = function()
 
     local showSearchBar = Database:GetSetting("showSearchBar")
     local showFooter = Database:GetSetting("showFooter")
-    local footerHeight = (not showFooter and isBankOpen and not isViewingCached) and Constants.FRAME.PADDING or (Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
 
-    -- Position the scroll frame (container's parent)
-    if frame.scrollFrame then
-        frame.scrollFrame:ClearAllPoints()
-        if showSearchBar then
-            SearchBar:Show(frame)
-            frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.SEARCH_BAR_HEIGHT + Constants.FRAME.PADDING + 6))
-        else
-            SearchBar:Hide(frame)
-            frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING + 2))
-        end
-        frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, footerHeight)
+    -- Only toggle search bar visibility here - scroll frame positioning is handled by Refresh()
+    -- This prevents overwriting the correct scrollbar width calculation from Refresh()
+    if showSearchBar then
+        SearchBar:Show(frame)
+    else
+        SearchBar:Hide(frame)
     end
 
     if isViewingCached then
