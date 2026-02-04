@@ -96,9 +96,42 @@ function Tooltip:ShowForItem(button)
     local bagID = button.itemData.bagID
     local slot = button.itemData.slot
     local link = button.itemData.link or button.itemData.itemLink
+    local itemID = button.itemData.itemID
     local isKeyring = bagID == -2
-    local isBankItem = bagID == -1 or (bagID >= 5 and bagID <= 11)
     local isGuildBank = button.itemData.isGuildBank
+
+    -- Check if this is a bank item
+    -- Use simple range check that covers both Classic (5-11) and Retail (6-12) bank bags
+    -- This is more robust than relying on Constants arrays which depend on Expansion detection
+    local isBankItem = false
+    if bagID == -1 then
+        -- Main bank container (all versions)
+        isBankItem = true
+    elseif bagID and bagID >= 5 and bagID <= 12 then
+        -- Bank bags: Classic uses 5-11, older Retail uses 6-12
+        -- This range covers both to handle detection edge cases
+        isBankItem = true
+    end
+    -- Retail only: check Warband and Character bank tabs (high bag IDs)
+    if not isBankItem and ns.IsRetail then
+        local Constants = ns.Constants
+        if Constants and Constants.WARBAND_BANK_TAB_IDS then
+            for _, warbandBagID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+                if bagID == warbandBagID then
+                    isBankItem = true
+                    break
+                end
+            end
+        end
+        if not isBankItem and Constants and Constants.CHARACTER_BANK_TAB_IDS then
+            for _, charBankTabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+                if bagID == charBankTabID then
+                    isBankItem = true
+                    break
+                end
+            end
+        end
+    end
 
     if isGuildBank then
         -- Guild bank items - use SetGuildBankItem if at bank, otherwise hyperlink
@@ -114,17 +147,21 @@ function Tooltip:ShowForItem(button)
             GameTooltip:SetHyperlink(link)
         end
     elseif isBankItem then
-        -- Bank items - use SetBagItem when bank is open for full info (price, etc.)
+        -- Bank items - prefer hyperlink for Classic/TBC as SetBagItem may not work for all bank containers
+        -- For Retail, use SetBagItem when bank is open for full info (price, etc.)
         local BankScanner = ns:GetModule("BankScanner")
         local isBankOpen = BankScanner and BankScanner:IsBankOpen()
-        if isBankOpen and bagID and slot then
+        if ns.IsRetail and isBankOpen and bagID ~= nil and slot then
             GameTooltip:SetBagItem(bagID, slot)
         elseif link then
             GameTooltip:SetHyperlink(link)
+        elseif isBankOpen and bagID ~= nil and slot then
+            -- Fallback to SetBagItem if no link available
+            GameTooltip:SetBagItem(bagID, slot)
         end
     else
         -- Regular bag items use bag slot for full info (binding, cooldown, etc.)
-        if bagID and slot then
+        if bagID ~= nil and slot then
             GameTooltip:SetBagItem(bagID, slot)
         elseif link then
             GameTooltip:SetHyperlink(link)
