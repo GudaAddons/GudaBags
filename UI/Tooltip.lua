@@ -114,11 +114,13 @@ function Tooltip:ShowForItem(button)
             GameTooltip:SetHyperlink(link)
         end
     elseif isBankItem then
-        -- Bank items - prefer hyperlink for reliability, fall back to SetBagItem
-        if link then
-            GameTooltip:SetHyperlink(link)
-        elseif bagID and slot then
+        -- Bank items - use SetBagItem when bank is open for full info (price, etc.)
+        local BankScanner = ns:GetModule("BankScanner")
+        local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+        if isBankOpen and bagID and slot then
             GameTooltip:SetBagItem(bagID, slot)
+        elseif link then
+            GameTooltip:SetHyperlink(link)
         end
     else
         -- Regular bag items use bag slot for full info (binding, cooldown, etc.)

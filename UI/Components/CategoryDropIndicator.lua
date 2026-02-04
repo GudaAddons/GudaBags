@@ -120,21 +120,21 @@ function CategoryDropIndicator:Show(hoveredButton)
     ind:SetFrameStrata("FULLSCREEN_DIALOG")
     ind:SetFrameLevel(500)
 
-    -- Position indicator ABOVE the hovered item using screen coordinates
-    -- Get the button's world position
-    local buttonLeft, buttonBottom, buttonWidth, buttonHeight
+    -- Position indicator BELOW the hovered item using screen coordinates
+    -- This avoids overlap with tooltips which appear above/right of items
+    local buttonLeft, buttonBottom
     if hoveredButton.wrapper then
         buttonLeft = hoveredButton.wrapper:GetLeft()
-        buttonBottom = hoveredButton.wrapper:GetTop()  -- Top of button = bottom of indicator
+        buttonBottom = hoveredButton.wrapper:GetBottom()
     else
         buttonLeft = hoveredButton:GetLeft()
-        buttonBottom = hoveredButton:GetTop()
+        buttonBottom = hoveredButton:GetBottom()
     end
 
     local barGap = 2
     ind:ClearAllPoints()
     if buttonLeft and buttonBottom then
-        ind:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", buttonLeft, buttonBottom + barGap)
+        ind:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", buttonLeft, buttonBottom - barGap)
     end
 
     currentCategoryId = categoryId
