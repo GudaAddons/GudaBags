@@ -147,17 +147,15 @@ function Tooltip:ShowForItem(button)
             GameTooltip:SetHyperlink(link)
         end
     elseif isBankItem then
-        -- Bank items - prefer hyperlink for Classic/TBC as SetBagItem may not work for all bank containers
-        -- For Retail, use SetBagItem when bank is open for full info (price, etc.)
+        -- Bank items - use SetBagItem when bank is open for full info (price, stack totals with shift, etc.)
         local BankScanner = ns:GetModule("BankScanner")
         local isBankOpen = BankScanner and BankScanner:IsBankOpen()
-        if ns.IsRetail and isBankOpen and bagID ~= nil and slot then
+        if isBankOpen and bagID ~= nil and slot then
+            -- Use SetBagItem for live bank interaction (supports shift+hover for stack totals)
             GameTooltip:SetBagItem(bagID, slot)
         elseif link then
+            -- Fallback to hyperlink for cached/view mode
             GameTooltip:SetHyperlink(link)
-        elseif isBankOpen and bagID ~= nil and slot then
-            -- Fallback to SetBagItem if no link available
-            GameTooltip:SetBagItem(bagID, slot)
         end
     else
         -- Regular bag items use bag slot for full info (binding, cooldown, etc.)
