@@ -762,20 +762,27 @@ Events:Register("BAG_UPDATE", function(event, bagID)
     end
 end, RetailBankScanner)
 
-Events:Register("PLAYERBANKSLOTS_CHANGED", function()
-    if currentBankType == BANK_TYPE_CHARACTER then
-        OnBankUpdate(Enum.BagIndex.Bank)
-    end
-end, RetailBankScanner)
+-- Legacy bank events (only for older Retail without Character Bank Tabs)
+-- On Retail 12.0+, bank tabs are regular containers handled by BAG_UPDATE
+if not Constants.CHARACTER_BANK_TABS_ACTIVE then
+    -- Only register these if old bank system is active
+    if Enum.BagIndex.Bank then
+        Events:Register("PLAYERBANKSLOTS_CHANGED", function()
+            if currentBankType == BANK_TYPE_CHARACTER then
+                OnBankUpdate(Enum.BagIndex.Bank)
+            end
+        end, RetailBankScanner)
 
-Events:Register("PLAYERBANKBAGSLOTS_CHANGED", function()
-    if currentBankType == BANK_TYPE_CHARACTER then
-        for bagID = Constants.BANK_BAG_MIN, Constants.BANK_BAG_MAX do
-            dirtyBags[bagID] = true
-        end
-        OnBankUpdate(nil)
+        Events:Register("PLAYERBANKBAGSLOTS_CHANGED", function()
+            if currentBankType == BANK_TYPE_CHARACTER then
+                for bagID = Constants.BANK_BAG_MIN, Constants.BANK_BAG_MAX do
+                    dirtyBags[bagID] = true
+                end
+                OnBankUpdate(nil)
+            end
+        end, RetailBankScanner)
     end
-end, RetailBankScanner)
+end
 
 -- Warband bank events
 if C_Bank then

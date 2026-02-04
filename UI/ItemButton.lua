@@ -688,17 +688,53 @@ local function CreateButton(parent)
         end
 
         -- Check bank slots for locked slot
-        local bankBags = { BANK_CONTAINER }
-        for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
-            table.insert(bankBags, i)
+        -- Build bank bag list based on game version
+        local bankBags = {}
+
+        -- On modern Retail (12.0+), use Character Bank Tabs
+        if Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+            for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+                table.insert(bankBags, tabID)
+            end
+        end
+
+        -- Also check Warband/Account bank tabs
+        if Constants.WARBAND_BANK_TAB_IDS and #Constants.WARBAND_BANK_TAB_IDS > 0 then
+            for _, tabID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+                table.insert(bankBags, tabID)
+            end
+        end
+
+        -- Fallback for older Retail or if tabs not defined
+        if #bankBags == 0 then
+            if Enum and Enum.BagIndex and Enum.BagIndex.Bank then
+                table.insert(bankBags, Enum.BagIndex.Bank)
+                if Enum.BagIndex.BankBag_1 then
+                    for i = Enum.BagIndex.BankBag_1, Enum.BagIndex.BankBag_7 do
+                        table.insert(bankBags, i)
+                    end
+                end
+            else
+                -- Classic fallback
+                if BANK_CONTAINER then
+                    table.insert(bankBags, BANK_CONTAINER)
+                end
+                if NUM_BANKBAGSLOTS then
+                    for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+                        table.insert(bankBags, i)
+                    end
+                end
+            end
         end
 
         for _, bagID in ipairs(bankBags) do
             local numSlots = C_Container.GetContainerNumSlots(bagID)
-            for slot = 1, numSlots do
-                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                if itemInfo and itemInfo.isLocked then
-                    return "bank"
+            if numSlots and numSlots > 0 then
+                for slot = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                    if itemInfo and itemInfo.isLocked then
+                        return "bank"
+                    end
                 end
             end
         end

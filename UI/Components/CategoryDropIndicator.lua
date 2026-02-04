@@ -13,6 +13,8 @@ local indicator = nil
 local currentCategoryId = nil
 local currentHoveredButton = nil
 local currentContainer = nil
+local currentCursorSource = nil  -- Track cursor source when indicator appears
+local dropCooldown = false  -- Prevents immediate re-show after a drop
 
 -------------------------------------------------
 -- Create Indicator (square, same size as icon, above hovered item)
@@ -140,10 +142,13 @@ function CategoryDropIndicator:Show(hoveredButton)
     currentCategoryId = categoryId
     currentHoveredButton = hoveredButton
     currentContainer = container
+    -- Capture cursor source NOW while item is being dragged (more reliable than checking at drop time)
+    currentCursorSource = self:GetCursorItemSource()
+    ns:Debug("Show: captured cursorSource=", currentCursorSource)
     ind:Show()
 end
 
-function CategoryDropIndicator:Hide()
+function CategoryDropIndicator:Hide(fromDrop)
     if indicator then
         indicator:Hide()
         indicator:SetParent(UIParent)
@@ -152,6 +157,15 @@ function CategoryDropIndicator:Hide()
     currentCategoryId = nil
     currentHoveredButton = nil
     currentContainer = nil
+    currentCursorSource = nil
+
+    -- Set cooldown after a drop to prevent immediate re-show
+    if fromDrop then
+        dropCooldown = true
+        C_Timer.After(0.2, function()
+            dropCooldown = false
+        end)
+    end
 end
 
 function CategoryDropIndicator:IsShown()
@@ -179,6 +193,7 @@ end
 
 -- Called when hovering over an item button while dragging
 function CategoryDropIndicator:OnItemButtonEnter(button)
+    if dropCooldown then return end  -- Don't show during cooldown after drop
     if not self:CursorHasItem() then return end
     if not button.categoryId or button.categoryId == "Empty" or button.categoryId == "Home" or button.categoryId == "Recent" or button.categoryId == "Soul" then return end
 
@@ -226,93 +241,136 @@ function CategoryDropIndicator:OnItemButtonLeave()
 end
 
 function CategoryDropIndicator:HandleDrop()
+    ns:Debug("HandleDrop called")
     local infoType, itemID, itemLink = GetCursorInfo()
 
+    ns:Debug("HandleDrop: infoType=", infoType, "itemID=", itemID)
     if infoType ~= "item" or not itemID then
-        self:Hide()
+        self:Hide(true)
         return false
     end
 
     if not currentCategoryId then
-        self:Hide()
+        self:Hide(true)
         return false
     end
 
     -- Don't allow dropping to Empty category
     if currentCategoryId == "Empty" then
         ClearCursor()
-        self:Hide()
+        self:Hide(true)
         return false
     end
 
-    -- Check if this is a cross-container drop (bank to bag)
-    -- If bank is open and indicator is on a bag item, move item to bag first
-    local BankScanner = ns:GetModule("BankScanner")
-    local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+    -- Check if this is a cross-container drop
+    -- Use pre-captured cursor source (captured when indicator was shown, more reliable)
+    local cursorSource = currentCursorSource or self:GetCursorItemSource()
+    local targetContainer = nil
 
-    if isBankOpen and currentHoveredButton and currentHoveredButton.containerFrame then
+    if currentHoveredButton and currentHoveredButton.containerFrame then
         local containerName = currentHoveredButton.containerFrame:GetName()
-
-        -- Bank to Bag: indicator is on bag item, item coming from bank
         if containerName == "GudaBagsSecureContainer" then
-            -- Assign item to category FIRST (before moving to bag)
-            -- This ensures the item won't be categorized as "Recent"
-            local CategoryManager = ns:GetModule("CategoryManager")
-            if CategoryManager then
-                CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
-            end
+            targetContainer = "bag"
+        elseif containerName == "GudaBankContainer" then
+            targetContainer = "bank"
+        end
+    end
 
-            -- Find first empty bag slot and place item there
-            for bagID = 0, NUM_BAG_SLOTS do
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                for slot = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                    if not itemInfo then
-                        -- Empty slot found - place item here (moves from bank to bag)
-                        C_Container.PickupContainerItem(bagID, slot)
-                        self:Hide()
-                        return true
-                    end
-                end
-            end
-            -- No empty slot found
-            ClearCursor()
-            self:Hide()
-            return false
+    -- If cursorSource is still nil, we can't determine cross-container vs same-container
+    -- Log warning for debugging
+    if not cursorSource then
+        ns:Debug("HandleDrop: WARNING - could not detect cursor source, will fall through to same-container logic")
+    end
+
+    ns:Debug("HandleDrop: cursorSource=", cursorSource, "targetContainer=", targetContainer, "categoryId=", currentCategoryId)
+    ns:Debug("HandleDrop: currentHoveredButton=", currentHoveredButton and "exists" or "nil")
+    if currentHoveredButton then
+        ns:Debug("HandleDrop: containerFrame=", currentHoveredButton.containerFrame and currentHoveredButton.containerFrame:GetName() or "nil")
+    end
+
+    -- Bank to Bag: cursor from bank, indicator on bag item
+    if cursorSource == "bank" and targetContainer == "bag" then
+        -- Assign item to category FIRST (before moving to bag)
+        -- This ensures the item won't be categorized as "Recent"
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if CategoryManager then
+            CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
         end
 
-        -- Bag to Bank: indicator is on bank item, item coming from bag
-        if containerName == "GudaBankContainer" then
-            -- Assign item to category FIRST (before moving to bank)
-            local CategoryManager = ns:GetModule("CategoryManager")
-            if CategoryManager then
-                CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
+        -- Find first empty bag slot and place item there
+        for bagID = 0, NUM_BAG_SLOTS do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if not itemInfo then
+                    -- Empty slot found - place item here (moves from bank to bag)
+                    C_Container.PickupContainerItem(bagID, slot)
+                    self:Hide(true)
+                    return true
+                end
             end
+        end
+        -- No empty slot found
+        ClearCursor()
+        self:Hide(true)
+        return false
+    end
 
-            -- Find first empty bank slot and place item there
-            -- Check main bank container first, then bank bags
-            local bankBags = { BANK_CONTAINER }
-            for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
-                table.insert(bankBags, i)
+    -- Bag to Bank: cursor from bag, indicator on bank item
+    if cursorSource == "bag" and targetContainer == "bank" then
+        -- Assign item to category FIRST (before moving to bank)
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if CategoryManager then
+            CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
+        end
+
+        -- Find first empty bank slot and place item there
+        -- Build bank bag list based on game version
+        local bankBags = {}
+
+        -- On modern Retail (12.0+), use Character Bank Tabs
+        if Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+            for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+                table.insert(bankBags, tabID)
             end
+        elseif Enum and Enum.BagIndex and Enum.BagIndex.Bank then
+            -- Older Retail fallback
+            table.insert(bankBags, Enum.BagIndex.Bank)
+            if Enum.BagIndex.BankBag_1 then
+                for i = Enum.BagIndex.BankBag_1, Enum.BagIndex.BankBag_7 do
+                    table.insert(bankBags, i)
+                end
+            end
+        else
+            -- Classic fallback
+            if BANK_CONTAINER then
+                table.insert(bankBags, BANK_CONTAINER)
+            end
+            if NUM_BANKBAGSLOTS then
+                for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+                    table.insert(bankBags, i)
+                end
+            end
+        end
 
-            for _, bagID in ipairs(bankBags) do
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for _, bagID in ipairs(bankBags) do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots and numSlots > 0 then
                 for slot = 1, numSlots do
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                     if not itemInfo then
                         -- Empty slot found - place item here (moves from bag to bank)
                         C_Container.PickupContainerItem(bagID, slot)
-                        self:Hide()
+                        self:Hide(true)
                         return true
                     end
                 end
             end
-            -- No empty slot found
-            ClearCursor()
-            self:Hide()
-            return false
         end
+        -- No empty slot found
+        ClearCursor()
+        self:Hide(true)
+        return false
     end
 
     -- Regular drop (within same container) - just assign category
@@ -325,7 +383,7 @@ function CategoryDropIndicator:HandleDrop()
         end
     end
 
-    self:Hide()
+    self:Hide(true)
     return true
 end
 
@@ -333,6 +391,86 @@ end
 function CategoryDropIndicator:CursorHasItem()
     local infoType = GetCursorInfo()
     return infoType == "item"
+end
+
+-- Find where the cursor item is coming from by checking locked slots
+-- Returns "bag", "bank", or nil if unknown
+function CategoryDropIndicator:GetCursorItemSource()
+    ns:Debug("GetCursorItemSource: checking bags 0 to", NUM_BAG_SLOTS)
+
+    -- Check player bags (0 to NUM_BAG_SLOTS) for locked slot
+    for bagID = 0, NUM_BAG_SLOTS do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for slot = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+            if itemInfo and itemInfo.isLocked then
+                ns:Debug("GetCursorItemSource: found locked in bag", bagID, slot)
+                return "bag"
+            end
+        end
+    end
+
+    -- Check bank slots for locked slot
+    -- Build list of bank container IDs based on game version
+    local bankBags = {}
+
+    -- On modern Retail (12.0+), use Character Bank Tabs
+    if Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+        ns:Debug("GetCursorItemSource: using CHARACTER_BANK_TAB_IDS")
+        for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    end
+
+    -- Also check Warband/Account bank tabs
+    if Constants.WARBAND_BANK_TAB_IDS and #Constants.WARBAND_BANK_TAB_IDS > 0 then
+        ns:Debug("GetCursorItemSource: adding WARBAND_BANK_TAB_IDS")
+        for _, tabID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    end
+
+    -- Fallback for older Retail or if tabs not defined
+    if #bankBags == 0 then
+        if Enum and Enum.BagIndex and Enum.BagIndex.Bank then
+            table.insert(bankBags, Enum.BagIndex.Bank)
+            ns:Debug("GetCursorItemSource: using Enum.BagIndex.Bank =", Enum.BagIndex.Bank)
+            -- Old-style bank bags
+            if Enum.BagIndex.BankBag_1 then
+                for i = Enum.BagIndex.BankBag_1, Enum.BagIndex.BankBag_7 do
+                    table.insert(bankBags, i)
+                end
+            end
+        else
+            -- Classic fallback
+            ns:Debug("GetCursorItemSource: using Classic fallback")
+            if BANK_CONTAINER then
+                table.insert(bankBags, BANK_CONTAINER)
+            end
+            if NUM_BANKBAGSLOTS then
+                for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+                    table.insert(bankBags, i)
+                end
+            end
+        end
+    end
+
+    ns:Debug("GetCursorItemSource: checking bank bags:", table.concat(bankBags, ", "))
+    for _, bagID in ipairs(bankBags) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        if numSlots and numSlots > 0 then
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if itemInfo and itemInfo.isLocked then
+                    ns:Debug("GetCursorItemSource: found locked in bank", bagID, slot)
+                    return "bank"
+                end
+            end
+        end
+    end
+
+    ns:Debug("GetCursorItemSource: no locked slot found in any container")
+    return nil
 end
 
 -- Check if the dragged item is already in the specified category

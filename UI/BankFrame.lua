@@ -330,12 +330,55 @@ local function CreateSideTab(parent, index, isAllTab)
 
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        local scanner = ns:GetModule("RetailBankScanner")
+
         if self.tabIndex == 0 then
+            -- "All Tabs" - show combined total
             GameTooltip:SetText(ns.L["TOOLTIP_BANK_ALL_TABS"] or "All Tabs")
-        elseif self.tabName then
-            GameTooltip:SetText(self.tabName)
+            if scanner then
+                local totalSlots, occupiedSlots = 0, 0
+                local bankType = scanner:GetCurrentBankType()
+                local tabs = scanner:GetBankTabs(bankType)
+                if tabs then
+                    for _, tab in ipairs(tabs) do
+                        local containerID = scanner:GetTabContainerID(tab.tabIndex, bankType)
+                        if containerID then
+                            local numSlots = C_Container.GetContainerNumSlots(containerID)
+                            totalSlots = totalSlots + numSlots
+                            for slot = 1, numSlots do
+                                local itemInfo = C_Container.GetContainerItemInfo(containerID, slot)
+                                if itemInfo then
+                                    occupiedSlots = occupiedSlots + 1
+                                end
+                            end
+                        end
+                    end
+                end
+                if totalSlots > 0 then
+                    GameTooltip:AddLine(string.format("%d / %d", occupiedSlots, totalSlots), 0.7, 0.7, 0.7)
+                end
+            end
         else
-            GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", self.tabIndex))
+            -- Specific tab - show that tab's slots
+            if self.tabName then
+                GameTooltip:SetText(self.tabName)
+            else
+                GameTooltip:SetText(string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", self.tabIndex))
+            end
+            if scanner then
+                local containerID = scanner:GetTabContainerID(self.tabIndex)
+                if containerID then
+                    local numSlots = C_Container.GetContainerNumSlots(containerID)
+                    local occupiedSlots = 0
+                    for slot = 1, numSlots do
+                        local itemInfo = C_Container.GetContainerItemInfo(containerID, slot)
+                        if itemInfo then
+                            occupiedSlots = occupiedSlots + 1
+                        end
+                    end
+                    GameTooltip:AddLine(string.format("%d / %d", occupiedSlots, numSlots), 0.7, 0.7, 0.7)
+                end
+            end
         end
         GameTooltip:Show()
 
