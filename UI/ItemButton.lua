@@ -705,25 +705,10 @@ local function CreateButton(parent)
             end
         end
 
-        -- Fallback for older Retail or if tabs not defined
-        if #bankBags == 0 then
-            if Enum and Enum.BagIndex and Enum.BagIndex.Bank then
-                table.insert(bankBags, Enum.BagIndex.Bank)
-                if Enum.BagIndex.BankBag_1 then
-                    for i = Enum.BagIndex.BankBag_1, Enum.BagIndex.BankBag_7 do
-                        table.insert(bankBags, i)
-                    end
-                end
-            else
-                -- Classic fallback
-                if BANK_CONTAINER then
-                    table.insert(bankBags, BANK_CONTAINER)
-                end
-                if NUM_BANKBAGSLOTS then
-                    for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
-                        table.insert(bankBags, i)
-                    end
-                end
+        -- Use BANK_BAG_IDS as fallback (works for older Retail and Classic)
+        if #bankBags == 0 and Constants.BANK_BAG_IDS and #Constants.BANK_BAG_IDS > 0 then
+            for _, bagID in ipairs(Constants.BANK_BAG_IDS) do
+                table.insert(bankBags, bagID)
             end
         end
 
