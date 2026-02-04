@@ -103,23 +103,56 @@ function BankFrame:HandleContainerDrop()
     local infoType, itemID = GetCursorInfo()
     if infoType ~= "item" or not itemID then return end
 
+    -- Determine which bank type we're viewing (character or warband)
+    local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
+    local isWarband = currentBankType == "warband"
+
     -- Find an empty bank slot and place the item there
-    -- Check main bank container first, then bank bags
-    local bankBags = { BANK_CONTAINER }
-    for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
-        table.insert(bankBags, i)
+    -- Build bank bag list based on game version and bank type
+    local bankBags = {}
+
+    if isWarband and Constants.WARBAND_BANK_TAB_IDS and #Constants.WARBAND_BANK_TAB_IDS > 0 then
+        -- Warband bank tabs
+        for _, tabID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    elseif Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+        -- Modern Retail (12.0+) Character Bank Tabs
+        for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    elseif Enum and Enum.BagIndex and Enum.BagIndex.Bank then
+        -- Older Retail fallback
+        table.insert(bankBags, Enum.BagIndex.Bank)
+        if Enum.BagIndex.BankBag_1 then
+            for i = Enum.BagIndex.BankBag_1, Enum.BagIndex.BankBag_7 do
+                table.insert(bankBags, i)
+            end
+        end
+    else
+        -- Classic fallback
+        if BANK_CONTAINER then
+            table.insert(bankBags, BANK_CONTAINER)
+        end
+        if NUM_BANKBAGSLOTS then
+            for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+                table.insert(bankBags, i)
+            end
+        end
     end
 
     local placed = false
     for _, bagID in ipairs(bankBags) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
-        for slot = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-            if not itemInfo then
-                -- Empty slot found, place item here
-                C_Container.PickupContainerItem(bagID, slot)
-                placed = true
-                break
+        if numSlots and numSlots > 0 then
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if not itemInfo then
+                    -- Empty slot found, place item here
+                    C_Container.PickupContainerItem(bagID, slot)
+                    placed = true
+                    break
+                end
             end
         end
         if placed then break end

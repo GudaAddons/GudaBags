@@ -48,13 +48,25 @@ local function CreateIndicator()
     frame:EnableMouse(true)
 
     frame:SetScript("OnMouseDown", function(self, button)
+        ns:Debug("Indicator OnMouseDown:", button)
         if button == "LeftButton" then
-            CategoryDropIndicator:HandleDrop()
+            local success, err = pcall(function()
+                CategoryDropIndicator:HandleDrop()
+            end)
+            if not success then
+                ns:Debug("HandleDrop error:", err)
+            end
         end
     end)
 
     frame:SetScript("OnReceiveDrag", function(self)
-        CategoryDropIndicator:HandleDrop()
+        ns:Debug("Indicator OnReceiveDrag")
+        local success, err = pcall(function()
+            CategoryDropIndicator:HandleDrop()
+        end)
+        if not success then
+            ns:Debug("HandleDrop error:", err)
+        end
     end)
 
     -- Show tooltip when hovering over the indicator
@@ -374,13 +386,17 @@ function CategoryDropIndicator:HandleDrop()
     end
 
     -- Regular drop (within same container) - just assign category
+    -- For same-container, we only change the category assignment, item stays in place
+    ns:Debug("HandleDrop: same-container drop, assigning category only")
+
+    -- Clear cursor FIRST to put item back in its original slot
+    ClearCursor()
+
+    -- Then assign category (this won't move the item, just change its category)
     local CategoryManager = ns:GetModule("CategoryManager")
     if CategoryManager then
         local success = CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
-        if success then
-            -- Clear cursor (SaveCategories already fires CATEGORIES_UPDATED)
-            ClearCursor()
-        end
+        ns:Debug("HandleDrop: AssignItemToCategory result:", success)
     end
 
     self:Hide(true)

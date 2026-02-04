@@ -849,15 +849,11 @@ local function CreateButton(parent)
         end
 
         -- Allow cross-container swap (bag↔bank)
-        if originalReceiveDrag then
+        -- Use itemData for bag/slot since GudaBags uses pooled buttons
+        if self.itemData and self.itemData.bagID and self.itemData.slot then
+            C_Container.PickupContainerItem(self.itemData.bagID, self.itemData.slot)
+        elseif originalReceiveDrag then
             originalReceiveDrag(self)
-        else
-            -- Fallback: manually do the pickup/place
-            local bagID = self:GetParent():GetID()
-            local slotID = self:GetID()
-            if bagID and slotID and bagID >= 0 then
-                C_Container.PickupContainerItem(bagID, slotID)
-            end
         end
     end)
 
