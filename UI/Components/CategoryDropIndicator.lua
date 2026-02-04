@@ -15,41 +15,44 @@ local currentHoveredButton = nil
 local currentContainer = nil
 
 -------------------------------------------------
--- Create Indicator (styled as empty bag slot)
+-- Create Indicator (horizontal bar above hovered item)
 -------------------------------------------------
 
 local function CreateIndicator()
     if indicator then return indicator end
 
-    -- Create a frame that looks like an empty bag slot
+    -- Create a horizontal bar indicator above the hovered item
     local frame = CreateFrame("Frame", "GudaBagsCategoryDropIndicator", UIParent)
-    frame:SetSize(36, 36)
+    frame:SetSize(36, 14)  -- Wide bar, short height
     frame:SetFrameStrata("HIGH")
     frame:SetFrameLevel(100)
 
-    -- Slot background (same as ItemButton's slotBackground)
-    local slotBg = frame:CreateTexture(nil, "BACKGROUND", nil, -1)
-    slotBg:SetPoint("TOPLEFT", -1, 1)
-    slotBg:SetPoint("BOTTOMRIGHT", 1, -1)
-    slotBg:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
-    slotBg:SetVertexColor(0.5, 1, 0.5, 0.8)  -- Green tint
-    frame.slotBg = slotBg
+    -- Bar background
+    local barBg = frame:CreateTexture(nil, "BACKGROUND")
+    barBg:SetAllPoints()
+    barBg:SetColorTexture(0.2, 0.6, 0.2, 0.9)  -- Green background
+    frame.barBg = barBg
 
-    -- Plus icon overlay
-    local plus = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    plus:SetPoint("CENTER", frame, "CENTER", 0, 0)
+    -- Plus icon on the left
+    local plus = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    plus:SetPoint("LEFT", frame, "LEFT", 4, 0)
     plus:SetText("+")
-    plus:SetTextColor(0.3, 0.8, 0.3, 1)
+    plus:SetTextColor(1, 1, 1, 1)
     frame.plus = plus
 
-    -- Border highlight
-    local border = frame:CreateTexture(nil, "OVERLAY")
-    border:SetPoint("TOPLEFT", -2, 2)
-    border:SetPoint("BOTTOMRIGHT", 2, -2)
-    border:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-    border:SetBlendMode("ADD")
-    border:SetVertexColor(0.3, 0.8, 0.3, 0.5)
+    -- Border
+    local border = frame:CreateTexture(nil, "BORDER")
+    border:SetPoint("TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", 1, -1)
+    border:SetColorTexture(0.3, 0.8, 0.3, 1)
     frame.border = border
+
+    -- Inner background (creates border effect)
+    local inner = frame:CreateTexture(nil, "ARTWORK")
+    inner:SetPoint("TOPLEFT", 1, -1)
+    inner:SetPoint("BOTTOMRIGHT", -1, 1)
+    inner:SetColorTexture(0.15, 0.4, 0.15, 0.95)
+    frame.inner = inner
 
     -- Make it clickable for dropping items
     frame:EnableMouse(true)
@@ -64,12 +67,19 @@ local function CreateIndicator()
         CategoryDropIndicator:HandleDrop()
     end)
 
-    -- Keep indicator visible when mouse is over it
+    -- Show tooltip when hovering over the indicator
     frame:SetScript("OnEnter", function(self)
-        -- Do nothing, just prevent hiding
+        if currentCategoryId then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Add item to this category", 1, 1, 1)
+            GameTooltip:AddLine("Drop here to permanently assign", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("this item to \"" .. tostring(currentCategoryId) .. "\"", 0.5, 1, 0.5)
+            GameTooltip:Show()
+        end
     end)
 
     frame:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
         -- Hide when leaving the indicator (if not over an item button)
         C_Timer.After(0.05, function()
             if not CategoryDropIndicator:IsOverValidButton() then
@@ -108,17 +118,19 @@ function CategoryDropIndicator:Show(hoveredButton)
     local container = hoveredButton.containerFrame
     local iconSize = hoveredButton.iconSize or 36
 
-    -- Size the indicator (full size to match item slots)
-    ind:SetSize(iconSize, iconSize)
+    -- Size the indicator bar (same width as item, fixed height)
+    local barHeight = 14
+    local barGap = 2  -- Gap between bar and item
+    ind:SetSize(iconSize, barHeight)
 
     -- Parent to the container
     ind:SetParent(container)
     ind:SetFrameStrata("TOOLTIP")
     ind:SetFrameLevel(200)
 
-    -- Position indicator ON the hovered item (overlay)
+    -- Position indicator ABOVE the hovered item
     ind:ClearAllPoints()
-    ind:SetPoint("TOPLEFT", container, "TOPLEFT", hoveredButton.layoutX, hoveredButton.layoutY)
+    ind:SetPoint("BOTTOMLEFT", container, "TOPLEFT", hoveredButton.layoutX, hoveredButton.layoutY + barGap)
 
     currentCategoryId = categoryId
     currentHoveredButton = hoveredButton
@@ -175,9 +187,6 @@ function CategoryDropIndicator:OnItemButtonEnter(button)
 
     -- Don't show indicator for bank items - allow normal swap behavior
     if IsBankButton(button) then return end
-
-    -- Don't show indicator if dragged item is already in this category
-    if self:IsDraggedItemInCategory(button.categoryId) then return end
 
     self:Show(button)
 end

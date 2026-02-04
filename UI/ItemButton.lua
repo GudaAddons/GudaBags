@@ -673,10 +673,11 @@ local function CreateButton(parent)
         end
     end
 
-    -- Helper function to check if dragged item is in same category as target
-    -- Returns true only if same-category swap should be BLOCKED (within same container)
-    -- Returns false to ALLOW swap (cross-container, e.g., Bag to Bank)
-    local function IsSameCategoryDrop(targetButton)
+    -- Helper function to check if swap should be BLOCKED
+    -- Returns true to BLOCK swap (same container - no swapping within bag or within bank)
+    -- Returns false to ALLOW swap (cross-container only - bag↔bank)
+    local function ShouldBlockSwap(targetButton)
+        -- Only block in category view with valid target
         if not targetButton.categoryId or not targetButton.itemData then
             return false
         end
@@ -686,37 +687,31 @@ local function CreateButton(parent)
             return false
         end
 
-        -- Check if target is in bank - allow cross-container same-category swaps
+        -- Determine if this is a cross-container operation
+        -- Cross-container swaps (bag↔bank) are ALLOWED
+        -- Same-container swaps (bag→bag or bank→bank) are BLOCKED
         if targetButton.containerFrame then
             local containerName = targetButton.containerFrame:GetName()
+            local BankScanner = ns:GetModule("BankScanner")
+            local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+
             if containerName == "GudaBankContainer" then
-                return false  -- Allow Bag-to-Bank swap even if same category
+                -- Target is in bank - allow swap (item coming from bag)
+                return false
+            end
+
+            if containerName == "GudaBagsSecureContainer" and isBankOpen then
+                -- Target is in bag and bank is open - allow swap (item coming from bank)
+                return false
             end
         end
 
-        local CategoryManager = ns:GetModule("CategoryManager")
-        if not CategoryManager then return false end
-
-        -- Build minimal itemData for the dragged item
-        local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType,
-              itemStackCount, itemEquipLoc = GetItemInfo(cursorItemID)
-        if not itemName then return false end
-
-        local draggedItemData = {
-            itemID = cursorItemID,
-            name = itemName,
-            link = itemLink,
-            quality = itemQuality,
-            itemType = itemType,
-            itemSubType = itemSubType,
-            equipSlot = itemEquipLoc,
-        }
-
-        local draggedCategory = CategoryManager:CategorizeItem(draggedItemData)
-        return draggedCategory == targetButton.categoryId
+        -- Same container operation - block the swap
+        return true
     end
 
-    -- Prevent swapping via click within the same category
+    -- Prevent swapping via click within the same container (bag or bank)
+    -- Only allow cross-container swaps (bag↔bank)
     -- Also update pseudo-item slots to use current empty slot
     -- NOTE: On Retail, skip these operations to avoid tainting the secure click handler
     button:HookScript("PreClick", function(self, mouseButton)
@@ -735,12 +730,13 @@ local function CreateButton(parent)
             return  -- Don't check same-category for pseudo-items
         end
 
-        if mouseButton == "LeftButton" and IsSameCategoryDrop(self) then
+        if mouseButton == "LeftButton" and ShouldBlockSwap(self) then
             ClearCursor()
         end
     end)
 
-    -- Custom OnReceiveDrag to prevent swapping items within the same category
+    -- Custom OnReceiveDrag to prevent swapping items within the same container
+    -- Only allows cross-container swaps (bag↔bank)
     -- Also handles pseudo-item buttons to place items in current empty slot
     -- Also handles guild bank items
     local originalReceiveDrag = button:GetScript("OnReceiveDrag")
@@ -777,13 +773,13 @@ local function CreateButton(parent)
             return
         end
 
-        -- If same category drop, prevent the swap
-        if IsSameCategoryDrop(self) then
+        -- Block same-container swaps (only allow cross-container bag↔bank)
+        if ShouldBlockSwap(self) then
             ClearCursor()
             return
         end
 
-        -- Allow normal swap (different categories or non-category view)
+        -- Allow cross-container swap (bag↔bank)
         if originalReceiveDrag then
             originalReceiveDrag(self)
         else
