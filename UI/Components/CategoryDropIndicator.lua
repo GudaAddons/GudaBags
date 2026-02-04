@@ -27,19 +27,13 @@ local function CreateIndicator()
     frame:SetFrameStrata("HIGH")
     frame:SetFrameLevel(100)
 
-    -- Border (green outline)
-    local border = frame:CreateTexture(nil, "BORDER")
-    border:SetPoint("TOPLEFT", -1, 1)
-    border:SetPoint("BOTTOMRIGHT", 1, -1)
-    border:SetColorTexture(0.3, 0.8, 0.3, 1)
-    frame.border = border
-
-    -- Inner background
-    local inner = frame:CreateTexture(nil, "ARTWORK")
-    inner:SetPoint("TOPLEFT", 1, -1)
-    inner:SetPoint("BOTTOMRIGHT", -1, 1)
-    inner:SetColorTexture(0.15, 0.4, 0.15, 0.9)
-    frame.inner = inner
+    -- Slot background texture (same as empty bag slot, with green tint)
+    local slotBg = frame:CreateTexture(nil, "BACKGROUND")
+    slotBg:SetPoint("TOPLEFT", frame, "TOPLEFT", -9, 9)
+    slotBg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 9, -9)
+    slotBg:SetTexture("Interface\\Buttons\\UI-EmptySlot")
+    slotBg:SetVertexColor(0.4, 0.8, 0.4, 0.9)  -- Green tint
+    frame.slotBg = slotBg
 
     -- Plus icon centered (using texture)
     local plus = frame:CreateTexture(nil, "OVERLAY")
@@ -121,15 +115,27 @@ function CategoryDropIndicator:Show(hoveredButton)
         ind.plus:SetSize(plusSize, plusSize)
     end
 
-    -- Parent to the container
-    ind:SetParent(container)
-    ind:SetFrameStrata("TOOLTIP")
-    ind:SetFrameLevel(200)
+    -- Parent to UIParent to avoid scroll frame clipping
+    ind:SetParent(UIParent)
+    ind:SetFrameStrata("FULLSCREEN_DIALOG")
+    ind:SetFrameLevel(500)
 
-    -- Position indicator ABOVE the hovered item
+    -- Position indicator ABOVE the hovered item using screen coordinates
+    -- Get the button's world position
+    local buttonLeft, buttonBottom, buttonWidth, buttonHeight
+    if hoveredButton.wrapper then
+        buttonLeft = hoveredButton.wrapper:GetLeft()
+        buttonBottom = hoveredButton.wrapper:GetTop()  -- Top of button = bottom of indicator
+    else
+        buttonLeft = hoveredButton:GetLeft()
+        buttonBottom = hoveredButton:GetTop()
+    end
+
     local barGap = 2
     ind:ClearAllPoints()
-    ind:SetPoint("BOTTOMLEFT", container, "TOPLEFT", hoveredButton.layoutX, hoveredButton.layoutY + barGap)
+    if buttonLeft and buttonBottom then
+        ind:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", buttonLeft, buttonBottom + barGap)
+    end
 
     currentCategoryId = categoryId
     currentHoveredButton = hoveredButton
