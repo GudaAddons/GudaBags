@@ -674,6 +674,8 @@ local function CreateButton(parent)
     end
 
     -- Helper function to check if dragged item is in same category as target
+    -- Returns true only if same-category swap should be BLOCKED (within same container)
+    -- Returns false to ALLOW swap (cross-container, e.g., Bag to Bank)
     local function IsSameCategoryDrop(targetButton)
         if not targetButton.categoryId or not targetButton.itemData then
             return false
@@ -682,6 +684,14 @@ local function CreateButton(parent)
         local cursorType, cursorItemID = GetCursorInfo()
         if cursorType ~= "item" or not cursorItemID then
             return false
+        end
+
+        -- Check if target is in bank - allow cross-container same-category swaps
+        if targetButton.containerFrame then
+            local containerName = targetButton.containerFrame:GetName()
+            if containerName == "GudaBankContainer" then
+                return false  -- Allow Bag-to-Bank swap even if same category
+            end
         end
 
         local CategoryManager = ns:GetModule("CategoryManager")

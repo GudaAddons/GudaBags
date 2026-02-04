@@ -94,6 +94,43 @@ local function ReleaseAllCategoryHeaders()
     categoryHeaders = {}
 end
 
+-------------------------------------------------
+-- Container Drop Handling (empty space acts as drop zone)
+-------------------------------------------------
+
+-- Handle drops on empty space in the bank container
+function BankFrame:HandleContainerDrop()
+    local infoType, itemID = GetCursorInfo()
+    if infoType ~= "item" or not itemID then return end
+
+    -- Find an empty bank slot and place the item there
+    -- Check main bank container first, then bank bags
+    local bankBags = { BANK_CONTAINER }
+    for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
+        table.insert(bankBags, i)
+    end
+
+    local placed = false
+    for _, bagID in ipairs(bankBags) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for slot = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+            if not itemInfo then
+                -- Empty slot found, place item here
+                C_Container.PickupContainerItem(bagID, slot)
+                placed = true
+                break
+            end
+        end
+        if placed then break end
+    end
+
+    -- If no empty slot found, just clear cursor
+    if not placed then
+        ClearCursor()
+    end
+end
+
 local UpdateFrameAppearance
 local SaveFramePosition
 local RestoreFramePosition
@@ -171,6 +208,19 @@ local function CreateBankFrame()
     container:SetSize(1, 1)  -- Will be resized based on content
     scrollFrame:SetScrollChild(container)
     f.container = container
+
+    -- Enable container as drop zone for empty space
+    container:EnableMouse(true)
+
+    container:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            BankFrame:HandleContainerDrop()
+        end
+    end)
+
+    container:SetScript("OnReceiveDrag", function(self)
+        BankFrame:HandleContainerDrop()
+    end)
 
     local emptyMessage = CreateFrame("Frame", nil, f)
     emptyMessage:SetAllPoints(scrollFrame)
