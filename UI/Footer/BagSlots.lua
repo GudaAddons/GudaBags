@@ -119,6 +119,19 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
             if viewType == "single" and not viewingCharacter then
                 ToggleBagVisibility(self.bagID)
                 BagSlots:UpdateBagVisualState(self)
+
+                -- Check if this is a soul bag and update SoulBag footer state
+                local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
+                if BagClassifier then
+                    local bagType = BagClassifier:GetBagType(self.bagID)
+                    if bagType == "soul" then
+                        local SoulBag = ns:GetModule("Footer.SoulBag")
+                        if SoulBag then
+                            SoulBag:UpdateState()
+                        end
+                    end
+                end
+
                 if onBagVisibilityChanged then
                     onBagVisibilityChanged()
                 end

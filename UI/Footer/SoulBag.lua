@@ -36,21 +36,98 @@ local function GetDatabase()
     return Database
 end
 
-local function IsShowingSoulBag()
-    local db = GetDatabase()
-    if db then
-        local value = db:GetSetting("showSoulBag")
-        if value ~= nil then
-            return value
-        end
-    end
-    return true  -- Default to showing
+-- Get all soul bag IDs from BagClassifier
+local function GetSoulBagIDs()
+    local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
+    local BagScanner = ns:GetModule("BagScanner")
+    if not BagClassifier or not BagScanner then return {} end
+
+    local bags = BagScanner:GetCachedBags()
+    local classified = BagClassifier:ClassifyBags(bags, false)
+    return classified.soul or {}
 end
 
-local function SetShowingSoulBag(value)
+-- Get hidden bags from database
+local function GetHiddenBags()
     local db = GetDatabase()
     if db then
-        db:SetSetting("showSoulBag", value)
+        return db:GetSetting("hiddenBags") or {}
+    end
+    return {}
+end
+
+-- Set hidden bags in database
+local function SetHiddenBags(hiddenBags)
+    local db = GetDatabase()
+    if db then
+        db:SetSetting("hiddenBags", hiddenBags)
+    end
+end
+
+-- Check if a specific bag is hidden
+local function IsBagHidden(bagID)
+    local hiddenBags = GetHiddenBags()
+    return hiddenBags[bagID] == true
+end
+
+-- Check if ANY soul bag is visible (not hidden)
+-- Returns true if at least one soul bag is visible
+local function IsAnySoulBagVisible()
+    local soulBagIDs = GetSoulBagIDs()
+    if #soulBagIDs == 0 then return false end
+
+    local hiddenBags = GetHiddenBags()
+    for _, bagID in ipairs(soulBagIDs) do
+        if not hiddenBags[bagID] then
+            return true  -- At least one soul bag is visible
+        end
+    end
+    return false  -- All soul bags are hidden
+end
+
+-- Check if ALL soul bags are hidden
+local function AreAllSoulBagsHidden()
+    local soulBagIDs = GetSoulBagIDs()
+    if #soulBagIDs == 0 then return true end
+
+    return not IsAnySoulBagVisible()
+end
+
+-- Hide all soul bags
+local function HideAllSoulBags()
+    local soulBagIDs = GetSoulBagIDs()
+    local hiddenBags = GetHiddenBags()
+
+    for _, bagID in ipairs(soulBagIDs) do
+        hiddenBags[bagID] = true
+    end
+
+    SetHiddenBags(hiddenBags)
+end
+
+-- Show all soul bags (remove from hidden)
+local function ShowAllSoulBags()
+    local soulBagIDs = GetSoulBagIDs()
+    local hiddenBags = GetHiddenBags()
+
+    for _, bagID in ipairs(soulBagIDs) do
+        hiddenBags[bagID] = nil
+    end
+
+    SetHiddenBags(hiddenBags)
+end
+
+-- Legacy compatibility: IsShowingSoulBag now checks hiddenBags
+local function IsShowingSoulBag()
+    return IsAnySoulBagVisible()
+end
+
+-- Legacy compatibility: SetShowingSoulBag now modifies hiddenBags
+local function SetShowingSoulBag(value)
+    if value then
+        ShowAllSoulBags()
+    else
+        HideAllSoulBags()
     end
 end
 
@@ -87,21 +164,21 @@ function SoulBag:Init(parent)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(L["SOULBAG"] or "Soul Bag")
-        if IsShowingSoulBag() then
-            GameTooltip:AddLine(L["CLICK_HIDE_SOULBAG"] or "Click to hide soul bag", 0.7, 0.7, 0.7)
+        if IsAnySoulBagVisible() then
+            GameTooltip:AddLine(L["CLICK_HIDE_SOULBAG"] or "Click to hide all soul bags", 0.7, 0.7, 0.7)
         else
-            GameTooltip:AddLine(L["CLICK_SHOW_SOULBAG"] or "Click to show soul bag", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(L["CLICK_SHOW_SOULBAG"] or "Click to show all soul bags", 0.7, 0.7, 0.7)
         end
         GameTooltip:Show()
 
-        if IsShowingSoulBag() then
+        if IsAnySoulBagVisible() then
             local ItemButton = ns:GetModule("ItemButton")
             local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
             if ItemButton and BagClassifier and mainBagFrame and mainBagFrame.container then
-                -- Highlight all soul bag slots
-                local classifiedBags = BagClassifier:ClassifyBags()
-                if classifiedBags.soul then
-                    for _, bagID in ipairs(classifiedBags.soul) do
+                -- Highlight all visible soul bag slots
+                local soulBagIDs = GetSoulBagIDs()
+                for _, bagID in ipairs(soulBagIDs) do
+                    if not IsBagHidden(bagID) then
                         ItemButton:HighlightBagSlots(bagID, mainBagFrame.container)
                     end
                 end
@@ -119,9 +196,16 @@ function SoulBag:Init(parent)
     end)
 
     button:SetScript("OnClick", function(self)
-        local newValue = not IsShowingSoulBag()
+        local newValue = not IsAnySoulBagVisible()
         SetShowingSoulBag(newValue)
         SoulBag:UpdateState()
+
+        -- Update BagSlots visual states for soul bags
+        local BagSlots = ns:GetModule("Footer.BagSlots")
+        if BagSlots then
+            BagSlots:UpdateAllVisualStates()
+        end
+
         if onSoulBagToggle then
             onSoulBagToggle(newValue)
         end
@@ -150,10 +234,14 @@ end
 
 function SoulBag:UpdateState()
     if not button then return end
-    if IsShowingSoulBag() then
+    if IsAnySoulBagVisible() then
         button:SetBackdropBorderColor(0.5, 0.3, 0.8, 1)  -- Purple border when showing
+        button.icon:SetDesaturated(false)
+        button.icon:SetAlpha(1.0)
     else
         button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        button.icon:SetDesaturated(true)
+        button.icon:SetAlpha(0.4)
     end
 end
 
