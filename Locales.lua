@@ -268,6 +268,15 @@ L["BANK_PURCHASE_SLOT"] = "Purchase bank bag slot for %s?"
 -- Guild Bank Frame
 L["GUILD_BANK_NO_DATA"] = "No guild bank data cached"
 L["GUILD_BANK_VISIT"] = "Visit your guild vault to cache items"
+L["GUILD_BANK_PURCHASE_PROMPT"] = "Do you wish to purchase this tab?"
+L["GUILD_BANK_TABS_PURCHASED"] = "(%d/%d tabs purchased)"
+L["GUILD_BANK_COST"] = "Cost:"
+L["GUILD_BANK_PURCHASE"] = "Purchase"
+L["GUILD_BANK_NO_PERMISSION"] = "You don't have permission to purchase tabs"
+L["GUILD_BANK_NOT_ENOUGH_GOLD"] = "Not enough gold"
+L["GUILD_BANK_PURCHASE_TAB"] = "Purchase New Tab"
+L["GUILD_BANK_RIGHT_CLICK_EDIT"] = "Right-click to edit"
+L["GUILD_BANK_NO_EDIT_PERMISSION"] = "You do not have permission to edit this tab"
 
 -- Character List
 L["BACK_TO_CURRENT"] = "< Back to Current"
