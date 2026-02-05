@@ -119,6 +119,12 @@ Constants.QUEST_INDICATOR_IGNORE = {
     [19715] = true,  -- Yellow Hakkari Bijou
 }
 
+-- Custom quest items to show in Quest Bar even without "Quest Item" tooltip text
+-- These items are usable quest-related items that should appear in the quest bar
+Constants.CUSTOM_QUEST_ITEMS = {
+    [24287] = true,  -- Extinguishing Mixture
+}
+
 Constants.QUALITY_COLORS = {
     [0] = {0.62, 0.62, 0.62},  -- Poor (gray)
     [1] = {1.00, 1.00, 1.00},  -- Common (white)

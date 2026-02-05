@@ -622,10 +622,20 @@ local function CreateButton(parent)
     end
 
     -- Ctrl+Alt+Click to track/untrack items
-    -- Also handle guild bank item clicks
+    -- Also handle guild bank item clicks and read-only item linking
     button:HookScript("OnClick", function(self, mouseButton)
         -- Wrap in pcall to prevent errors from breaking item interaction
         local success, err = pcall(function()
+            -- Handle shift-click to link items in chat for read-only items (cached/view mode)
+            -- The template's handler doesn't work because we set IDs to 0 for read-only mode
+            if mouseButton == "LeftButton" and IsShiftKeyDown() and self.isReadOnly then
+                local link = self.itemData and (self.itemData.link or self.itemData.itemLink)
+                if link then
+                    HandleModifiedItemClick(link)
+                end
+                return
+            end
+
             -- Track/untrack with Ctrl+Alt+Click
             if mouseButton == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
                 if self.itemData and self.itemData.itemID then

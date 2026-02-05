@@ -103,6 +103,12 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
     -- Check if item is in the quest indicator ignore list
     local isQuestIgnored = itemID and Constants.QUEST_INDICATOR_IGNORE and Constants.QUEST_INDICATOR_IGNORE[itemID]
 
+    -- Check if item is a custom quest item (force show in quest bar)
+    local isCustomQuestItem = itemID and Constants.CUSTOM_QUEST_ITEMS and Constants.CUSTOM_QUEST_ITEMS[itemID]
+    if isCustomQuestItem then
+        isQuestItem = true
+    end
+
     -- Note: We don't set isQuestItem based on itemType "Quest" alone
     -- Only items with "Quest Item" text in tooltip should be marked as quest items
     -- This prevents items like "Strathholme Holy Water" from showing in quest bar
