@@ -1035,12 +1035,15 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
     if itemData then
         -- Set IDs for ContainerFrameItemButtonTemplate's secure click handler
-        -- Use invalid IDs for read-only mode to prevent interactions
+        -- Use invalid IDs for read-only mode or guild bank items to prevent template from
+        -- interfering (guild bank items are handled by our own OnClick hook)
         -- Skip during combat to avoid taint (SetID is protected on secure frames)
         if InCombatLockdown() then
             -- During combat, don't change IDs to avoid taint
             -- Items won't be clickable but bag can still be viewed
-        elseif isReadOnly then
+        elseif isReadOnly or itemData.isGuildBank then
+            -- Set to 0 for read-only mode or guild bank items
+            -- Guild bank items use their own click handler, not the template's
             button.wrapper:SetID(0)
             button:SetID(0)
         else
@@ -1223,10 +1226,12 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     button.isReadOnly = isReadOnly or false
 
     -- Set IDs for ContainerFrameItemButtonTemplate's secure click handler
-    -- Use invalid IDs for read-only mode to prevent interactions
+    -- Use invalid IDs for read-only mode or guild bank items to prevent template from
+    -- interfering (guild bank items are handled by our own OnClick hook)
     -- Skip during combat to avoid taint
     if not InCombatLockdown() then
-        if isReadOnly then
+        if isReadOnly or isGuildBank then
+            -- Set to 0 for read-only mode or guild bank items
             button.wrapper:SetID(0)
             button:SetID(0)
         else

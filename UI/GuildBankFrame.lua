@@ -139,6 +139,7 @@ end
 
 local TAB_SIZE = 36
 local TAB_SPACING = 2
+local showingPurchasePrompt = false  -- Track when purchase tab is selected
 
 local function CreateSideTab(parent, index, isAllTab)
     local button = CreateFrame("Button", "GudaGuildBankSideTab" .. (isAllTab and "All" or index), parent, "BackdropTemplate")
@@ -192,6 +193,12 @@ local function CreateSideTab(parent, index, isAllTab)
             GameTooltip:SetText(ns.L["TOOLTIP_GUILD_ALL_TABS"] or "All Tabs")
         elseif self.tabName then
             GameTooltip:SetText(self.tabName)
+            -- Show right-click hint if player can edit this tab
+            if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
+                if CanEditGuildBankTabInfo and CanEditGuildBankTabInfo(self.tabIndex) then
+                    GameTooltip:AddLine(ns.L["GUILD_BANK_RIGHT_CLICK_EDIT"] or "Right-click to edit", 0.5, 0.5, 0.5)
+                end
+            end
         else
             GameTooltip:SetText(string.format(ns.L["TOOLTIP_GUILD_TAB"] or "Tab %d", self.tabIndex))
         end
@@ -226,8 +233,54 @@ local function CreateSideTab(parent, index, isAllTab)
         end
     end)
 
-    button:SetScript("OnClick", function(self)
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    button:SetScript("OnClick", function(self, mouseButton)
         if GuildBankScanner then
+            -- Reset purchase prompt when clicking on regular tabs
+            showingPurchasePrompt = false
+
+            if mouseButton == "RightButton" and self.tabIndex > 0 then
+                -- Right-click on purchased tab: open Blizzard icon selection popup
+                -- First set the current guild bank tab
+                if SetCurrentGuildBankTab then
+                    SetCurrentGuildBankTab(self.tabIndex)
+                end
+
+                if GuildBankPopupFrame then
+                    GuildBankPopupFrame:Hide()
+                end
+
+                if not CanEditGuildBankTabInfo or not CanEditGuildBankTabInfo(self.tabIndex) then
+                    UIErrorsFrame:AddMessage(ns.L["GUILD_BANK_NO_EDIT_PERMISSION"] or "You do not have permission to edit this tab", 1.0, 0.1, 0.1, 1.0)
+                    return
+                end
+
+                -- For Retail, set the mode
+                if IconSelectorPopupFrameModes and GuildBankPopupFrame then
+                    GuildBankPopupFrame.mode = IconSelectorPopupFrameModes.Edit
+                end
+
+                if GuildBankPopupFrame then
+                    GuildBankPopupFrame:Show()
+
+                    -- For Classic/TBC, call Update after Show
+                    local Expansion = ns:GetModule("Expansion")
+                    if Expansion and not Expansion.IsRetail then
+                        if GuildBankPopupFrame.Update then
+                            GuildBankPopupFrame:Update()
+                        end
+                    end
+
+                    -- Position the popup
+                    GuildBankPopupFrame:SetParent(UIParent)
+                    GuildBankPopupFrame:ClearAllPoints()
+                    GuildBankPopupFrame:SetClampedToScreen(true)
+                    GuildBankPopupFrame:SetFrameLevel(999)
+                    GuildBankPopupFrame:SetPoint("LEFT", frame, "RIGHT", 10, 0)
+                end
+                return
+            end
+
             local currentTab = GuildBankScanner:GetSelectedTab()
             if currentTab == self.tabIndex then
                 -- Clicking same tab - show all
@@ -240,6 +293,61 @@ local function CreateSideTab(parent, index, isAllTab)
             GuildBankFrame:UpdateSideTabSelection()
             GuildBankFrame:Refresh()
         end
+    end)
+
+    return button
+end
+
+local function CreatePurchaseTab(parent)
+    local button = CreateFrame("Button", "GudaGuildBankPurchaseTab", parent, "BackdropTemplate")
+    button:SetSize(TAB_SIZE, TAB_SIZE)
+    button.isPurchaseTab = true
+
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 8,
+        insets = {left = 2, right = 2, top = 2, bottom = 2},
+    })
+    button:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+
+    -- Plus icon
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
+    icon:SetPoint("CENTER")
+    icon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\plus.png")
+    button.icon = icon
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+    highlight:SetBlendMode("ADD")
+
+    -- Selection indicator
+    local selected = button:CreateTexture(nil, "OVERLAY")
+    selected:SetAllPoints()
+    selected:SetColorTexture(0.3, 0.8, 0.3, 0.3)  -- Green for purchase
+    selected:Hide()
+    button.selected = selected
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(ns.L["GUILD_BANK_PURCHASE_TAB"] or "Purchase New Tab")
+        GameTooltip:Show()
+    end)
+
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    button:SetScript("OnClick", function()
+        showingPurchasePrompt = true
+        if GuildBankScanner then
+            GuildBankScanner:SetSelectedTab(0)  -- Deselect current tab
+        end
+        GuildBankFrame:UpdateSideTabSelection()
+        GuildBankFrame:RefreshPurchasePrompt()  -- Only refresh the purchase prompt, not full refresh
     end)
 
     return button
@@ -279,21 +387,29 @@ function GuildBankFrame:ShowSideTabs()
     -- Sort tabs by index
     table.sort(tabs, function(a, b) return a.index < b.index end)
 
-    -- Hide if no tabs
-    if #tabs == 0 then
+    -- Hide if no tabs and guild bank not open (offline mode)
+    local isGuildBankOpen = GuildBankScanner and GuildBankScanner:IsGuildBankOpen() or false
+    if #tabs == 0 and not isGuildBankOpen then
         frame.sideTabBar:Hide()
         return
     end
 
-    -- Create "All" tab button first
-    if not frame.sideTabs[0] then
-        frame.sideTabs[0] = CreateSideTab(frame.sideTabBar, 0, true)
+    -- Create "All" tab button first (only if we have tabs)
+    local prevButton = nil
+    if #tabs > 0 then
+        if not frame.sideTabs[0] then
+            frame.sideTabs[0] = CreateSideTab(frame.sideTabBar, 0, true)
+        end
+        frame.sideTabs[0]:ClearAllPoints()
+        frame.sideTabs[0]:SetPoint("TOP", frame.sideTabBar, "TOP", 0, 0)
+        frame.sideTabs[0]:Show()
+        prevButton = frame.sideTabs[0]
+    else
+        -- Hide "All" tab if no tabs exist
+        if frame.sideTabs[0] then
+            frame.sideTabs[0]:Hide()
+        end
     end
-    frame.sideTabs[0]:ClearAllPoints()
-    frame.sideTabs[0]:SetPoint("TOP", frame.sideTabBar, "TOP", 0, 0)
-    frame.sideTabs[0]:Show()
-
-    local prevButton = frame.sideTabs[0]
 
     -- Create/update tab buttons
     for i, tabData in ipairs(tabs) do
@@ -309,7 +425,11 @@ function GuildBankFrame:ShowSideTabs()
         end
 
         button:ClearAllPoints()
-        button:SetPoint("TOP", prevButton, "BOTTOM", 0, -TAB_SPACING)
+        if prevButton then
+            button:SetPoint("TOP", prevButton, "BOTTOM", 0, -TAB_SPACING)
+        else
+            button:SetPoint("TOP", frame.sideTabBar, "TOP", 0, 0)
+        end
         button:Show()
 
         prevButton = button
@@ -322,9 +442,41 @@ function GuildBankFrame:ShowSideTabs()
         end
     end
 
+    -- Add "+" purchase tab if guild bank is open and not all tabs purchased
+    local numPurchasedTabs = GetNumGuildBankTabs and GetNumGuildBankTabs() or 0
+    local maxTabs = Constants.GUILD_BANK_MAX_TABS or 6
+    local tabCost = GetGuildBankTabCost and GetGuildBankTabCost() or 0
+
+    if isGuildBankOpen and numPurchasedTabs < maxTabs and tabCost > 0 then
+        if not frame.purchaseTab then
+            frame.purchaseTab = CreatePurchaseTab(frame.sideTabBar)
+        end
+        frame.purchaseTab:ClearAllPoints()
+        if prevButton then
+            frame.purchaseTab:SetPoint("TOP", prevButton, "BOTTOM", 0, -TAB_SPACING)
+        else
+            frame.purchaseTab:SetPoint("TOP", frame.sideTabBar, "TOP", 0, 0)
+        end
+        frame.purchaseTab:Show()
+        prevButton = frame.purchaseTab
+    else
+        if frame.purchaseTab then
+            frame.purchaseTab:Hide()
+        end
+    end
+
+    -- Calculate total height
+    local tabCount = #tabs
+    if #tabs > 0 then
+        tabCount = tabCount + 1  -- Add 1 for "All" tab
+    end
+    if isGuildBankOpen and numPurchasedTabs < maxTabs and tabCost > 0 then
+        tabCount = tabCount + 1  -- Add 1 for "+" tab
+    end
+
     -- Resize tab bar
-    local totalHeight = (TAB_SIZE + TAB_SPACING) * (#tabs + 1)
-    frame.sideTabBar:SetSize(TAB_SIZE, totalHeight)
+    local totalHeight = (TAB_SIZE + TAB_SPACING) * tabCount
+    frame.sideTabBar:SetSize(TAB_SIZE, math.max(totalHeight, TAB_SIZE))
 
     frame.sideTabBar:Show()
     self:UpdateSideTabSelection()
@@ -343,7 +495,7 @@ function GuildBankFrame:UpdateSideTabSelection()
 
     for i, button in pairs(frame.sideTabs) do
         if button and button:IsShown() then
-            if i == selectedTab then
+            if i == selectedTab and not showingPurchasePrompt then
                 button.selected:Show()
                 button:SetBackdropBorderColor(0, 0.8, 0.4, 1)  -- Green
             else
@@ -352,6 +504,73 @@ function GuildBankFrame:UpdateSideTabSelection()
             end
         end
     end
+
+    -- Update purchase tab selection
+    if frame.purchaseTab and frame.purchaseTab:IsShown() then
+        if showingPurchasePrompt then
+            frame.purchaseTab.selected:Show()
+            frame.purchaseTab:SetBackdropBorderColor(0.3, 0.8, 0.3, 1)  -- Green
+        else
+            frame.purchaseTab.selected:Hide()
+            frame.purchaseTab:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        end
+    end
+end
+
+-- Refresh only the purchase prompt (without hiding side tabs)
+function GuildBankFrame:RefreshPurchasePrompt()
+    if not frame then return end
+
+    local numTabs = GetNumGuildBankTabs and GetNumGuildBankTabs() or 0
+    local tabCost = GetGuildBankTabCost and GetGuildBankTabCost() or 0
+
+    -- Hide normal content, show purchase prompt
+    frame.container:Hide()
+    frame.emptyMessage:Hide()
+
+    -- Hide scrollbar and buttons when showing purchase prompt
+    local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+    local scrollUpButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+    local scrollDownButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
+    if scrollBar then scrollBar:Hide() end
+    if scrollUpButton then scrollUpButton:Hide() end
+    if scrollDownButton then scrollDownButton:Hide() end
+    frame.scrollFrame:SetVerticalScroll(0)
+    frame.scrollFrame:EnableMouseWheel(false)
+
+    if frame.purchasePrompt then
+        -- Update tabs count text
+        frame.purchasePrompt.tabsText:SetText(string.format(
+            ns.L["GUILD_BANK_TABS_PURCHASED"] or "(%d/%d tabs purchased)",
+            numTabs,
+            Constants.GUILD_BANK_MAX_TABS or 6
+        ))
+
+        -- Update cost display
+        if tabCost > 0 then
+            local gold = math.floor(tabCost / 10000)
+            local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:12|t"
+            frame.purchasePrompt.costValue:SetText(gold .. GOLD_ICON)
+
+            local playerMoney = GetMoney and GetMoney() or 0
+            frame.purchasePrompt.purchaseBtn:Show()
+            frame.purchasePrompt.noPermText:Hide()
+
+            if playerMoney >= tabCost then
+                frame.purchasePrompt.purchaseBtn:Enable()
+            else
+                frame.purchasePrompt.purchaseBtn:Disable()
+            end
+        else
+            frame.purchasePrompt.costValue:SetText("-")
+            frame.purchasePrompt.purchaseBtn:Hide()
+            frame.purchasePrompt.noPermText:Show()
+        end
+
+        frame.purchasePrompt:Show()
+    end
+
+    GuildBankFooter:UpdateSlotInfo(0, 0)
 end
 
 -------------------------------------------------
@@ -436,11 +655,18 @@ local function CreateGuildBankFrame()
     scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
     f.scrollFrame = scrollFrame
 
-    -- Style the scroll bar
+    -- Style the scroll bar and hide initially (Refresh will show if needed)
     local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
     if scrollBar then
         scrollBar:SetAlpha(0.7)
+        scrollBar:Hide()
     end
+    local scrollUpButton = _G[scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+    local scrollDownButton = _G[scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
+    if scrollUpButton then scrollUpButton:Hide() end
+    if scrollDownButton then scrollDownButton:Hide() end
+    scrollFrame:SetVerticalScroll(0)
+    scrollFrame:EnableMouseWheel(false)
 
     -- Container as scroll child
     local container = CreateFrame("Frame", "GudaGuildBankContainer", scrollFrame)
@@ -466,6 +692,76 @@ local function CreateGuildBankFrame()
     emptyMessage.hint = emptyHint
 
     f.emptyMessage = emptyMessage
+
+    -- Purchase tab prompt (shown when guild bank is open but no tabs purchased)
+    local purchasePrompt = CreateFrame("Frame", nil, f)
+    purchasePrompt:SetAllPoints(scrollFrame)
+    purchasePrompt:Hide()
+
+    -- Main prompt text
+    local promptText = purchasePrompt:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    promptText:SetPoint("CENTER", purchasePrompt, "CENTER", 0, 60)
+    promptText:SetTextColor(1, 0.82, 0)  -- Gold
+    promptText:SetText(ns.L["GUILD_BANK_PURCHASE_PROMPT"] or "Do you wish to purchase this tab?")
+    purchasePrompt.promptText = promptText
+
+    -- Tabs purchased text
+    local tabsText = purchasePrompt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tabsText:SetPoint("TOP", promptText, "BOTTOM", 0, -12)
+    tabsText:SetTextColor(0.8, 0.8, 0.8)
+    purchasePrompt.tabsText = tabsText
+
+    -- Cost display frame (to hold icon and text together)
+    local costFrame = CreateFrame("Frame", nil, purchasePrompt)
+    costFrame:SetSize(200, 24)
+    costFrame:SetPoint("TOP", tabsText, "BOTTOM", 0, -16)
+    purchasePrompt.costFrame = costFrame
+
+    local costLabel = costFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    costLabel:SetPoint("RIGHT", costFrame, "CENTER", -4, 0)
+    costLabel:SetTextColor(0.8, 0.8, 0.8)
+    costLabel:SetText(ns.L["GUILD_BANK_COST"] or "Cost:")
+    purchasePrompt.costLabel = costLabel
+
+    local costValue = costFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    costValue:SetPoint("LEFT", costFrame, "CENTER", 4, 0)
+    costValue:SetTextColor(1, 1, 1)  -- White
+    purchasePrompt.costValue = costValue
+
+    -- Purchase button
+    local purchaseBtn = CreateFrame("Button", "GudaGuildBankPurchaseBtn", purchasePrompt, "UIPanelButtonTemplate")
+    purchaseBtn:SetSize(120, 28)
+    purchaseBtn:SetPoint("TOP", costFrame, "BOTTOM", 0, -20)
+    purchaseBtn:SetText(ns.L["GUILD_BANK_PURCHASE"] or "Purchase")
+    purchaseBtn:SetScript("OnClick", function()
+        -- Call the purchase function
+        if BuyGuildBankTab then
+            BuyGuildBankTab()
+        end
+    end)
+    purchaseBtn:SetScript("OnEnter", function(self)
+        local tabCost = GetGuildBankTabCost and GetGuildBankTabCost() or 0
+        local playerMoney = GetMoney and GetMoney() or 0
+        if tabCost > 0 and playerMoney < tabCost then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(ns.L["GUILD_BANK_NOT_ENOUGH_GOLD"] or "Not enough gold", 1, 0.3, 0.3)
+            GameTooltip:Show()
+        end
+    end)
+    purchaseBtn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    purchasePrompt.purchaseBtn = purchaseBtn
+
+    -- No permission text (shown instead of button when player can't purchase)
+    local noPermText = purchasePrompt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    noPermText:SetPoint("TOP", costFrame, "BOTTOM", 0, -20)
+    noPermText:SetTextColor(1, 0.3, 0.3)  -- Red
+    noPermText:SetText(ns.L["GUILD_BANK_NO_PERMISSION"] or "You don't have permission to purchase tabs")
+    noPermText:Hide()
+    purchasePrompt.noPermText = noPermText
+
+    f.purchasePrompt = purchasePrompt
 
     -- Footer
     f.footer = GuildBankFooter:Init(f)
@@ -521,6 +817,88 @@ function GuildBankFrame:Refresh()
 
     local isGuildBankOpen = GuildBankScanner and GuildBankScanner:IsGuildBankOpen() or false
     ns:Debug("  isGuildBankOpen =", isGuildBankOpen)
+
+    -- Check if we need to show the purchase tab prompt
+    -- This happens when: guild bank is open AND (no tabs purchased OR purchase tab is selected)
+    local numTabs = GetNumGuildBankTabs and GetNumGuildBankTabs() or 0
+    local tabCost = GetGuildBankTabCost and GetGuildBankTabCost() or 0
+    ns:Debug("  numTabs =", numTabs, "tabCost =", tabCost, "showingPurchasePrompt =", showingPurchasePrompt)
+
+    if isGuildBankOpen and (numTabs == 0 or showingPurchasePrompt) then
+        ns:Debug("  Showing purchase prompt")
+        frame.container:Hide()
+        frame.emptyMessage:Hide()
+
+        -- Hide scrollbar and buttons when showing purchase prompt
+        local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+        local scrollUpButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+        local scrollDownButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
+        if scrollBar then scrollBar:Hide() end
+        if scrollUpButton then scrollUpButton:Hide() end
+        if scrollDownButton then scrollDownButton:Hide() end
+        frame.scrollFrame:SetVerticalScroll(0)
+        frame.scrollFrame:EnableMouseWheel(false)
+
+        -- Only hide side tabs if no tabs exist at all
+        if numTabs == 0 then
+            self:HideSideTabs()
+        end
+
+        -- Update purchase prompt content
+        if frame.purchasePrompt then
+            -- Update tabs count text
+            frame.purchasePrompt.tabsText:SetText(string.format(
+                ns.L["GUILD_BANK_TABS_PURCHASED"] or "(%d/%d tabs purchased)",
+                numTabs,
+                Constants.GUILD_BANK_MAX_TABS or 6
+            ))
+
+            -- Update cost display
+            if tabCost > 0 then
+                -- Format cost as gold
+                local gold = math.floor(tabCost / 10000)
+                local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:12|t"
+                frame.purchasePrompt.costValue:SetText(gold .. GOLD_ICON)
+
+                -- Check if player has enough gold
+                local playerMoney = GetMoney and GetMoney() or 0
+
+                -- Show purchase button, hide no permission text
+                frame.purchasePrompt.purchaseBtn:Show()
+                frame.purchasePrompt.noPermText:Hide()
+
+                -- Enable/disable button based on player gold
+                if playerMoney >= tabCost then
+                    frame.purchasePrompt.purchaseBtn:Enable()
+                else
+                    frame.purchasePrompt.purchaseBtn:Disable()
+                end
+            else
+                -- Player can't purchase (no permission or all tabs bought)
+                frame.purchasePrompt.costValue:SetText("-")
+                frame.purchasePrompt.purchaseBtn:Hide()
+                frame.purchasePrompt.noPermText:Show()
+            end
+
+            frame.purchasePrompt:Show()
+        end
+
+        -- Set minimum frame size for purchase prompt
+        local columns = Database:GetSetting("guildBankColumns")
+        local iconSize = Database:GetSetting("iconSize")
+        local spacing = Database:GetSetting("iconSpacing")
+        local minWidth = (iconSize * columns) + (Constants.FRAME.PADDING * 2)
+        local minHeight = (6 * iconSize) + (5 * spacing) + 80
+
+        frame:SetSize(math.max(minWidth, 300), minHeight)
+        GuildBankFooter:UpdateSlotInfo(0, 0)
+        return
+    end
+
+    -- Hide purchase prompt if showing normal content
+    if frame.purchasePrompt then
+        frame.purchasePrompt:Hide()
+    end
 
     -- Always use cached guild bank data (LoadFromDatabase populates this for offline mode)
     local guildBank = GuildBankScanner and GuildBankScanner:GetCachedGuildBank()
@@ -649,14 +1027,31 @@ function GuildBankFrame:Refresh()
 
     frame.container:SetSize(contentWidth, math.max(actualContentHeight, 1))
 
+    -- Force hide scrollbar and disable scrolling when not needed
+    -- Must be done AFTER setting container size to override template's auto-show behavior
     local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+    local scrollUpButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+    local scrollDownButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
     if needsScroll then
         if scrollBar then scrollBar:Show() end
+        if scrollUpButton then scrollUpButton:Show() end
+        if scrollDownButton then scrollDownButton:Show() end
         frame.scrollFrame:EnableMouseWheel(true)
     else
         if scrollBar then scrollBar:Hide() end
+        if scrollUpButton then scrollUpButton:Hide() end
+        if scrollDownButton then scrollDownButton:Hide() end
         frame.scrollFrame:SetVerticalScroll(0)
         frame.scrollFrame:EnableMouseWheel(false)
+        -- Double-check hide after a frame to catch template's auto-show
+        C_Timer.After(0, function()
+            if not needsScroll then
+                if scrollBar then scrollBar:Hide() end
+                if scrollUpButton then scrollUpButton:Hide() end
+                if scrollDownButton then scrollDownButton:Hide() end
+                frame.scrollFrame:SetVerticalScroll(0)
+            end
+        end)
     end
 
     -- Render items
@@ -853,6 +1248,7 @@ end
 -- Called when guild bank is closed
 ns.OnGuildBankClosed = function()
     ns:Debug("OnGuildBankClosed callback triggered")
+    showingPurchasePrompt = false  -- Reset purchase prompt state
     GuildBankFrame:Hide()
 
     -- Refresh bags to update stacking (re-stack when interaction window closes)
@@ -876,9 +1272,13 @@ ns.OnGuildBankTabChanged = function(tabIndex)
     end
 end
 
--- Called when tab info updates
+-- Called when tab info updates (also when tabs are purchased)
 ns.OnGuildBankTabsUpdated = function()
     if frame and frame:IsShown() then
+        -- Reset purchase prompt state when tabs change (e.g., after purchase)
+        showingPurchasePrompt = false
+        -- Full refresh to handle purchase prompt visibility and tab changes
+        GuildBankFrame:Refresh()
         GuildBankFrame:ShowSideTabs()
     end
 end
