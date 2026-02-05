@@ -15,6 +15,7 @@ local flyoutButtons = {}
 local isDragging = false
 local questItems = {}  -- Current usable quest items
 local activeItemIndex = 1
+local pendingRefresh = false
 
 -- Constants
 local BUTTON_SPACING = 2
@@ -512,6 +513,7 @@ end
 
 function QuestBar:ShowFlyout()
     if not flyout or #questItems <= 1 then return end
+    if InCombatLockdown() then return end
 
     local buttonSize = GetButtonSize()
     local otherItems = {}
@@ -558,6 +560,11 @@ end
 
 function QuestBar:Refresh()
     if not frame then return end
+
+    if InCombatLockdown() then
+        pendingRefresh = true
+        return
+    end
 
     local showQuestBar = Database:GetSetting("showQuestBar")
     local hideInBGs = Database:GetSetting("hideQuestBarInBGs")
@@ -627,6 +634,10 @@ end
 
 function QuestBar:UpdateSize()
     if not frame then return end
+    if InCombatLockdown() then
+        pendingRefresh = true
+        return
+    end
 
     local buttonSize = GetButtonSize()
 
@@ -685,6 +696,14 @@ end
 Events:OnPlayerLogin(function()
     QuestBar:Init()
     QuestBar:Show()
+end, QuestBar)
+
+-- Refresh after combat ends if we deferred during lockdown
+Events:Register("PLAYER_REGEN_ENABLED", function()
+    if pendingRefresh then
+        pendingRefresh = false
+        QuestBar:Refresh()
+    end
 end, QuestBar)
 
 Events:Register("BAG_UPDATE", OnBagUpdate, QuestBar)
