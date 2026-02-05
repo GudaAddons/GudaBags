@@ -174,7 +174,7 @@ local function CreateBagSlotButton(parent, index)
                 local bankBagIndex = bagID - 4
 
                 if self.needPurchase then
-                    GameTooltip:SetText(BANK_BAG_PURCHASE)
+                    GameTooltip:SetText(BANK_BAG_PURCHASE or "Purchase Bank Slot")
                     local cost = BankScanner:GetBankSlotCost()
                     if cost then
                         GameTooltip:AddLine(FormatMoney(cost), 1, 1, 1)
@@ -184,7 +184,7 @@ local function CreateBagSlotButton(parent, index)
                     if itemID then
                         GameTooltip:SetInventoryItem("player", invSlot)
                     else
-                        GameTooltip:SetText(BAG_SLOT)
+                        GameTooltip:SetText(BAG_SLOT or "Bank Bag Slot")
                     end
                 end
             else
