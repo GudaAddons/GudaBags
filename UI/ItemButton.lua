@@ -535,8 +535,6 @@ local function CreateButton(parent)
                 self.lastShiftState = shiftDown
                 -- Refresh tooltip when shift state changes (for stack price vs single price)
                 if self.itemData and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
-                    -- Clear tooltip first to force full refresh (needed for bank items to show updated prices)
-                    GameTooltip:ClearLines()
                     Tooltip:ShowForItem(self)
                 end
             end

@@ -136,37 +136,118 @@ function Tooltip:ShowForItem(button)
     if isGuildBank then
         -- Guild bank items - use SetGuildBankItem if at bank, otherwise hyperlink
         local GuildBankScanner = ns:GetModule("GuildBankScanner")
+        local tooltipSet = false
         if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() and GameTooltip.SetGuildBankItem then
             GameTooltip:SetGuildBankItem(bagID, slot)  -- bagID is tab index for guild bank
-        elseif link then
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        if not tooltipSet and link then
             GameTooltip:SetHyperlink(link)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        if not tooltipSet and itemID then
+            GameTooltip:SetHyperlink("item:" .. itemID)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        if not tooltipSet and button.itemData then
+            local name = button.itemData.name
+            local quality = button.itemData.quality or 0
+            if name and name ~= "" then
+                local r, g, b = GetItemQualityColor(quality)
+                GameTooltip:SetText(name, r, g, b)
+            end
         end
     elseif button.isReadOnly or isKeyring then
         -- Cached items and keyring use hyperlink
+        local tooltipSet = false
         if link then
             GameTooltip:SetHyperlink(link)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        -- Fallback 1: try SetItemByID if available
+        if not tooltipSet and itemID and GameTooltip.SetItemByID then
+            GameTooltip:SetItemByID(itemID)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        -- Fallback 2: construct link from itemID
+        if not tooltipSet and itemID then
+            GameTooltip:SetHyperlink("item:" .. itemID)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        -- Fallback 3: manually show item name and icon
+        if not tooltipSet and button.itemData then
+            local name = button.itemData.name
+            local quality = button.itemData.quality or 0
+            if name and name ~= "" then
+                local r, g, b = GetItemQualityColor(quality)
+                GameTooltip:SetText(name, r, g, b)
+            end
         end
     elseif isBankItem then
         -- Bank items handling
         local BankScanner = ns:GetModule("BankScanner")
         local isBankOpen = BankScanner and BankScanner:IsBankOpen()
+        local tooltipSet = false
 
-        -- Use SetBagItem only when shift is pressed (for stack totals) and bank is open
-        -- Otherwise use hyperlink which is more reliable for TBC bank items
-        if isBankOpen and IsShiftKeyDown() and bagID ~= nil and slot then
-            GameTooltip:SetBagItem(bagID, slot)
-        elseif link then
+        if isBankOpen and bagID ~= nil and slot then
+            if bagID == -1 then
+                -- Main bank container uses inventory slots, not bag slots
+                local invSlot = BankButtonIDToInvSlotID and BankButtonIDToInvSlotID(slot)
+                if invSlot then
+                    GameTooltip:SetInventoryItem("player", invSlot)
+                    tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+                end
+            else
+                -- Bank bags (5-11) use SetBagItem like regular bags
+                GameTooltip:SetBagItem(bagID, slot)
+                tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+            end
+        end
+        -- Fallback to hyperlink if direct access didn't work
+        if not tooltipSet and link then
             GameTooltip:SetHyperlink(link)
-        elseif isBankOpen and bagID ~= nil and slot then
-            -- Last resort fallback
-            GameTooltip:SetBagItem(bagID, slot)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        -- Fallback to itemID
+        if not tooltipSet and itemID then
+            if GameTooltip.SetItemByID then
+                GameTooltip:SetItemByID(itemID)
+                tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+            end
+            if not tooltipSet then
+                GameTooltip:SetHyperlink("item:" .. itemID)
+                tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+            end
+        end
+        -- Last resort: show item name
+        if not tooltipSet and button.itemData then
+            local name = button.itemData.name
+            local quality = button.itemData.quality or 0
+            if name and name ~= "" then
+                local r, g, b = GetItemQualityColor(quality)
+                GameTooltip:SetText(name, r, g, b)
+            end
         end
     else
         -- Regular bag items use bag slot for full info (binding, cooldown, etc.)
+        local tooltipSet = false
         if bagID ~= nil and slot then
             GameTooltip:SetBagItem(bagID, slot)
-        elseif link then
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        if not tooltipSet and link then
             GameTooltip:SetHyperlink(link)
+            tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+        end
+        -- Fallback to itemID
+        if not tooltipSet and itemID then
+            if GameTooltip.SetItemByID then
+                GameTooltip:SetItemByID(itemID)
+                tooltipSet = GameTooltip:NumLines() and GameTooltip:NumLines() > 0
+            end
+            if not tooltipSet then
+                GameTooltip:SetHyperlink("item:" .. itemID)
+            end
         end
     end
 
