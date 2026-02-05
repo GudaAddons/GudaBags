@@ -528,11 +528,13 @@ function GuildBankFrame:RefreshPurchasePrompt()
     frame.container:Hide()
     frame.emptyMessage:Hide()
 
-    -- Hide scrollbar when showing purchase prompt
+    -- Hide scrollbar and buttons when showing purchase prompt
     local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
-    if scrollBar then
-        scrollBar:Hide()
-    end
+    local scrollUpButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+    local scrollDownButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
+    if scrollBar then scrollBar:Hide() end
+    if scrollUpButton then scrollUpButton:Hide() end
+    if scrollDownButton then scrollDownButton:Hide() end
     frame.scrollFrame:SetVerticalScroll(0)
     frame.scrollFrame:EnableMouseWheel(false)
 
@@ -653,11 +655,18 @@ local function CreateGuildBankFrame()
     scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -Constants.FRAME.PADDING - 20, Constants.FRAME.FOOTER_HEIGHT + Constants.FRAME.PADDING + 6)
     f.scrollFrame = scrollFrame
 
-    -- Style the scroll bar
+    -- Style the scroll bar and hide initially (Refresh will show if needed)
     local scrollBar = scrollFrame.ScrollBar or _G[scrollFrame:GetName() .. "ScrollBar"]
     if scrollBar then
         scrollBar:SetAlpha(0.7)
+        scrollBar:Hide()
     end
+    local scrollUpButton = _G[scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+    local scrollDownButton = _G[scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
+    if scrollUpButton then scrollUpButton:Hide() end
+    if scrollDownButton then scrollDownButton:Hide() end
+    scrollFrame:SetVerticalScroll(0)
+    scrollFrame:EnableMouseWheel(false)
 
     -- Container as scroll child
     local container = CreateFrame("Frame", "GudaGuildBankContainer", scrollFrame)
@@ -820,11 +829,13 @@ function GuildBankFrame:Refresh()
         frame.container:Hide()
         frame.emptyMessage:Hide()
 
-        -- Hide scrollbar when showing purchase prompt
+        -- Hide scrollbar and buttons when showing purchase prompt
         local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
-        if scrollBar then
-            scrollBar:Hide()
-        end
+        local scrollUpButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+        local scrollDownButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
+        if scrollBar then scrollBar:Hide() end
+        if scrollUpButton then scrollUpButton:Hide() end
+        if scrollDownButton then scrollDownButton:Hide() end
         frame.scrollFrame:SetVerticalScroll(0)
         frame.scrollFrame:EnableMouseWheel(false)
 
@@ -1016,14 +1027,31 @@ function GuildBankFrame:Refresh()
 
     frame.container:SetSize(contentWidth, math.max(actualContentHeight, 1))
 
+    -- Force hide scrollbar and disable scrolling when not needed
+    -- Must be done AFTER setting container size to override template's auto-show behavior
     local scrollBar = frame.scrollFrame.ScrollBar or _G[frame.scrollFrame:GetName() .. "ScrollBar"]
+    local scrollUpButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollUpButton"]
+    local scrollDownButton = _G[frame.scrollFrame:GetName() .. "ScrollBarScrollDownButton"]
     if needsScroll then
         if scrollBar then scrollBar:Show() end
+        if scrollUpButton then scrollUpButton:Show() end
+        if scrollDownButton then scrollDownButton:Show() end
         frame.scrollFrame:EnableMouseWheel(true)
     else
         if scrollBar then scrollBar:Hide() end
+        if scrollUpButton then scrollUpButton:Hide() end
+        if scrollDownButton then scrollDownButton:Hide() end
         frame.scrollFrame:SetVerticalScroll(0)
         frame.scrollFrame:EnableMouseWheel(false)
+        -- Double-check hide after a frame to catch template's auto-show
+        C_Timer.After(0, function()
+            if not needsScroll then
+                if scrollBar then scrollBar:Hide() end
+                if scrollUpButton then scrollUpButton:Hide() end
+                if scrollDownButton then scrollDownButton:Hide() end
+                frame.scrollFrame:SetVerticalScroll(0)
+            end
+        end)
     end
 
     -- Render items
