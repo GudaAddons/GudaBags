@@ -12,6 +12,8 @@ local Events = ns:GetModule("Events")
 local frame = nil
 local itemButtons = {}
 local isDragging = false
+local pendingResize = false
+local pendingRefresh = false
 
 -- Constants
 local BUTTON_SPACING = 3
@@ -218,7 +220,7 @@ local function CreateItemButton(parent, index)
 
     -- OnMouseDown: start bar movement if Shift is held
     button:HookScript("OnMouseDown", function(self, mouseButton)
-        if mouseButton == "LeftButton" and IsShiftKeyDown() and not CursorHasItem() then
+        if mouseButton == "LeftButton" and IsShiftKeyDown() and not CursorHasItem() and not InCombatLockdown() then
             isDragging = true
             frame:StartMoving()
         end
@@ -228,7 +230,9 @@ local function CreateItemButton(parent, index)
     button:HookScript("OnMouseUp", function(self, mouseButton)
         if mouseButton == "LeftButton" and isDragging then
             isDragging = false
-            frame:StopMovingOrSizing()
+            if not InCombatLockdown() then
+                frame:StopMovingOrSizing()
+            end
             TrackedBar:SavePosition()
         end
     end)
@@ -424,6 +428,10 @@ end
 
 function TrackedBar:Refresh()
     if not frame then return end
+    if InCombatLockdown() then
+        pendingRefresh = true
+        return
+    end
 
     local trackedItems = Database:GetTrackedItems()
     local maxColumns = GetMaxColumns()
@@ -600,6 +608,10 @@ end
 
 function TrackedBar:UpdateSize()
     if not frame then return end
+    if InCombatLockdown() then
+        pendingResize = true
+        return
+    end
 
     local buttonSize = GetButtonSize()
 
@@ -635,6 +647,17 @@ end
 Events:OnPlayerLogin(function()
     TrackedBar:Init()
     TrackedBar:Show()
+end, TrackedBar)
+
+-- Apply deferred updates after combat ends
+Events:Register("PLAYER_REGEN_ENABLED", function()
+    if pendingResize then
+        pendingResize = false
+        TrackedBar:UpdateSize()
+    elseif pendingRefresh then
+        pendingRefresh = false
+        TrackedBar:Refresh()
+    end
 end, TrackedBar)
 
 Events:Register("BAG_UPDATE", OnBagUpdate, TrackedBar)
