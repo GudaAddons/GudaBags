@@ -485,6 +485,32 @@ local function CreateButton(parent)
             end
 
 
+            -- Debug item info on hover
+            if ns.debugItemMode and self.itemData and self.itemData.link then
+                local d = self.itemData
+                local catName = "?"
+                if self.categoryId then
+                    local CategoryManager = ns:GetModule("CategoryManager")
+                    if CategoryManager then
+                        local catDef = CategoryManager:GetCategory(self.categoryId)
+                        catName = catDef and catDef.name or self.categoryId
+                    end
+                end
+                ns:Print(format("|cff00ff00[DebugItem]|r %s | ID: %s | Bag: %s Slot: %s | Count: %s | Quality: %s | Category: %s | Type: %s - %s | Quest: %s | Duration: %s",
+                    d.link or "?",
+                    tostring(d.itemID or "?"),
+                    tostring(d.bagID or "?"),
+                    tostring(d.slot or "?"),
+                    tostring(d.count or 1),
+                    tostring(d.quality or "?"),
+                    tostring(catName),
+                    tostring(d.itemType or "?"),
+                    tostring(d.itemSubType or "?"),
+                    tostring(d.isQuestItem or false),
+                    tostring(d.hasDuration or false)
+                ))
+            end
+
             -- Show drag-drop indicator if cursor has item and this is a category view item
             if self.categoryId and self.containerFrame then
                 local cursorType = GetCursorInfo()
@@ -1088,8 +1114,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- Quest items always show border with quest color
-        if itemData.isQuestItem then
+        -- Quest items and usable duration items show border with quest color
+        local showQuestIndicator = itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID))
+        if showQuestIndicator then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
             button.border:Show()
@@ -1152,7 +1179,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
         if button.questIcon then
-            if itemData.isQuestItem and not itemData.isQuestStarter then
+            if showQuestIndicator and not itemData.isQuestStarter then
                 button.questIcon:Show()
             else
                 button.questIcon:Hide()

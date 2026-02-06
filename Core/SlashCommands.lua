@@ -63,6 +63,12 @@ commandHandlers["debug"] = function()
     ns:Print(L["CMD_DEBUG_MODE"], ns.debugMode and L["CMD_ON"] or L["CMD_OFF"])
 end
 
+-- Debug item hover - print item data on hover
+commandHandlers["debugitem"] = function()
+    ns.debugItemMode = not ns.debugItemMode
+    ns:Print("Debug item hover: " .. (ns.debugItemMode and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
+end
+
 -- Debug item button frames (for retail overlay issues)
 commandHandlers["debugbutton"] = function()
     local ItemButton = ns:GetModule("ItemButton")
@@ -243,6 +249,7 @@ commandHandlers["help"] = function()
     ns:Print("  " .. L["CMD_HELP_COUNT"])
     ns:Print("  " .. L["CMD_HELP_DEBUG"])
     ns:Print("  " .. L["CMD_HELP_HELP"])
+    ns:Print("  /guda debugitem - Toggle item data on hover")
     ns:Print("  /guda locale [code|reset] - Test locale")
     ns:Print("  /guda status - Show expansion/feature detection")
 end
