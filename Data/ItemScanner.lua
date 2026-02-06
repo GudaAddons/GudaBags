@@ -109,9 +109,10 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
         isQuestItem = true
     end
 
-    -- Note: We don't set isQuestItem based on itemType "Quest" alone
-    -- Only items with "Quest Item" text in tooltip should be marked as quest items
-    -- This prevents items like "Strathholme Holy Water" from showing in quest bar
+    -- Mark items with itemType "Quest" as quest items (respect ignore list)
+    if not isQuestIgnored and itemType == "Quest" then
+        isQuestItem = true
+    end
 
     -- Single tooltip scan for all checks
     scanningTooltip:SetOwner(WorldFrame, "ANCHOR_NONE")

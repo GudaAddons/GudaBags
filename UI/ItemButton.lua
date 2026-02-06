@@ -484,6 +484,7 @@ local function CreateButton(parent)
                 Tooltip:ShowForItem(self)
             end
 
+
             -- Show drag-drop indicator if cursor has item and this is a category view item
             if self.categoryId and self.containerFrame then
                 local cursorType = GetCursorInfo()
