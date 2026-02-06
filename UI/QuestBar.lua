@@ -273,7 +273,7 @@ local function CreateItemButton(parent, name, isMain)
     if isMain then
         -- Main button drag handling for moving the bar
         button:HookScript("OnMouseDown", function(self, mouseButton)
-            if mouseButton == "LeftButton" and IsShiftKeyDown() and not CursorHasItem() then
+            if mouseButton == "LeftButton" and IsShiftKeyDown() and not CursorHasItem() and not InCombatLockdown() then
                 isDragging = true
                 frame:StartMoving()
             end
@@ -282,7 +282,9 @@ local function CreateItemButton(parent, name, isMain)
         button:HookScript("OnMouseUp", function(self, mouseButton)
             if mouseButton == "LeftButton" and isDragging then
                 isDragging = false
-                frame:StopMovingOrSizing()
+                if not InCombatLockdown() then
+                    frame:StopMovingOrSizing()
+                end
                 QuestBar:SavePosition()
             end
         end)
@@ -331,14 +333,14 @@ local function CreateFlyout(parent)
     -- Hide flyout when mouse leaves
     f:SetScript("OnLeave", function(self)
         -- Check if mouse is over main button or flyout
-        if not mainButton:IsMouseOver() and not self:IsMouseOver() then
+        if not InCombatLockdown() and not mainButton:IsMouseOver() and not self:IsMouseOver() then
             self:Hide()
         end
     end)
 
     f:SetScript("OnUpdate", function(self)
         -- Hide if mouse is not over main button or flyout
-        if self:IsShown() and not mainButton:IsMouseOver() and not self:IsMouseOver() then
+        if self:IsShown() and not InCombatLockdown() and not mainButton:IsMouseOver() and not self:IsMouseOver() then
             local dominated = false
             for _, btn in ipairs(flyoutButtons) do
                 if btn:IsShown() and btn:IsMouseOver() then
