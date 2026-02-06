@@ -285,7 +285,9 @@ local function UpdateButton(button, itemID)
         button.border:Hide()
         if button.questStarterIcon then button.questStarterIcon:Hide() end
         if button.questIcon then button.questIcon:Hide() end
-        button:Hide()
+        if not InCombatLockdown() then
+            button:Hide()
+        end
         return
     end
 
@@ -398,7 +400,9 @@ local function UpdateButton(button, itemID)
         button.icon:SetAlpha(1)
     end
 
-    button:Show()
+    if not InCombatLockdown() then
+        button:Show()
+    end
 end
 
 -------------------------------------------------
@@ -428,11 +432,8 @@ end
 
 function TrackedBar:Refresh()
     if not frame then return end
-    if InCombatLockdown() then
-        pendingRefresh = true
-        return
-    end
 
+    local inCombat = InCombatLockdown()
     local trackedItems = Database:GetTrackedItems()
     local maxColumns = GetMaxColumns()
     local buttonSize = GetButtonSize()
@@ -447,31 +448,38 @@ function TrackedBar:Refresh()
         if itemID and i <= visibleCount then
             UpdateButton(itemButtons[i], itemID)
 
-            -- Calculate row and column position (0-indexed)
-            local col = (i - 1) % maxColumns
-            local row = math.floor((i - 1) / maxColumns)
+            -- Layout changes require no combat lockdown
+            if not inCombat then
+                -- Calculate row and column position (0-indexed)
+                local col = (i - 1) % maxColumns
+                local row = math.floor((i - 1) / maxColumns)
 
-            -- Position button in grid
-            itemButtons[i]:ClearAllPoints()
-            itemButtons[i]:SetPoint("TOPLEFT", frame, "TOPLEFT",
-                PADDING + col * (buttonSize + BUTTON_SPACING),
-                -PADDING - row * (buttonSize + BUTTON_SPACING))
+                -- Position button in grid
+                itemButtons[i]:ClearAllPoints()
+                itemButtons[i]:SetPoint("TOPLEFT", frame, "TOPLEFT",
+                    PADDING + col * (buttonSize + BUTTON_SPACING),
+                    -PADDING - row * (buttonSize + BUTTON_SPACING))
+            end
         else
-            itemButtons[i]:Hide()
-            itemButtons[i].itemID = nil
-            if itemButtons[i].questStarterIcon then itemButtons[i].questStarterIcon:Hide() end
-            if itemButtons[i].questIcon then itemButtons[i].questIcon:Hide() end
+            if not inCombat then
+                itemButtons[i]:Hide()
+                itemButtons[i].itemID = nil
+                if itemButtons[i].questStarterIcon then itemButtons[i].questStarterIcon:Hide() end
+                if itemButtons[i].questIcon then itemButtons[i].questIcon:Hide() end
+            end
         end
     end
 
-    if visibleCount > 0 then
-        local width = PADDING * 2 + numCols * buttonSize + (numCols - 1) * BUTTON_SPACING
-        local height = PADDING * 2 + numRows * buttonSize + (numRows - 1) * BUTTON_SPACING
-        frame:SetWidth(width)
-        frame:SetHeight(height)
-        frame:Show()
-    else
-        frame:Hide()
+    if not inCombat then
+        if visibleCount > 0 then
+            local width = PADDING * 2 + numCols * buttonSize + (numCols - 1) * BUTTON_SPACING
+            local height = PADDING * 2 + numRows * buttonSize + (numRows - 1) * BUTTON_SPACING
+            frame:SetWidth(width)
+            frame:SetHeight(height)
+            frame:Show()
+        else
+            frame:Hide()
+        end
     end
 end
 
@@ -631,6 +639,10 @@ end
 local function OnBagUpdate()
     if frame and frame:IsShown() then
         TrackedBar:Refresh()
+        -- Schedule a full refresh after combat for layout/attribute updates
+        if InCombatLockdown() then
+            pendingRefresh = true
+        end
     end
 end
 
