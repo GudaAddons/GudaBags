@@ -87,13 +87,14 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
     local cacheKey = GetCacheKey(itemLink, itemID)
     local cached = GetCachedTooltipResult(cacheKey)
     if cached then
-        return cached.isUsable, cached.isQuestItem, cached.isQuestStarter, cached.hasSpecialProperties
+        return cached.isUsable, cached.isQuestItem, cached.isQuestStarter, cached.hasSpecialProperties, cached.hasDuration
     end
 
     local isUsable = true
     local isQuestItem = false
     local isQuestStarter = false
     local hasSpecialProperties = false
+    local hasDuration = false
 
     -- Only check special properties for gray (0) or white (1) quality items
     -- These are the only ones where junk detection matters
@@ -146,6 +147,11 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
                         end
                     end
 
+                    -- Check for item duration (e.g. "Duration: 1 hour")
+                    if not hasDuration and text:find("^Duration:") then
+                        hasDuration = true
+                    end
+
                     -- Check for special properties only for gray/white items (junk detection)
                     if needSpecialPropertiesCheck and not hasSpecialProperties then
                         local textLower = text:lower()
@@ -190,9 +196,10 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
         isQuestItem = isQuestItem,
         isQuestStarter = isQuestStarter,
         hasSpecialProperties = hasSpecialProperties,
+        hasDuration = hasDuration,
     })
 
-    return isUsable, isQuestItem, isQuestStarter, hasSpecialProperties
+    return isUsable, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration
 end
 
 -- Fast scan using cached tooltip data
@@ -234,6 +241,7 @@ function ItemScanner:ScanSlotFast(bagID, slot)
             isQuestItem = cached.isQuestItem,
             isQuestStarter = cached.isQuestStarter,
             hasSpecialProperties = cached.hasSpecialProperties,
+            hasDuration = cached.hasDuration,
         }
     end
 
@@ -274,7 +282,7 @@ function ItemScanner:ScanSlot(bagID, slot)
 
     -- Single optimized tooltip scan for all properties
     -- Pass quality so we only check hasSpecialProperties for gray/white items
-    local isUsable, isQuestItem, isQuestStarter, hasSpecialProperties = ScanTooltipForItem(bagID, slot, itemType, itemInfo.itemID, itemLink, quality)
+    local isUsable, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration = ScanTooltipForItem(bagID, slot, itemType, itemInfo.itemID, itemLink, quality)
 
     return {
         slot = slot,
@@ -298,6 +306,7 @@ function ItemScanner:ScanSlot(bagID, slot)
         isQuestItem = isQuestItem,
         isQuestStarter = isQuestStarter,
         hasSpecialProperties = hasSpecialProperties,
+        hasDuration = hasDuration,
     }
 end
 

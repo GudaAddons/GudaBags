@@ -14,6 +14,7 @@ local flyout = nil
 local flyoutButtons = {}
 local isDragging = false
 local questItems = {}  -- Current usable quest items
+local knownItemIDs = {}  -- Track known quest item IDs to detect new loot
 local activeItemIndex = 1
 local pendingRefresh = false
 
@@ -81,7 +82,8 @@ local function ScanForUsableQuestItems()
         local bagData = cachedBags[bagID]
         if bagData and bagData.slots then
             for slot, itemData in pairs(bagData.slots) do
-                if itemData and itemData.isQuestItem and IsUsableItem(itemData.itemID) then
+                local isQuestBarItem = itemData and IsUsableItem(itemData.itemID) and (itemData.isQuestItem or itemData.hasDuration)
+                if isQuestBarItem then
                     -- Check if we already have this itemID in the list
                     local found = false
                     for _, existing in ipairs(items) do
@@ -319,10 +321,14 @@ local function CreateFlyout(parent)
         button:Hide()
         button.flyoutIndex = i
 
-        -- On click in flyout, set as active item
+        -- On click in flyout, set as active item and save
         button:HookScript("OnClick", function(self, mouseButton)
             if mouseButton == "LeftButton" and self.itemIndex then
                 activeItemIndex = self.itemIndex
+                local activeItem = questItems[activeItemIndex]
+                if activeItem then
+                    Database:SetSetting("questBarActiveItemID", activeItem.itemID)
+                end
                 QuestBar:Refresh()
             end
         end)
@@ -579,7 +585,44 @@ function QuestBar:Refresh()
     end
 
     -- Scan for usable quest items
+    local previousItems = questItems
     questItems = ScanForUsableQuestItems()
+
+    -- Detect newly looted items and switch to them
+    local newItemIndex = nil
+    for i, item in ipairs(questItems) do
+        if not knownItemIDs[item.itemID] then
+            newItemIndex = i
+        end
+    end
+
+    -- Update known item IDs
+    knownItemIDs = {}
+    for _, item in ipairs(questItems) do
+        knownItemIDs[item.itemID] = true
+    end
+
+    if newItemIndex then
+        -- New item looted - make it active
+        activeItemIndex = newItemIndex
+        Database:SetSetting("questBarActiveItemID", questItems[newItemIndex].itemID)
+    else
+        -- Restore saved active item by matching itemID
+        local savedItemID = Database:GetSetting("questBarActiveItemID")
+        if savedItemID then
+            local found = false
+            for i, item in ipairs(questItems) do
+                if item.itemID == savedItemID then
+                    activeItemIndex = i
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                activeItemIndex = 1
+            end
+        end
+    end
 
     -- Validate activeItemIndex
     if activeItemIndex > #questItems then
