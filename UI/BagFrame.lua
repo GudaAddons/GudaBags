@@ -1621,6 +1621,11 @@ end, BagFrame)
 -- Items are shown ungrouped when bank/trade/mail/merchant/auction is open
 local function RefreshForInteractionWindow()
     if frame and frame:IsShown() then
+        -- Defer during combat - PLAYER_REGEN_ENABLED will refresh open bags
+        if InCombatLockdown() then
+            RegisterCombatEndCallback()
+            return
+        end
         local viewType = Database:GetSetting("bagViewType") or "single"
         if viewType == "category" then
             -- Force full refresh since grouping state changed
