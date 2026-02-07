@@ -105,7 +105,7 @@ function SettingsSchema.GetBar()
     return {
         { type = "separator", label = L["SETTINGS_SECTION_QUEST_BAR"] },
         { type = "slider", key = "questBarSize", label = L["SETTINGS_QUEST_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
-        { type = "slider", key = "questBarColumns", label = L["SETTINGS_QUEST_BAR_COLS"], min = 0, max = 5, step = 1 },
+        { type = "slider", key = "questBarColumns", label = L["SETTINGS_QUEST_BAR_COLS"], min = 1, max = 5, step = 1 },
         { type = "row", children = {
             { type = "checkbox", key = "showQuestBar", label = L["SETTINGS_SHOW_QUEST_BAR"], tooltip = L["SETTINGS_SHOW_QUEST_BAR_TIP"] },
             { type = "checkbox", key = "hideQuestBarInBGs", label = L["SETTINGS_HIDE_QUEST_BAR_BG"], tooltip = L["SETTINGS_HIDE_QUEST_BAR_BG_TIP"] },

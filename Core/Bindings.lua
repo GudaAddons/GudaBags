@@ -11,6 +11,11 @@ BINDING_NAME_GUDABAGS_TOGGLE_BANK = L["BINDING_TOGGLE_BANK"]
 
 -- Click bindings for secure buttons (item usage)
 _G["BINDING_NAME_CLICK GudaQuestBarMainButton:RightButton"] = L["BINDING_USE_QUEST_ITEM"]
+_G["BINDING_NAME_CLICK GudaQuestBarGridItem1:LeftButton"] = string.format(L["BINDING_USE_QUEST_BAR_ITEM"], 1)
+_G["BINDING_NAME_CLICK GudaQuestBarGridItem2:LeftButton"] = string.format(L["BINDING_USE_QUEST_BAR_ITEM"], 2)
+_G["BINDING_NAME_CLICK GudaQuestBarGridItem3:LeftButton"] = string.format(L["BINDING_USE_QUEST_BAR_ITEM"], 3)
+_G["BINDING_NAME_CLICK GudaQuestBarGridItem4:LeftButton"] = string.format(L["BINDING_USE_QUEST_BAR_ITEM"], 4)
+_G["BINDING_NAME_CLICK GudaQuestBarGridItem5:LeftButton"] = string.format(L["BINDING_USE_QUEST_BAR_ITEM"], 5)
 _G["BINDING_NAME_CLICK GudaTrackedItem1:RightButton"] = string.format(L["BINDING_USE_TRACKED_ITEM"], 1)
 _G["BINDING_NAME_CLICK GudaTrackedItem2:RightButton"] = string.format(L["BINDING_USE_TRACKED_ITEM"], 2)
 _G["BINDING_NAME_CLICK GudaTrackedItem3:RightButton"] = string.format(L["BINDING_USE_TRACKED_ITEM"], 3)

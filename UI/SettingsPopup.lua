@@ -45,12 +45,12 @@ end
 -- Tab list is built dynamically to get localized labels after ADDON_LOADED
 local function GetTabList()
     return {
-        { id = "general", label = ns.L["TAB_GENERAL"] },
-        { id = "layout", label = ns.L["TAB_LAYOUT"] },
-        { id = "icons", label = ns.L["TAB_ICONS"] },
-        { id = "bar", label = ns.L["TAB_BAR"] },
-        { id = "categories", label = ns.L["TAB_CATEGORIES"] },
-        { id = "guide", label = ns.L["TAB_GUIDE"] },
+        { id = "general", label = ns.L["TAB_GENERAL"], tooltip = ns.L["TAB_GENERAL_TIP"] },
+        { id = "layout", label = ns.L["TAB_LAYOUT"], tooltip = ns.L["TAB_LAYOUT_TIP"] },
+        { id = "icons", label = ns.L["TAB_ICONS"], tooltip = ns.L["TAB_ICONS_TIP"] },
+        { id = "bar", label = ns.L["TAB_BAR"], tooltip = ns.L["TAB_BAR_TIP"] },
+        { id = "categories", label = ns.L["TAB_CATEGORIES"], tooltip = ns.L["TAB_CATEGORIES_TIP"] },
+        { id = "guide", label = ns.L["TAB_GUIDE"], tooltip = ns.L["TAB_GUIDE_TIP"] },
     }
 end
 

@@ -84,6 +84,17 @@ function TabPanel:Create(parent, config)
             SelectTab(tabInfo.id)
         end)
 
+        if tabInfo.tooltip then
+            tab:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                GameTooltip:SetText(tabInfo.tooltip)
+                GameTooltip:Show()
+            end)
+            tab:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+        end
+
         return tab
     end
 
