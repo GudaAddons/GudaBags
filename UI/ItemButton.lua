@@ -1105,7 +1105,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
 
         -- Quest items and usable duration items show border with quest color
-        local showQuestIndicator = itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID))
+        local showQuestIndicator = not (itemData.quality == 0 and IsJunkItem(itemData)) and (itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID)))
         if showQuestIndicator then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
