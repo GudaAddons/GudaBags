@@ -187,6 +187,7 @@ local function CreateHeader(parent)
     if Constants.FEATURES.SORT then
         local sortButton = IconButton:Create(titleBar, "sort", {
             onClick = function()
+                if InCombatLockdown() then return end
                 -- Debounce protection
                 local now = GetTime()
                 if now - lastSortTime < SORT_DEBOUNCE then
