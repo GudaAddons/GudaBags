@@ -89,6 +89,20 @@ local function CreateControl(parent, config)
         text:SetText(config.text)
         frame.text = text
         return frame
+    elseif config.type == "separator" then
+        local frame = CreateFrame("Frame", nil, parent)
+        frame:SetHeight(20)
+        local text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        text:SetPoint("LEFT", frame, "LEFT", 0, 0)
+        text:SetJustifyH("LEFT")
+        text:SetTextColor(0.9, 0.75, 0.3)
+        text:SetText(config.label or "")
+        local line = frame:CreateTexture(nil, "ARTWORK")
+        line:SetHeight(1)
+        line:SetPoint("LEFT", text, "RIGHT", 6, 0)
+        line:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+        line:SetColorTexture(0.5, 0.5, 0.5, 0.5)
+        return frame
     elseif config.type == "row" then
         -- Count visible children
         local visibleCount = 0

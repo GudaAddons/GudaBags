@@ -203,6 +203,7 @@ Constants.DEFAULTS = {
     iconFontSize = 12,
     iconSpacing = 3,
     questBarSize = 44,
+    questBarColumns = 1,
     trackedBarSize = 36,
     trackedBarColumns = 3,
     grayoutJunk = true,

@@ -1398,6 +1398,7 @@ local appearanceSettings = {
     trackedBarSize = true,
     trackedBarColumns = true,
     questBarSize = true,
+    questBarColumns = true,
 }
 
 -- Settings that need both appearance update AND resize

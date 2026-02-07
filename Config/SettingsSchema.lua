@@ -72,15 +72,20 @@ end
 function SettingsSchema.GetIcons()
     local L = ns.L
     return {
-        -- Sliders
+        { type = "separator", label = L["SETTINGS_SECTION_ICON"] },
         { type = "slider", key = "iconSize", label = L["SETTINGS_ICON_SIZE"], min = 22, max = 64, step = 1, format = "px" },
         { type = "slider", key = "iconFontSize", label = L["SETTINGS_ICON_FONT_SIZE"], min = 8, max = 20, step = 1, format = "px" },
         { type = "slider", key = "iconSpacing", label = L["SETTINGS_ICON_SPACING"], min = 0, max = 20, step = 1, format = "px" },
+
+        { type = "separator", label = L["SETTINGS_SECTION_QUEST_BAR"] },
         { type = "slider", key = "questBarSize", label = L["SETTINGS_QUEST_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
+        { type = "slider", key = "questBarColumns", label = L["SETTINGS_QUEST_BAR_COLS"], min = 0, max = 5, step = 1 },
+
+        { type = "separator", label = L["SETTINGS_SECTION_TRACKED"] },
         { type = "slider", key = "trackedBarSize", label = L["SETTINGS_TRACKED_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
         { type = "slider", key = "trackedBarColumns", label = L["SETTINGS_TRACKED_BAR_COLS"], min = 2, max = 12, step = 1 },
 
-        -- Row 1
+        { type = "separator", label = L["SETTINGS_SECTION_ICON_OPTIONS"] },
         { type = "row", children = {
             { type = "checkbox", key = "equipmentBorders", label = L["SETTINGS_QUALITY_BORDERS"], tooltip = L["SETTINGS_QUALITY_BORDERS_TIP"] },
             { type = "checkbox", key = "otherBorders", label = L["SETTINGS_OTHER_BORDERS"], tooltip = L["SETTINGS_OTHER_BORDERS_TIP"] },

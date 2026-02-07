@@ -12,6 +12,7 @@ local frame = nil
 local mainButton = nil
 local flyout = nil
 local flyoutButtons = {}
+local gridButtons = {}  -- Buttons for multi-column grid layout
 local isDragging = false
 local questItems = {}  -- Current usable quest items
 local knownItemIDs = {}  -- Track known quest item IDs to detect new loot
@@ -23,6 +24,7 @@ local initialized = false
 local BUTTON_SPACING = 2
 local PADDING = 0
 local MAX_FLYOUT_ITEMS = 8
+local MAX_GRID_ITEMS = 40  -- Max items in grid layout (5 columns * 8 rows)
 local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF"
 
 -- Flyout visibility helpers
@@ -44,6 +46,10 @@ end
 
 local function GetButtonSize()
     return Database:GetSetting("questBarSize") or 44
+end
+
+local function GetColumns()
+    return Database:GetSetting("questBarColumns") or 1
 end
 
 -------------------------------------------------
@@ -442,9 +448,17 @@ local function CreateQuestBarFrame()
     f:SetBackdropColor(0.1, 0.1, 0.1, 0.85)
     f:SetBackdropBorderColor(0.6, 0.5, 0.0, 0.9)
 
-    -- Create main button
+    -- Create main button (used in flyout mode / columns=0)
     mainButton = CreateItemButton(f, "GudaQuestBarMainButton", true)
     mainButton:SetPoint("CENTER", f, "CENTER", 0, 0)
+
+    -- Create grid buttons for multi-column layout
+    for i = 1, MAX_GRID_ITEMS do
+        local button = CreateItemButton(f, "GudaQuestBarGridItem" .. i, true)
+        button:Hide()
+        button.gridIndex = i
+        gridButtons[i] = button
+    end
 
     -- Create flyout (to the right of the main bar, bottom-aligned)
     flyout = CreateFlyout(f)
@@ -692,47 +706,88 @@ function QuestBar:Refresh()
     if #questItems > 0 then
         initialized = true
         local buttonSize = GetButtonSize()
-        frame:SetSize(buttonSize + PADDING * 2, buttonSize + PADDING * 2)
-        mainButton:SetSize(buttonSize, buttonSize)
+        local columns = GetColumns()
 
-        UpdateButton(mainButton, questItems[activeItemIndex])
-        frame:Show()
+        if columns == 0 then
+            -- Flyout mode: single main button + flyout on hover
+            -- Hide grid buttons
+            for i = 1, MAX_GRID_ITEMS do
+                gridButtons[i]:Hide()
+            end
 
-        -- Pre-configure flyout buttons so they're ready for combat access
-        -- Show the flyout frame but keep it invisible (alpha 0) so it can be
-        -- made visible during combat without calling the protected Show()
-        if flyout and #questItems > 1 then
-            local otherItems = {}
-            for i, item in ipairs(questItems) do
-                if i ~= activeItemIndex then
-                    table.insert(otherItems, { data = item, index = i })
+            frame:SetSize(buttonSize + PADDING * 2, buttonSize + PADDING * 2)
+            mainButton:SetSize(buttonSize, buttonSize)
+            mainButton:ClearAllPoints()
+            mainButton:SetPoint("CENTER", frame, "CENTER", 0, 0)
+
+            UpdateButton(mainButton, questItems[activeItemIndex])
+            frame:Show()
+
+            -- Pre-configure flyout buttons so they're ready for combat access
+            if flyout and #questItems > 1 then
+                local otherItems = {}
+                for i, item in ipairs(questItems) do
+                    if i ~= activeItemIndex then
+                        table.insert(otherItems, { data = item, index = i })
+                    end
                 end
-            end
-            local visibleCount = math.min(#otherItems, MAX_FLYOUT_ITEMS)
-            for i = 1, MAX_FLYOUT_ITEMS do
-                local otherItem = otherItems[i]
-                if otherItem then
-                    flyoutButtons[i].itemIndex = otherItem.index
-                    UpdateButton(flyoutButtons[i], otherItem.data)
-                    flyoutButtons[i]:SetSize(buttonSize, buttonSize)
-                    flyoutButtons[i]:ClearAllPoints()
-                    flyoutButtons[i]:SetPoint("TOP", flyout, "TOP", 0, -PADDING - (i - 1) * (buttonSize + BUTTON_SPACING))
-                else
-                    flyoutButtons[i]:Hide()
-                    flyoutButtons[i].itemIndex = nil
+                local visibleCount = math.min(#otherItems, MAX_FLYOUT_ITEMS)
+                for i = 1, MAX_FLYOUT_ITEMS do
+                    local otherItem = otherItems[i]
+                    if otherItem then
+                        flyoutButtons[i].itemIndex = otherItem.index
+                        UpdateButton(flyoutButtons[i], otherItem.data)
+                        flyoutButtons[i]:SetSize(buttonSize, buttonSize)
+                        flyoutButtons[i]:ClearAllPoints()
+                        flyoutButtons[i]:SetPoint("TOP", flyout, "TOP", 0, -PADDING - (i - 1) * (buttonSize + BUTTON_SPACING))
+                    else
+                        flyoutButtons[i]:Hide()
+                        flyoutButtons[i].itemIndex = nil
+                    end
                 end
+                if visibleCount > 0 then
+                    local height = PADDING * 2 + visibleCount * buttonSize + (visibleCount - 1) * BUTTON_SPACING
+                    local width = buttonSize + PADDING * 2
+                    flyout:SetSize(width, height)
+                end
+            else
+                HideFlyoutFrame()
             end
-            if visibleCount > 0 then
-                local height = PADDING * 2 + visibleCount * buttonSize + (visibleCount - 1) * BUTTON_SPACING
-                local width = buttonSize + PADDING * 2
-                flyout:SetSize(width, height)
-            end
-            -- Flyout is pre-configured but stays hidden until hovered
         else
+            -- Grid mode: show items in a grid layout
+            mainButton:Hide()
             HideFlyoutFrame()
+
+            local itemCount = math.min(#questItems, MAX_GRID_ITEMS)
+            local rows = math.ceil(itemCount / columns)
+            local frameWidth = PADDING * 2 + columns * buttonSize + (columns - 1) * BUTTON_SPACING
+            local frameHeight = PADDING * 2 + rows * buttonSize + (rows - 1) * BUTTON_SPACING
+            frame:SetSize(frameWidth, frameHeight)
+
+            for i = 1, MAX_GRID_ITEMS do
+                if i <= itemCount then
+                    local col = (i - 1) % columns
+                    local row = math.floor((i - 1) / columns)
+                    local x = PADDING + col * (buttonSize + BUTTON_SPACING)
+                    local y = -(PADDING + row * (buttonSize + BUTTON_SPACING))
+
+                    gridButtons[i]:SetSize(buttonSize, buttonSize)
+                    gridButtons[i]:ClearAllPoints()
+                    gridButtons[i]:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
+                    UpdateButton(gridButtons[i], questItems[i])
+                else
+                    gridButtons[i]:Hide()
+                end
+            end
+
+            frame:Show()
         end
     else
         frame:Hide()
+        mainButton:Hide()
+        for i = 1, MAX_GRID_ITEMS do
+            gridButtons[i]:Hide()
+        end
         HideFlyoutFrame()
     end
 end
@@ -766,6 +821,11 @@ function QuestBar:UpdateFontSize()
         mainButton.count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
     end
     for _, button in ipairs(flyoutButtons) do
+        if button.count then
+            button.count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
+        end
+    end
+    for _, button in ipairs(gridButtons) do
         if button.count then
             button.count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
         end
