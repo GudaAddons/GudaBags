@@ -45,11 +45,12 @@ end
 -- Tab list is built dynamically to get localized labels after ADDON_LOADED
 local function GetTabList()
     return {
-        { id = "general", label = ns.L["TAB_GENERAL"] },
-        { id = "layout", label = ns.L["TAB_LAYOUT"] },
-        { id = "icons", label = ns.L["TAB_ICONS"] },
-        { id = "categories", label = ns.L["TAB_CATEGORIES"] },
-        { id = "guide", label = ns.L["TAB_GUIDE"] },
+        { id = "general", label = ns.L["TAB_GENERAL"], tooltip = ns.L["TAB_GENERAL_TIP"] },
+        { id = "layout", label = ns.L["TAB_LAYOUT"], tooltip = ns.L["TAB_LAYOUT_TIP"] },
+        { id = "icons", label = ns.L["TAB_ICONS"], tooltip = ns.L["TAB_ICONS_TIP"] },
+        { id = "bar", label = ns.L["TAB_BAR"], tooltip = ns.L["TAB_BAR_TIP"] },
+        { id = "categories", label = ns.L["TAB_CATEGORIES"], tooltip = ns.L["TAB_CATEGORIES_TIP"] },
+        { id = "guide", label = ns.L["TAB_GUIDE"], tooltip = ns.L["TAB_GUIDE_TIP"] },
     }
 end
 
@@ -88,6 +89,20 @@ local function CreateControl(parent, config)
         text:SetTextColor(0.7, 0.7, 0.7)
         text:SetText(config.text)
         frame.text = text
+        return frame
+    elseif config.type == "separator" then
+        local frame = CreateFrame("Frame", nil, parent)
+        frame:SetHeight(20)
+        local text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        text:SetPoint("LEFT", frame, "LEFT", 0, 0)
+        text:SetJustifyH("LEFT")
+        text:SetTextColor(0.9, 0.75, 0.3)
+        text:SetText(config.label or "")
+        local line = frame:CreateTexture(nil, "ARTWORK")
+        line:SetHeight(1)
+        line:SetPoint("LEFT", text, "RIGHT", 6, 0)
+        line:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+        line:SetColorTexture(0.5, 0.5, 0.5, 0.5)
         return frame
     elseif config.type == "row" then
         -- Count visible children
@@ -1407,6 +1422,7 @@ local function CreateSettingsFrame()
     tabPanel:SetContent("general", CreateTabFromSchema(f, SettingsSchema.GetGeneral()))
     tabPanel:SetContent("layout", CreateTabFromSchema(f, SettingsSchema.GetLayout()))
     tabPanel:SetContent("icons", CreateTabFromSchema(f, SettingsSchema.GetIcons()))
+    tabPanel:SetContent("bar", CreateTabFromSchema(f, SettingsSchema.GetBar()))
     tabPanel:SetContent("categories", CreateCategoriesTab(f))
     tabPanel:SetContent("guide", CreateGuideTab(f))
 

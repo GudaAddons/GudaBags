@@ -2318,6 +2318,7 @@ local appearanceSettings = {
     trackedBarSize = true,
     trackedBarColumns = true,
     questBarSize = true,
+    questBarColumns = true,
 }
 
 local resizeSettings = {

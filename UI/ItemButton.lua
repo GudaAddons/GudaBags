@@ -633,11 +633,8 @@ local function CreateButton(parent)
 
         local newBagID, newSlotID = FindCurrentEmptySlot(btn)
         if newBagID and newSlotID then
-            -- Skip during combat to avoid taint
-            if not InCombatLockdown() then
-                btn.wrapper:SetID(newBagID)
-                btn:SetID(newSlotID)
-            end
+            btn.wrapper:SetID(newBagID)
+            btn:SetID(newSlotID)
             if btn.itemData then
                 btn.itemData.bagID = newBagID
                 btn.itemData.slot = newSlotID
@@ -1051,11 +1048,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- Set real bagID/slot so template's click handler places items correctly
         -- itemData now contains real bagID/slot of first empty slot
-        -- Skip during combat to avoid taint (SetID is protected on secure frames)
-        if not InCombatLockdown() then
-            button.wrapper:SetID(itemData.bagID)
-            button:SetID(itemData.slot)
-        end
+        button.wrapper:SetID(itemData.bagID)
+        button:SetID(itemData.slot)
 
         return
     end
@@ -1064,11 +1058,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         -- Set IDs for ContainerFrameItemButtonTemplate's secure click handler
         -- Use invalid IDs for read-only mode or guild bank items to prevent template from
         -- interfering (guild bank items are handled by our own OnClick hook)
-        -- Skip during combat to avoid taint (SetID is protected on secure frames)
-        if InCombatLockdown() then
-            -- During combat, don't change IDs to avoid taint
-            -- Items won't be clickable but bag can still be viewed
-        elseif isReadOnly or itemData.isGuildBank then
+        if isReadOnly or itemData.isGuildBank then
             -- Set to 0 for read-only mode or guild bank items
             -- Guild bank items use their own click handler, not the template's
             button.wrapper:SetID(0)
@@ -1115,7 +1105,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
 
         -- Quest items and usable duration items show border with quest color
-        local showQuestIndicator = itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID))
+        local showQuestIndicator = not (itemData.quality == 0 and IsJunkItem(itemData)) and (itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID)))
         if showQuestIndicator then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
@@ -1202,11 +1192,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
     else
-        -- Skip during combat to avoid taint
-        if not InCombatLockdown() then
-            button.wrapper:SetID(0)
-            button:SetID(0)
-        end
+        button.wrapper:SetID(0)
+        button:SetID(0)
 
         SetItemButtonTexture(button, nil)
         SetItemButtonCount(button, 0)

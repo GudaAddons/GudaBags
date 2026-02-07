@@ -203,6 +203,7 @@ Constants.DEFAULTS = {
     iconFontSize = 12,
     iconSpacing = 3,
     questBarSize = 44,
+    questBarColumns = 1,
     trackedBarSize = 36,
     trackedBarColumns = 3,
     grayoutJunk = true,
@@ -273,7 +274,7 @@ Constants.CATEGORY_UI = {
     HEADER_HEIGHT = 20,
 
     -- Settings popup
-    POPUP_WIDTH = 450,
+    POPUP_WIDTH = 500,
     POPUP_HEIGHT = 520,
     POPUP_PADDING = 16,
 

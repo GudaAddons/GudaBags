@@ -7,6 +7,16 @@
 	</Binding>
 	<Binding name="CLICK GudaQuestBarMainButton:RightButton" category="GudaBags">
 	</Binding>
+	<Binding name="CLICK GudaQuestBarGridItem1:LeftButton" category="GudaBags">
+	</Binding>
+	<Binding name="CLICK GudaQuestBarGridItem2:LeftButton" category="GudaBags">
+	</Binding>
+	<Binding name="CLICK GudaQuestBarGridItem3:LeftButton" category="GudaBags">
+	</Binding>
+	<Binding name="CLICK GudaQuestBarGridItem4:LeftButton" category="GudaBags">
+	</Binding>
+	<Binding name="CLICK GudaQuestBarGridItem5:LeftButton" category="GudaBags">
+	</Binding>
 	<Binding name="CLICK GudaTrackedItem1:RightButton" category="GudaBags">
 	</Binding>
 	<Binding name="CLICK GudaTrackedItem2:RightButton" category="GudaBags">
