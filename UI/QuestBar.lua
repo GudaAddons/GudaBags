@@ -759,8 +759,9 @@ function QuestBar:Refresh()
             HideFlyoutFrame()
 
             local itemCount = math.min(#questItems, MAX_GRID_ITEMS)
+            local effectiveColumns = math.min(columns, itemCount)
             local rows = math.ceil(itemCount / columns)
-            local frameWidth = PADDING * 2 + columns * buttonSize + (columns - 1) * BUTTON_SPACING
+            local frameWidth = PADDING * 2 + effectiveColumns * buttonSize + (effectiveColumns - 1) * BUTTON_SPACING
             local frameHeight = PADDING * 2 + rows * buttonSize + (rows - 1) * BUTTON_SPACING
             frame:SetSize(frameWidth, frameHeight)
 

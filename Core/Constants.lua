@@ -274,7 +274,7 @@ Constants.CATEGORY_UI = {
     HEADER_HEIGHT = 20,
 
     -- Settings popup
-    POPUP_WIDTH = 450,
+    POPUP_WIDTH = 500,
     POPUP_HEIGHT = 520,
     POPUP_PADDING = 16,
 

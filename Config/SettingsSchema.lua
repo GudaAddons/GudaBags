@@ -10,8 +10,10 @@ function SettingsSchema.GetGeneral()
     local L = ns.L
     return {
         { type = "description", text = L["SETTINGS_GENERAL_DESCRIPTION"], height = 28 },
+        { type = "separator", label = L["SETTINGS_SECTION_APPEARANCE"] },
         { type = "slider", key = "bgAlpha", label = L["SETTINGS_BG_OPACITY"], min = 0, max = 100, step = 5, format = "%" },
 
+        { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },
         { type = "row", children = {
             { type = "checkbox", key = "locked", label = L["SETTINGS_LOCK_WINDOW"], tooltip = L["SETTINGS_LOCK_WINDOW_TIP"] },
             { type = "checkbox", key = "showBorders", label = L["SETTINGS_SHOW_BORDERS"], tooltip = L["SETTINGS_SHOW_BORDERS_TIP"] },
@@ -36,6 +38,7 @@ end
 function SettingsSchema.GetLayout()
     local L = ns.L
     return {
+        { type = "separator", label = L["SETTINGS_SECTION_VIEW"] },
         { type = "select", key = "bagViewType", label = L["SETTINGS_BAG_VIEW"], tooltip = L["SETTINGS_BAG_VIEW_TIP"], options = {
             { value = "single", label = L["SETTINGS_VIEW_SINGLE"] },
             { value = "category", label = L["SETTINGS_VIEW_CATEGORY"] },
@@ -45,10 +48,12 @@ function SettingsSchema.GetLayout()
             { value = "category", label = L["SETTINGS_VIEW_CATEGORY"] },
         }},
 
+        { type = "separator", label = L["SETTINGS_SECTION_COLUMNS"] },
         { type = "slider", key = "bagColumns", label = L["SETTINGS_BAG_COLUMNS"], min = 5, max = 22, step = 1 },
         { type = "slider", key = "bankColumns", label = L["SETTINGS_BANK_COLUMNS"], min = 5, max = 36, step = 1 },
         { type = "slider", key = "guildBankColumns", label = L["SETTINGS_GUILD_BANK_COLUMNS"], min = 10, max = 36, step = 1 },
 
+        { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },
         { type = "row", children = {
             { type = "checkbox", key = "showSearchBar", label = L["SETTINGS_SHOW_SEARCH"], tooltip = L["SETTINGS_SHOW_SEARCH_TIP"] },
             { type = "checkbox", key = "showFooter", label = L["SETTINGS_SHOW_FOOTER"], tooltip = L["SETTINGS_SHOW_FOOTER_TIP"] },
@@ -59,10 +64,6 @@ function SettingsSchema.GetLayout()
             { type = "checkbox", key = "groupIdenticalItems", label = L["SETTINGS_GROUP_IDENTICAL"], tooltip = L["SETTINGS_GROUP_IDENTICAL_TIP"] },
         }},
 
-        { type = "row", children = {
-            { type = "checkbox", key = "showQuestBar", label = L["SETTINGS_SHOW_QUEST_BAR"], tooltip = L["SETTINGS_SHOW_QUEST_BAR_TIP"] },
-            { type = "checkbox", key = "hideQuestBarInBGs", label = L["SETTINGS_HIDE_QUEST_BAR_BG"], tooltip = L["SETTINGS_HIDE_QUEST_BAR_BG_TIP"] },
-        }},
     }
 end
 
@@ -76,14 +77,6 @@ function SettingsSchema.GetIcons()
         { type = "slider", key = "iconSize", label = L["SETTINGS_ICON_SIZE"], min = 22, max = 64, step = 1, format = "px" },
         { type = "slider", key = "iconFontSize", label = L["SETTINGS_ICON_FONT_SIZE"], min = 8, max = 20, step = 1, format = "px" },
         { type = "slider", key = "iconSpacing", label = L["SETTINGS_ICON_SPACING"], min = 0, max = 20, step = 1, format = "px" },
-
-        { type = "separator", label = L["SETTINGS_SECTION_QUEST_BAR"] },
-        { type = "slider", key = "questBarSize", label = L["SETTINGS_QUEST_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
-        { type = "slider", key = "questBarColumns", label = L["SETTINGS_QUEST_BAR_COLS"], min = 0, max = 5, step = 1 },
-
-        { type = "separator", label = L["SETTINGS_SECTION_TRACKED"] },
-        { type = "slider", key = "trackedBarSize", label = L["SETTINGS_TRACKED_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
-        { type = "slider", key = "trackedBarColumns", label = L["SETTINGS_TRACKED_BAR_COLS"], min = 2, max = 12, step = 1 },
 
         { type = "separator", label = L["SETTINGS_SECTION_ICON_OPTIONS"] },
         { type = "row", children = {
@@ -101,6 +94,26 @@ function SettingsSchema.GetIcons()
         { type = "row", children = {
             { type = "checkbox", key = "whiteItemsJunk", label = L["SETTINGS_WHITE_JUNK"], tooltip = L["SETTINGS_WHITE_JUNK_TIP"] },
         }},
+    }
+end
+
+-------------------------------------------------
+-- Bar Tab Schema
+-------------------------------------------------
+function SettingsSchema.GetBar()
+    local L = ns.L
+    return {
+        { type = "separator", label = L["SETTINGS_SECTION_QUEST_BAR"] },
+        { type = "slider", key = "questBarSize", label = L["SETTINGS_QUEST_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
+        { type = "slider", key = "questBarColumns", label = L["SETTINGS_QUEST_BAR_COLS"], min = 0, max = 5, step = 1 },
+        { type = "row", children = {
+            { type = "checkbox", key = "showQuestBar", label = L["SETTINGS_SHOW_QUEST_BAR"], tooltip = L["SETTINGS_SHOW_QUEST_BAR_TIP"] },
+            { type = "checkbox", key = "hideQuestBarInBGs", label = L["SETTINGS_HIDE_QUEST_BAR_BG"], tooltip = L["SETTINGS_HIDE_QUEST_BAR_BG_TIP"] },
+        }},
+
+        { type = "separator", label = L["SETTINGS_SECTION_TRACKED"] },
+        { type = "slider", key = "trackedBarSize", label = L["SETTINGS_TRACKED_BAR_SIZE"], min = 22, max = 64, step = 1, format = "px" },
+        { type = "slider", key = "trackedBarColumns", label = L["SETTINGS_TRACKED_BAR_COLS"], min = 2, max = 12, step = 1 },
     }
 end
 

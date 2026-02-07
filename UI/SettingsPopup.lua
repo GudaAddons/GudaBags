@@ -48,6 +48,7 @@ local function GetTabList()
         { id = "general", label = ns.L["TAB_GENERAL"] },
         { id = "layout", label = ns.L["TAB_LAYOUT"] },
         { id = "icons", label = ns.L["TAB_ICONS"] },
+        { id = "bar", label = ns.L["TAB_BAR"] },
         { id = "categories", label = ns.L["TAB_CATEGORIES"] },
         { id = "guide", label = ns.L["TAB_GUIDE"] },
     }
@@ -1421,6 +1422,7 @@ local function CreateSettingsFrame()
     tabPanel:SetContent("general", CreateTabFromSchema(f, SettingsSchema.GetGeneral()))
     tabPanel:SetContent("layout", CreateTabFromSchema(f, SettingsSchema.GetLayout()))
     tabPanel:SetContent("icons", CreateTabFromSchema(f, SettingsSchema.GetIcons()))
+    tabPanel:SetContent("bar", CreateTabFromSchema(f, SettingsSchema.GetBar()))
     tabPanel:SetContent("categories", CreateCategoriesTab(f))
     tabPanel:SetContent("guide", CreateGuideTab(f))
 
