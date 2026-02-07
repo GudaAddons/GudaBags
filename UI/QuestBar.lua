@@ -281,10 +281,10 @@ local function CreateItemButton(parent, name, isMain)
 
     -- PreClick/PostClick only for main button (SecureActionButtonTemplate)
     if isMain then
-        -- PreClick: only allow item use on right click
+        -- PreClick: allow item use on left/right click, but not when shift is held (shift+click = drag)
         button:SetScript("PreClick", function(self, mouseButton)
             if InCombatLockdown() then return end  -- Can't SetAttribute during combat
-            if mouseButton == "RightButton" and not IsShiftKeyDown() then
+            if not IsShiftKeyDown() then
                 self:SetAttribute("type", "item")
             else
                 self:SetAttribute("type", nil)
