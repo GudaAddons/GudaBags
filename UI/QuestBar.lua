@@ -17,6 +17,7 @@ local questItems = {}  -- Current usable quest items
 local knownItemIDs = {}  -- Track known quest item IDs to detect new loot
 local activeItemIndex = 1
 local pendingRefresh = false
+local initialized = false
 
 -- Constants
 local BUTTON_SPACING = 2
@@ -602,8 +603,8 @@ function QuestBar:Refresh()
         knownItemIDs[item.itemID] = true
     end
 
-    if newItemIndex then
-        -- New item looted - make it active
+    if newItemIndex and initialized then
+        -- New item looted - make it active (skip on first refresh to restore saved state)
         activeItemIndex = newItemIndex
         Database:SetSetting("questBarActiveItemID", questItems[newItemIndex].itemID)
     else
@@ -630,6 +631,7 @@ function QuestBar:Refresh()
     end
 
     if #questItems > 0 then
+        initialized = true
         local buttonSize = GetButtonSize()
         frame:SetSize(buttonSize + PADDING * 2, buttonSize + PADDING * 2)
         mainButton:SetSize(buttonSize, buttonSize)
