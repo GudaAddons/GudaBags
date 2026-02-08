@@ -1375,6 +1375,9 @@ local function CreateSettingsFrame()
     f:SetFrameLevel(200)
     f:EnableMouse(true)
 
+    -- Close on Escape
+    tinsert(UISpecialFrames, "GudaBagsSettingsPopup")
+
     -- Hide portrait and button bar
     ButtonFrameTemplate_HidePortrait(f)
     ButtonFrameTemplate_HideButtonBar(f)
