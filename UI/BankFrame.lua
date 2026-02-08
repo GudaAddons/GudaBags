@@ -2223,6 +2223,12 @@ ns.OnBankOpened = function()
         RestoreFramePosition()
     end
 
+    -- Always reset to current character's bank when opening the banker
+    if viewingCharacter then
+        viewingCharacter = nil
+        BankHeader:SetViewingCharacter(nil, nil)
+    end
+
     BankFrame:Show()
 end
 

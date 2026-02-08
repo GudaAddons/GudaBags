@@ -193,7 +193,7 @@ Constants.DEFAULTS = {
     bagViewType = "single",
     bankViewType = "single",
     showCategoryCount = true,
-    groupIdenticalItems = true,  -- Group identical items into single slot in category view
+    groupIdenticalItems = false,  -- Group identical items into single slot in category view
     mergedGroups = {},  -- Per-group merge settings: { ["Main"] = true, ["Other"] = false }
     recentDuration = 15,  -- Minutes items stay in Recent category
     showSoulBag = true,  -- Show soul bag in single view (Warlock only)
