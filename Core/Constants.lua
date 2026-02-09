@@ -125,6 +125,8 @@ Constants.CUSTOM_QUEST_ITEMS = {
     [24287] = true,  -- Extinguishing Mixture
     [28038] = true,  -- Seaforium PU-36 Explosive Nether Modulator
     [28132] = true,  -- Area 52 Special
+    [25465] = true,  -- Stormcrow Amulet
+    [24355] = true,  -- Ironvine Seeds
 }
 
 Constants.QUALITY_COLORS = {
