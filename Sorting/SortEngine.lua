@@ -11,6 +11,10 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Expansion = ns:GetModule("Expansion")
 
+-- Cached globals
+local InCombatLockdown = InCombatLockdown
+local ClearCursor = ClearCursor
+
 -- Sorting state
 local sortInProgress = false
 local currentPass = 0
@@ -1073,6 +1077,24 @@ end
 sortFrame:SetScript("OnUpdate", function(self, elapsed)
     if not sortInProgress then return end
 
+    -- Cancel sort immediately if combat starts mid-sort
+    if InCombatLockdown() then
+        ClearCursor()
+        local isBankSort = (activeBagIDs == Constants.BANK_BAG_IDS)
+        sortInProgress = false
+        soundsMuted = false
+        activeBagIDs = Constants.BAG_IDS
+        UnmutePickupSounds()
+        SortEngine:ClearCache()
+        ns:Print("Sort cancelled: entered combat")
+        if isBankSort and ns.OnBankUpdated then
+            ns.OnBankUpdated()
+        else
+            Events:Fire("BAGS_UPDATED")
+        end
+        return
+    end
+
     local now = GetTime()
     local isBankSort = (activeBagIDs == Constants.BANK_BAG_IDS)
 
@@ -1171,6 +1193,11 @@ end)
 -- Public API
 -------------------------------------------------
 function SortEngine:SortBags()
+    if InCombatLockdown() then
+        ns:Print("Cannot sort in combat")
+        return false
+    end
+
     if sortInProgress then
         ns:Print("Sort already in progress...")
         return false
@@ -1216,6 +1243,11 @@ function SortEngine:CancelSort()
 end
 
 function SortEngine:SortBank()
+    if InCombatLockdown() then
+        ns:Print("Cannot sort in combat")
+        return false
+    end
+
     local BankScanner = ns:GetModule("BankScanner")
     if not BankScanner or not BankScanner:IsBankOpen() then
         ns:Print("Cannot sort bank: not at banker")
@@ -1255,6 +1287,11 @@ function SortEngine:SortBank()
 end
 
 function SortEngine:SortWarbandBank()
+    if InCombatLockdown() then
+        ns:Print("Cannot sort in combat")
+        return false
+    end
+
     local BankScanner = ns:GetModule("BankScanner")
     if not BankScanner or not BankScanner:IsBankOpen() then
         ns:Print("Cannot sort Warband bank: not at banker")
@@ -1305,6 +1342,18 @@ local restackFrame = CreateFrame("Frame")
 restackFrame:SetScript("OnUpdate", function(self, elapsed)
     if not restackInProgress then return end
 
+    -- Cancel restack immediately if combat starts
+    if InCombatLockdown() then
+        ClearCursor()
+        restackInProgress = false
+        UnmutePickupSounds()
+        ns:Print("Restack cancelled: entered combat")
+        if restackCallback then
+            restackCallback()
+        end
+        return
+    end
+
     local now = GetTime()
     local isBankRestack = (restackBagIDs == Constants.BANK_BAG_IDS)
 
@@ -1341,6 +1390,8 @@ restackFrame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 function SortEngine:RestackBags(callback)
+    if InCombatLockdown() then return false end
+
     if sortInProgress or restackInProgress then
         return false
     end
@@ -1356,6 +1407,8 @@ function SortEngine:RestackBags(callback)
 end
 
 function SortEngine:RestackBank(callback)
+    if InCombatLockdown() then return false end
+
     local BankScanner = ns:GetModule("BankScanner")
     if not BankScanner or not BankScanner:IsBankOpen() then
         return false
@@ -1376,6 +1429,8 @@ function SortEngine:RestackBank(callback)
 end
 
 function SortEngine:RestackWarbandBank(callback)
+    if InCombatLockdown() then return false end
+
     local BankScanner = ns:GetModule("BankScanner")
     if not BankScanner or not BankScanner:IsBankOpen() then
         return false
