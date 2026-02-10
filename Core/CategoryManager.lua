@@ -314,6 +314,25 @@ function CategoryManager:CategorizeItem(itemData, bagID, slotID, isOtherChar)
         end
     end
 
+    -- Equipment set categories (higher priority than rule-based matching)
+    if itemData and itemData.itemID then
+        local Database = ns:GetModule("Database")
+        if Database and Database:GetSetting("showEquipSetCategories") then
+            local EquipmentSets = ns:GetModule("EquipmentSets")
+            if EquipmentSets and EquipmentSets:IsInSet(itemData.itemID) then
+                local setNames = EquipmentSets:GetSetNames(itemData.itemID)
+                if setNames and #setNames > 0 then
+                    table.sort(setNames)
+                    local catId = "EquipSet:" .. setNames[1]
+                    local catDef = self:GetCategory(catId)
+                    if catDef and catDef.enabled then
+                        return catId
+                    end
+                end
+            end
+        end
+    end
+
     -- Try to use cached result for this item
     local cacheKey = GetItemCacheKey(itemData)
     if cacheKey and categoryResultCacheVersion == cachedCategoryVersion then
@@ -351,6 +370,78 @@ end
 -- Clear the item category cache (called externally if needed)
 function CategoryManager:ClearCategoryCache()
     categoryResultCache = {}
+end
+
+-- Sync equipment set categories into saved category data
+-- Adds new sets, removes stale ones. Preserves user edits (group, priority, order).
+function CategoryManager:SyncEquipmentSetCategories()
+    local Database = ns:GetModule("Database")
+    if not Database then return end
+
+    local categories = self:GetCategories()
+    local EquipmentSets = ns:GetModule("EquipmentSets")
+    local showSetting = Database:GetSetting("showEquipSetCategories")
+
+    -- Collect active set names
+    local activeSetIds = {}
+    if showSetting and EquipmentSets then
+        local names = EquipmentSets:GetAllSetNames()
+        for _, name in ipairs(names) do
+            activeSetIds["EquipSet:" .. name] = true
+        end
+    end
+
+    local changed = false
+
+    -- Remove equipment set categories that no longer exist or setting is off
+    local toRemove = {}
+    for catId, def in pairs(categories.definitions) do
+        if def.isEquipSet and not activeSetIds[catId] then
+            table.insert(toRemove, catId)
+        end
+    end
+    for _, catId in ipairs(toRemove) do
+        categories.definitions[catId] = nil
+        for i, id in ipairs(categories.order) do
+            if id == catId then
+                table.remove(categories.order, i)
+                break
+            end
+        end
+        changed = true
+    end
+
+    -- Add new equipment set categories
+    for catId in pairs(activeSetIds) do
+        if not categories.definitions[catId] then
+            local setName = catId:sub(10)
+            categories.definitions[catId] = {
+                name = setName,
+                icon = "Interface\\PaperDollInfoFrame\\PaperDollSidebarTabs",
+                group = "Main",
+                enabled = true,
+                isEquipSet = true,
+                isBuiltIn = false,
+                rules = {},
+                matchMode = "any",
+                priority = 95,
+            }
+            -- Insert before Miscellaneous in order
+            local insertIdx = #categories.order + 1
+            for i, id in ipairs(categories.order) do
+                if id == "Miscellaneous" then
+                    insertIdx = i
+                    break
+                end
+            end
+            table.insert(categories.order, insertIdx, catId)
+            changed = true
+        end
+    end
+
+    if changed then
+        Database:SetCategories(categories)
+    end
 end
 
 function CategoryManager:UpdateCategory(categoryId, newDef)

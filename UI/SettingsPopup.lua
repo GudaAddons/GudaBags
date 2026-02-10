@@ -995,6 +995,12 @@ local function CreateCategoryRow(parent, categoryId, categoryDef, index)
         editBtn:Hide()
     end
 
+    -- Equipment set categories: hide delete (auto-synced), distinct color
+    if categoryDef.isEquipSet then
+        deleteBtn:Hide()
+        nameText:SetTextColor(0.6, 0.9, 0.6)
+    end
+
     row.categoryId = categoryId
     row.rowIndex = index
     return row

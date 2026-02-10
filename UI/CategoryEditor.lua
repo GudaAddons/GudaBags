@@ -559,6 +559,7 @@ local function CreateEditorFrame()
     matchLabel:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, yOffset)
     matchLabel:SetText(ns.L["MATCH_MODE"])
     matchLabel:SetTextColor(0.8, 0.8, 0.8)
+    f.matchLabel = matchLabel
 
     local matchAnyBtn = CreateFrame("CheckButton", nil, f, "UIRadioButtonTemplate")
     matchAnyBtn:SetPoint("TOPLEFT", matchLabel, "BOTTOMLEFT", 0, -4)
@@ -568,6 +569,7 @@ local function CreateEditorFrame()
     matchAnyLabel:SetText(ns.L["MATCH_ANY"])
     matchAnyLabel:SetTextColor(1, 1, 1)
     f.matchAnyBtn = matchAnyBtn
+    f.matchAnyLabel = matchAnyLabel
 
     local matchAllBtn = CreateFrame("CheckButton", nil, f, "UIRadioButtonTemplate")
     matchAllBtn:SetPoint("LEFT", matchAnyLabel, "RIGHT", 20, 0)
@@ -577,6 +579,7 @@ local function CreateEditorFrame()
     matchAllLabel:SetText(ns.L["MATCH_ALL"])
     matchAllLabel:SetTextColor(1, 1, 1)
     f.matchAllBtn = matchAllBtn
+    f.matchAllLabel = matchAllLabel
 
     matchAnyBtn:SetScript("OnClick", function()
         matchAnyBtn:SetChecked(true)
@@ -597,6 +600,7 @@ local function CreateEditorFrame()
     rulesHeader:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, yOffset)
     rulesHeader:SetText(ns.L["RULES"])
     rulesHeader:SetTextColor(0.8, 0.8, 0.8)
+    f.rulesHeader = rulesHeader
 
     -- Add Rule button (wider for some locales)
     local locale = GetLocale()
@@ -707,6 +711,29 @@ function CategoryEditor:Open(categoryId)
     else
         frame.matchAnyBtn:SetChecked(true)
         frame.matchAllBtn:SetChecked(false)
+    end
+
+    -- Equipment set categories: hide rules section, disable name
+    if categoryDef.isEquipSet then
+        frame.nameBox:SetEnabled(false)
+        frame.nameBox:SetTextColor(0.5, 0.5, 0.5)
+        frame.matchLabel:Hide()
+        frame.matchAnyBtn:Hide()
+        frame.matchAnyLabel:Hide()
+        frame.matchAllBtn:Hide()
+        frame.matchAllLabel:Hide()
+        frame.rulesHeader:Hide()
+        frame.addRuleBtn:Hide()
+        frame.scrollFrame:Hide()
+    else
+        frame.matchLabel:Show()
+        frame.matchAnyBtn:Show()
+        frame.matchAnyLabel:Show()
+        frame.matchAllBtn:Show()
+        frame.matchAllLabel:Show()
+        frame.rulesHeader:Show()
+        frame.addRuleBtn:Show()
+        frame.scrollFrame:Show()
     end
 
     self:RefreshRules()

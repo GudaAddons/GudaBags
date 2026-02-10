@@ -130,6 +130,15 @@ local function RebuildAll()
     if hasBlizzardSets then
         ScanBlizzardSets()
     end
+
+    -- Sync persisted equipment set categories and invalidate caches
+    local CategoryManager = ns:GetModule("CategoryManager")
+    if CategoryManager then
+        CategoryManager:SyncEquipmentSetCategories()
+        CategoryManager:ClearCategoryCache()
+        CategoryManager:InvalidatePriorityCache()
+    end
+    Events:Fire("CATEGORIES_UPDATED")
 end
 
 -------------------------------------------------
@@ -148,6 +157,21 @@ function EquipmentSets:GetSetNames(itemID)
     for name in pairs(itemSets[itemID]) do
         names[#names + 1] = name
     end
+    return names
+end
+
+function EquipmentSets:GetAllSetNames()
+    local names = {}
+    local seen = {}
+    for _, sets in pairs(itemSets) do
+        for name in pairs(sets) do
+            if not seen[name] then
+                seen[name] = true
+                names[#names + 1] = name
+            end
+        end
+    end
+    table.sort(names)
     return names
 end
 
@@ -238,5 +262,18 @@ Events:OnPlayerLogin(function()
 
     if hasBlizzardSets then
         RebuildAll()
+    end
+end, EquipmentSets)
+
+-- Sync equipment set categories when the setting is toggled
+Events:Register("SETTING_CHANGED", function(event, key, value)
+    if key == "showEquipSetCategories" then
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if CategoryManager then
+            CategoryManager:SyncEquipmentSetCategories()
+            CategoryManager:ClearCategoryCache()
+            CategoryManager:InvalidatePriorityCache()
+        end
+        Events:Fire("CATEGORIES_UPDATED")
     end
 end, EquipmentSets)
