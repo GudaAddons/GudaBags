@@ -893,6 +893,7 @@ local function ApplySort(items, targetPositions, bagFamilies)
 
     local moveToEmpty = {}
     local swapOccupied = {}
+    local swappedSlots = {} -- Track queued swap pairs to prevent double-swaps
 
     for i, item in ipairs(items) do
         local target = targetPositions[i]
@@ -908,14 +909,28 @@ local function ApplySort(items, targetPositions, bagFamilies)
                         targetBag = target.bagID, targetSlot = target.slot,
                     })
                 else
-                    local sourceFamily = bagFamilies[item.bagID] or 0
-                    local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
+                    -- Skip swaps between functionally identical items (same itemID + stackCount).
+                    -- Without this, identical items oscillate between passes because their
+                    -- sequence numbers change when they move to new positions.
+                    if item.itemID == targetInfo.itemID and item.stackCount == (targetInfo.stackCount or 1) then
+                        -- Items are interchangeable, swap is a no-op
+                    else
+                        local sourceFamily = bagFamilies[item.bagID] or 0
+                        local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
 
-                    if targetCanGoInSource then
-                        table.insert(swapOccupied, {
-                            sourceBag = item.bagID, sourceSlot = item.slot,
-                            targetBag = target.bagID, targetSlot = target.slot,
-                        })
+                        if targetCanGoInSource then
+                            -- Deduplicate: if target→source was already queued, this swap
+                            -- would undo it (A↔B then B↔A = no progress). Skip the reverse.
+                            local reverseKey = target.bagID .. ":" .. target.slot .. ">" .. item.bagID .. ":" .. item.slot
+                            if not swappedSlots[reverseKey] then
+                                local forwardKey = item.bagID .. ":" .. item.slot .. ">" .. target.bagID .. ":" .. target.slot
+                                swappedSlots[forwardKey] = true
+                                table.insert(swapOccupied, {
+                                    sourceBag = item.bagID, sourceSlot = item.slot,
+                                    targetBag = target.bagID, targetSlot = target.slot,
+                                })
+                            end
+                        end
                     end
                 end
             end
@@ -964,6 +979,7 @@ local function ApplySort_Yielding(items, targetPositions, bagFamilies)
 
     local moveToEmpty = {}
     local swapOccupied = {}
+    local swappedSlots = {} -- Track queued swap pairs to prevent double-swaps
 
     -- Build move lists (fast, no yielding needed)
     for i, item in ipairs(items) do
@@ -980,14 +996,28 @@ local function ApplySort_Yielding(items, targetPositions, bagFamilies)
                         targetBag = target.bagID, targetSlot = target.slot,
                     })
                 else
-                    local sourceFamily = bagFamilies[item.bagID] or 0
-                    local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
+                    -- Skip swaps between functionally identical items (same itemID + stackCount).
+                    -- Without this, identical items oscillate between passes because their
+                    -- sequence numbers change when they move to new positions.
+                    if item.itemID == targetInfo.itemID and item.stackCount == (targetInfo.stackCount or 1) then
+                        -- Items are interchangeable, swap is a no-op
+                    else
+                        local sourceFamily = bagFamilies[item.bagID] or 0
+                        local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
 
-                    if targetCanGoInSource then
-                        table.insert(swapOccupied, {
-                            sourceBag = item.bagID, sourceSlot = item.slot,
-                            targetBag = target.bagID, targetSlot = target.slot,
-                        })
+                        if targetCanGoInSource then
+                            -- Deduplicate: if target→source was already queued, this swap
+                            -- would undo it (A↔B then B↔A = no progress). Skip the reverse.
+                            local reverseKey = target.bagID .. ":" .. target.slot .. ">" .. item.bagID .. ":" .. item.slot
+                            if not swappedSlots[reverseKey] then
+                                local forwardKey = item.bagID .. ":" .. item.slot .. ">" .. target.bagID .. ":" .. target.slot
+                                swappedSlots[forwardKey] = true
+                                table.insert(swapOccupied, {
+                                    sourceBag = item.bagID, sourceSlot = item.slot,
+                                    targetBag = target.bagID, targetSlot = target.slot,
+                                })
+                            end
+                        end
                     end
                 end
             end
@@ -1060,7 +1090,11 @@ local function CountOutOfPlaceItems(bagIDs)
                 for i, item in ipairs(nonJunk) do
                     local target = frontPositions[i]
                     if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
-                        outOfPlace = outOfPlace + 1
+                        -- Check if the item at target is functionally identical (interchangeable)
+                        local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                        if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                            outOfPlace = outOfPlace + 1
+                        end
                     end
                 end
             end
@@ -1068,6 +1102,83 @@ local function CountOutOfPlaceItems(bagIDs)
     end
 
     return outOfPlace
+end
+
+-- Full sort completeness check: returns true if all items are already in their sorted positions.
+-- Checks specialized bags, regular bags (non-junk + junk), so a redundant sort is skipped entirely.
+local function IsSortComplete(bagIDs)
+    local containers, bagFamilies = ClassifyBags(bagIDs)
+
+    -- Check specialized bags
+    local specializedTypes = {"soul", "herb", "enchant", "engineering", "mining", "leatherworking"}
+    if Expansion.IsTBC then
+        table.insert(specializedTypes, "quiver")
+        table.insert(specializedTypes, "ammo")
+    end
+    if Expansion.IsMoP then
+        table.insert(specializedTypes, "gem")
+        table.insert(specializedTypes, "inscription")
+    end
+    for _, bagType in ipairs(specializedTypes) do
+        local specialBags = containers[bagType]
+        if specialBags then
+            for _, bagID in ipairs(specialBags) do
+                local items = CollectItems({bagID})
+                if #items > 0 then
+                    items = SortItems(items)
+                    local targets = BuildTargetPositions({bagID}, #items)
+                    for i, item in ipairs(items) do
+                        local target = targets[i]
+                        if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                            -- Check if the item at target is functionally identical
+                            local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                            if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                                return false
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Check regular bags (non-junk front positions + junk tail positions)
+    local regularBags = containers.regular
+    if #regularBags > 0 then
+        local allItems = CollectItems(regularBags)
+        if #allItems > 0 then
+            allItems = SortItems(allItems)
+            local nonJunk, junk = SplitJunkItems(allItems)
+
+            if #nonJunk > 0 then
+                local frontPositions = BuildTargetPositions(regularBags, #nonJunk)
+                for i, item in ipairs(nonJunk) do
+                    local target = frontPositions[i]
+                    if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                        local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                        if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                            return false
+                        end
+                    end
+                end
+            end
+
+            if #junk > 0 then
+                local tailPositions = BuildTailPositions(regularBags, #junk)
+                for i, item in ipairs(junk) do
+                    local target = tailPositions[i]
+                    if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                        local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                        if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                            return false
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return true
 end
 
 --===========================================================================
@@ -1317,6 +1428,12 @@ function SortEngine:SortBags()
         return true
     end
 
+    -- Quick check: skip sort if bags are already in order
+    if IsSortComplete(Constants.BAG_IDS) then
+        ns:Debug("Bags already sorted, skipping")
+        return true
+    end
+
     -- Classic expansions use custom sort engine
     activeBagIDs = Constants.BAG_IDS
     currentFrameBudget = FRAME_BUDGET_US
@@ -1377,6 +1494,12 @@ function SortEngine:SortBank()
                 Events:Fire("BAGS_UPDATED")
             end
         end)
+        return true
+    end
+
+    -- Quick check: skip sort if bank is already in order
+    if IsSortComplete(Constants.BANK_BAG_IDS) then
+        ns:Debug("Bank already sorted, skipping")
         return true
     end
 
