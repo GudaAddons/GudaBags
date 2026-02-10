@@ -716,18 +716,16 @@ local function SortItems(items)
     AddSortKeys(items)
 
     local reverseStackSort = Database:GetSetting("reverseStackSort")
-    local rightToLeft = Database:GetSetting("sortRightToLeft")
 
     -- Sort order: priority, class, equip slot, subclass, item level, quality, name, itemID, count
+    -- Item ordering is always the same regardless of rightToLeft.
+    -- rightToLeft only affects physical slot assignment in BuildTargetPositions/BuildTailPositions,
+    -- so reading right-to-left gives a perfect mirror of the default left-to-right order.
 
     table.sort(items, function(a, b)
         -- 1. Priority items (hearthstone)
         if a.priority ~= b.priority then
-            if rightToLeft then
-                return a.priority > b.priority
-            else
-                return a.priority < b.priority
-            end
+            return a.priority < b.priority
         end
 
         -- 2. Item class (consumables, weapons, armor, etc.)
@@ -776,12 +774,8 @@ local function SortItems(items)
             end
         end
 
-        -- 10. Preserve original order (reverse for right-to-left to match target slot direction)
-        if rightToLeft then
-            return a.sequence > b.sequence
-        else
-            return a.sequence < b.sequence
-        end
+        -- 10. Preserve original order
+        return a.sequence < b.sequence
     end)
 
     return items
