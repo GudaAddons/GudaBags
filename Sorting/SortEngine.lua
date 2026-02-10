@@ -15,8 +15,23 @@ local Expansion = ns:GetModule("Expansion")
 local InCombatLockdown = InCombatLockdown
 local ClearCursor = ClearCursor
 
+-- Frame budget for coroutine-based sorting (microseconds)
+local FRAME_BUDGET_US = 4000      -- 4ms for player bags
+local FRAME_BUDGET_BANK_US = 6000 -- 6ms for bank (more lenient)
+local frameStartTime = 0
+local currentFrameBudget = FRAME_BUDGET_US
+
+local function StartFrameTimer()
+    frameStartTime = debugprofilestop()
+end
+
+local function IsFrameBudgetExceeded()
+    return (debugprofilestop() - frameStartTime) > currentFrameBudget
+end
+
 -- Sorting state
 local sortInProgress = false
+local sortCoroutine = nil
 local currentPass = 0
 local maxPasses = 10  -- Increased from 6 to ensure sort completes
 local soundsMuted = false
@@ -701,18 +716,16 @@ local function SortItems(items)
     AddSortKeys(items)
 
     local reverseStackSort = Database:GetSetting("reverseStackSort")
-    local rightToLeft = Database:GetSetting("sortRightToLeft")
 
     -- Sort order: priority, class, equip slot, subclass, item level, quality, name, itemID, count
+    -- Item ordering is always the same regardless of rightToLeft.
+    -- rightToLeft only affects physical slot assignment in BuildTargetPositions/BuildTailPositions,
+    -- so reading right-to-left gives a perfect mirror of the default left-to-right order.
 
     table.sort(items, function(a, b)
         -- 1. Priority items (hearthstone)
         if a.priority ~= b.priority then
-            if rightToLeft then
-                return a.priority > b.priority
-            else
-                return a.priority < b.priority
-            end
+            return a.priority < b.priority
         end
 
         -- 2. Item class (consumables, weapons, armor, etc.)
@@ -761,12 +774,8 @@ local function SortItems(items)
             end
         end
 
-        -- 10. Preserve original order (reverse for right-to-left to match target slot direction)
-        if rightToLeft then
-            return a.sequence > b.sequence
-        else
-            return a.sequence < b.sequence
-        end
+        -- 10. Preserve original order
+        return a.sequence < b.sequence
     end)
 
     return items
@@ -884,6 +893,7 @@ local function ApplySort(items, targetPositions, bagFamilies)
 
     local moveToEmpty = {}
     local swapOccupied = {}
+    local swappedSlots = {} -- Track queued swap pairs to prevent double-swaps
 
     for i, item in ipairs(items) do
         local target = targetPositions[i]
@@ -899,14 +909,28 @@ local function ApplySort(items, targetPositions, bagFamilies)
                         targetBag = target.bagID, targetSlot = target.slot,
                     })
                 else
-                    local sourceFamily = bagFamilies[item.bagID] or 0
-                    local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
+                    -- Skip swaps between functionally identical items (same itemID + stackCount).
+                    -- Without this, identical items oscillate between passes because their
+                    -- sequence numbers change when they move to new positions.
+                    if item.itemID == targetInfo.itemID and item.stackCount == (targetInfo.stackCount or 1) then
+                        -- Items are interchangeable, swap is a no-op
+                    else
+                        local sourceFamily = bagFamilies[item.bagID] or 0
+                        local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
 
-                    if targetCanGoInSource then
-                        table.insert(swapOccupied, {
-                            sourceBag = item.bagID, sourceSlot = item.slot,
-                            targetBag = target.bagID, targetSlot = target.slot,
-                        })
+                        if targetCanGoInSource then
+                            -- Deduplicate: if target→source was already queued, this swap
+                            -- would undo it (A↔B then B↔A = no progress). Skip the reverse.
+                            local reverseKey = target.bagID .. ":" .. target.slot .. ">" .. item.bagID .. ":" .. item.slot
+                            if not swappedSlots[reverseKey] then
+                                local forwardKey = item.bagID .. ":" .. item.slot .. ">" .. target.bagID .. ":" .. target.slot
+                                swappedSlots[forwardKey] = true
+                                table.insert(swapOccupied, {
+                                    sourceBag = item.bagID, sourceSlot = item.slot,
+                                    targetBag = target.bagID, targetSlot = target.slot,
+                                })
+                            end
+                        end
                     end
                 end
             end
@@ -948,6 +972,101 @@ local function ApplySort(items, targetPositions, bagFamilies)
     return moveCount
 end
 
+-- Yielding version of ApplySort for coroutine-based sorting
+-- Same logic but yields every 5 moves when frame budget is exceeded
+local function ApplySort_Yielding(items, targetPositions, bagFamilies)
+    ClearCursor()
+
+    local moveToEmpty = {}
+    local swapOccupied = {}
+    local swappedSlots = {} -- Track queued swap pairs to prevent double-swaps
+
+    -- Build move lists (fast, no yielding needed)
+    for i, item in ipairs(items) do
+        local target = targetPositions[i]
+        if target then
+            local targetFamily = bagFamilies[target.bagID] or 0
+            local canGoInBag = (targetFamily == 0) or CanItemGoInBag(item.itemID, targetFamily)
+
+            if canGoInBag and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                if not targetInfo then
+                    table.insert(moveToEmpty, {
+                        sourceBag = item.bagID, sourceSlot = item.slot,
+                        targetBag = target.bagID, targetSlot = target.slot,
+                    })
+                else
+                    -- Skip swaps between functionally identical items (same itemID + stackCount).
+                    -- Without this, identical items oscillate between passes because their
+                    -- sequence numbers change when they move to new positions.
+                    if item.itemID == targetInfo.itemID and item.stackCount == (targetInfo.stackCount or 1) then
+                        -- Items are interchangeable, swap is a no-op
+                    else
+                        local sourceFamily = bagFamilies[item.bagID] or 0
+                        local targetCanGoInSource = (sourceFamily == 0) or CanItemGoInBag(targetInfo.itemID, sourceFamily)
+
+                        if targetCanGoInSource then
+                            -- Deduplicate: if target→source was already queued, this swap
+                            -- would undo it (A↔B then B↔A = no progress). Skip the reverse.
+                            local reverseKey = target.bagID .. ":" .. target.slot .. ">" .. item.bagID .. ":" .. item.slot
+                            if not swappedSlots[reverseKey] then
+                                local forwardKey = item.bagID .. ":" .. item.slot .. ">" .. target.bagID .. ":" .. target.slot
+                                swappedSlots[forwardKey] = true
+                                table.insert(swapOccupied, {
+                                    sourceBag = item.bagID, sourceSlot = item.slot,
+                                    targetBag = target.bagID, targetSlot = target.slot,
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local moveCount = 0
+
+    for idx, move in ipairs(moveToEmpty) do
+        local sourceInfo = C_Container.GetContainerItemInfo(move.sourceBag, move.sourceSlot)
+        if sourceInfo and not sourceInfo.isLocked then
+            C_Container.PickupContainerItem(move.sourceBag, move.sourceSlot)
+            C_Container.PickupContainerItem(move.targetBag, move.targetSlot)
+            ClearCursor()
+            moveCount = moveCount + 1
+            if not soundsMuted then
+                MutePickupSounds()
+                soundsMuted = true
+            end
+            if idx % 5 == 0 and IsFrameBudgetExceeded() then
+                coroutine.yield("budget")
+                StartFrameTimer()
+            end
+        end
+    end
+
+    for idx, move in ipairs(swapOccupied) do
+        local sourceInfo = C_Container.GetContainerItemInfo(move.sourceBag, move.sourceSlot)
+        local targetInfo = C_Container.GetContainerItemInfo(move.targetBag, move.targetSlot)
+
+        if sourceInfo and targetInfo and not sourceInfo.isLocked and not targetInfo.isLocked then
+            C_Container.PickupContainerItem(move.sourceBag, move.sourceSlot)
+            C_Container.PickupContainerItem(move.targetBag, move.targetSlot)
+            ClearCursor()
+            moveCount = moveCount + 1
+            if not soundsMuted then
+                MutePickupSounds()
+                soundsMuted = true
+            end
+            if idx % 5 == 0 and IsFrameBudgetExceeded() then
+                coroutine.yield("budget")
+                StartFrameTimer()
+            end
+        end
+    end
+
+    return moveCount
+end
+
 --===========================================================================
 -- PHASE 6: Verify Sort Completeness
 --===========================================================================
@@ -971,7 +1090,11 @@ local function CountOutOfPlaceItems(bagIDs)
                 for i, item in ipairs(nonJunk) do
                     local target = frontPositions[i]
                     if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
-                        outOfPlace = outOfPlace + 1
+                        -- Check if the item at target is functionally identical (interchangeable)
+                        local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                        if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                            outOfPlace = outOfPlace + 1
+                        end
                     end
                 end
             end
@@ -981,19 +1104,109 @@ local function CountOutOfPlaceItems(bagIDs)
     return outOfPlace
 end
 
+-- Full sort completeness check: returns true if all items are already in their sorted positions.
+-- Checks specialized bags, regular bags (non-junk + junk), so a redundant sort is skipped entirely.
+local function IsSortComplete(bagIDs)
+    local containers, bagFamilies = ClassifyBags(bagIDs)
+
+    -- Check specialized bags
+    local specializedTypes = {"soul", "herb", "enchant", "engineering", "mining", "leatherworking"}
+    if Expansion.IsTBC then
+        table.insert(specializedTypes, "quiver")
+        table.insert(specializedTypes, "ammo")
+    end
+    if Expansion.IsMoP then
+        table.insert(specializedTypes, "gem")
+        table.insert(specializedTypes, "inscription")
+    end
+    for _, bagType in ipairs(specializedTypes) do
+        local specialBags = containers[bagType]
+        if specialBags then
+            for _, bagID in ipairs(specialBags) do
+                local items = CollectItems({bagID})
+                if #items > 0 then
+                    items = SortItems(items)
+                    local targets = BuildTargetPositions({bagID}, #items)
+                    for i, item in ipairs(items) do
+                        local target = targets[i]
+                        if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                            -- Check if the item at target is functionally identical
+                            local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                            if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                                return false
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Check regular bags (non-junk front positions + junk tail positions)
+    local regularBags = containers.regular
+    if #regularBags > 0 then
+        local allItems = CollectItems(regularBags)
+        if #allItems > 0 then
+            allItems = SortItems(allItems)
+            local nonJunk, junk = SplitJunkItems(allItems)
+
+            if #nonJunk > 0 then
+                local frontPositions = BuildTargetPositions(regularBags, #nonJunk)
+                for i, item in ipairs(nonJunk) do
+                    local target = frontPositions[i]
+                    if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                        local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                        if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                            return false
+                        end
+                    end
+                end
+            end
+
+            if #junk > 0 then
+                local tailPositions = BuildTailPositions(regularBags, #junk)
+                for i, item in ipairs(junk) do
+                    local target = tailPositions[i]
+                    if target and (item.bagID ~= target.bagID or item.slot ~= target.slot) then
+                        local targetInfo = C_Container.GetContainerItemInfo(target.bagID, target.slot)
+                        if not targetInfo or targetInfo.itemID ~= item.itemID or (targetInfo.stackCount or 1) ~= item.stackCount then
+                            return false
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return true
+end
+
 --===========================================================================
--- PHASE 7: Execute Sort Pass
+-- PHASE 7: Coroutine Sort Pass
+-- Yields between phases and during move execution to stay within frame budget.
+-- Yield values: "wait_locks" (wait for item locks), "budget" (frame budget exceeded)
+-- Return value: totalMoves (when coroutine completes)
 --===========================================================================
 
-local function ExecuteSortPass(bagIDs)
+local function SortCoroutineBody(bagIDs)
     local containers, bagFamilies = ClassifyBags(bagIDs)
     local totalMoves = 0
 
     -- Phase 2: Route specialized items
-    totalMoves = totalMoves + RouteSpecializedItems(bagIDs, containers, bagFamilies)
+    local routeMoves = RouteSpecializedItems(bagIDs, containers, bagFamilies)
+    totalMoves = totalMoves + routeMoves
+    if routeMoves > 0 then
+        coroutine.yield("wait_locks")
+        StartFrameTimer()
+    end
 
     -- Phase 3: Consolidate stacks
-    totalMoves = totalMoves + ConsolidateStacks(bagIDs, bagFamilies)
+    local consolidateMoves = ConsolidateStacks(bagIDs, bagFamilies)
+    totalMoves = totalMoves + consolidateMoves
+    if consolidateMoves > 0 then
+        coroutine.yield("wait_locks")
+        StartFrameTimer()
+    end
 
     -- Phase 4: Sort specialized bags
     -- Build list based on expansion
@@ -1014,9 +1227,19 @@ local function ExecuteSortPass(bagIDs)
                 if #items > 0 then
                     items = SortItems(items)
                     local targets = BuildTargetPositions({bagID}, #items)
-                    totalMoves = totalMoves + ApplySort(items, targets, bagFamilies)
+                    local moves = ApplySort_Yielding(items, targets, bagFamilies)
+                    totalMoves = totalMoves + moves
+                    if moves > 0 then
+                        coroutine.yield("wait_locks")
+                        StartFrameTimer()
+                    end
                 end
             end
+        end
+        -- Yield between bag types if budget exceeded
+        if IsFrameBudgetExceeded() then
+            coroutine.yield("budget")
+            StartFrameTimer()
         end
     end
 
@@ -1030,17 +1253,24 @@ local function ExecuteSortPass(bagIDs)
 
             if #nonJunk > 0 then
                 local frontPositions = BuildTargetPositions(regularBags, #nonJunk)
-                totalMoves = totalMoves + ApplySort(nonJunk, frontPositions, bagFamilies)
+                local moves = ApplySort_Yielding(nonJunk, frontPositions, bagFamilies)
+                totalMoves = totalMoves + moves
+                if moves > 0 then
+                    coroutine.yield("wait_locks")
+                    StartFrameTimer()
+                end
             end
 
             if #junk > 0 then
+                -- Re-collect after non-junk sort (positions may have changed)
                 local afterItems = CollectItems(regularBags)
                 afterItems = SortItems(afterItems)
                 local _, junkNow = SplitJunkItems(afterItems)
 
                 if #junkNow > 0 then
                     local tailPositions = BuildTailPositions(regularBags, #junkNow)
-                    totalMoves = totalMoves + ApplySort(junkNow, tailPositions, bagFamilies)
+                    local moves = ApplySort_Yielding(junkNow, tailPositions, bagFamilies)
+                    totalMoves = totalMoves + moves
                 end
             end
         end
@@ -1055,7 +1285,6 @@ end
 
 local sortFrame = CreateFrame("Frame")
 local sortStartTime = 0
-local nextPassTime = 0
 local noProgressCount = 0
 local sortTimeout = 30
 
@@ -1074,119 +1303,105 @@ local function AnyItemsLocked()
     return false
 end
 
+-- Helper to finalize sort (clean up state and notify)
+local function FinishSort(message)
+    local isBankSort = (activeBagIDs == Constants.BANK_BAG_IDS)
+    sortInProgress = false
+    sortCoroutine = nil
+    soundsMuted = false
+    activeBagIDs = Constants.BAG_IDS
+    currentFrameBudget = FRAME_BUDGET_US
+    UnmutePickupSounds()
+    SortEngine:ClearCache()
+    if message then
+        ns:Print(message)
+    end
+    if isBankSort and ns.OnBankUpdated then
+        ns.OnBankUpdated()
+    else
+        Events:Fire("BAGS_UPDATED")
+    end
+end
+
+-- Coroutine-driven OnUpdate: resumes sort coroutine each frame within budget.
+-- No fixed delays between passes — resumes as soon as item locks clear (~1-2 frames).
+-- Each frame does at most 4-6ms of work instead of one 20-50ms spike.
 sortFrame:SetScript("OnUpdate", function(self, elapsed)
     if not sortInProgress then return end
 
     -- Cancel sort immediately if combat starts mid-sort
     if InCombatLockdown() then
         ClearCursor()
-        local isBankSort = (activeBagIDs == Constants.BANK_BAG_IDS)
-        sortInProgress = false
-        soundsMuted = false
-        activeBagIDs = Constants.BAG_IDS
-        UnmutePickupSounds()
-        SortEngine:ClearCache()
-        ns:Print("Sort cancelled: entered combat")
-        if isBankSort and ns.OnBankUpdated then
-            ns.OnBankUpdated()
-        else
-            Events:Fire("BAGS_UPDATED")
-        end
+        FinishSort("Sort cancelled: entered combat")
         return
     end
 
-    local now = GetTime()
-    local isBankSort = (activeBagIDs == Constants.BANK_BAG_IDS)
-
-    -- Bank operations are server-side and need longer delays
-    local lockWaitTime = isBankSort and 0.3 or 0.1
-    local passDelay = isBankSort and 0.8 or 0.5
-
-    if now - sortStartTime > sortTimeout then
-        sortInProgress = false
-        soundsMuted = false
-        activeBagIDs = Constants.BAG_IDS
-        UnmutePickupSounds()
-        SortEngine:ClearCache()
-        ns:Print("Sort timed out")
-        if isBankSort and ns.OnBankUpdated then
-            ns.OnBankUpdated()
-        else
-            Events:Fire("BAGS_UPDATED")
-        end
+    -- Timeout check
+    if GetTime() - sortStartTime > sortTimeout then
+        FinishSort("Sort timed out")
         return
     end
 
-    if now < nextPassTime then return end
-
+    -- Wait for item locks to clear (check every frame, no fixed delay)
     if AnyItemsLocked() then
-        nextPassTime = now + lockWaitTime
         return
     end
 
-    currentPass = currentPass + 1
+    -- Create new coroutine if needed (start of a new pass)
+    if not sortCoroutine then
+        currentPass = currentPass + 1
+        if currentPass > maxPasses then
+            FinishSort()
+            return
+        end
+        sortCoroutine = coroutine.create(SortCoroutineBody)
+    end
 
+    -- Resume coroutine with frame budget
+    StartFrameTimer()
     local passStart = debugprofilestop()
-    local success, result = pcall(ExecuteSortPass, activeBagIDs)
+    local ok, result = coroutine.resume(sortCoroutine, activeBagIDs)
     local passTime = debugprofilestop() - passStart
 
-    ns:Debug(string.format("Sort pass %d: %.2fms, %d moves", currentPass, passTime / 1000, result or 0))
-
-    local moveCount = 0
-    if not success then
-        local isBankSort = (activeBagIDs == Constants.BANK_BAG_IDS)
-        sortInProgress = false
-        soundsMuted = false
-        activeBagIDs = Constants.BAG_IDS
-        UnmutePickupSounds()
-        SortEngine:ClearCache()
-        ns:Print("Sort error: " .. tostring(result))
-        if isBankSort and ns.OnBankUpdated then
-            ns.OnBankUpdated()
-        else
-            Events:Fire("BAGS_UPDATED")
-        end
+    if not ok then
+        -- Coroutine error
+        ns:Debug(string.format("Sort pass %d error: %s", currentPass, tostring(result)))
+        FinishSort("Sort error: " .. tostring(result))
         return
-    else
-        moveCount = result or 0
     end
 
-    if moveCount == 0 then
-        noProgressCount = noProgressCount + 1
-    else
-        noProgressCount = 0
-    end
+    if coroutine.status(sortCoroutine) == "dead" then
+        -- Coroutine completed this pass
+        local moveCount = result or 0
+        ns:Debug(string.format("Sort pass %d: %.2fms, %d moves", currentPass, passTime / 1000, moveCount))
+        sortCoroutine = nil
 
-    -- Stop when: no progress for 3 passes, OR maxPasses reached with no moves on last pass
-    if noProgressCount >= 3 or (currentPass >= maxPasses and moveCount == 0) then
-        -- Verify sort is complete
-        local outOfPlace = CountOutOfPlaceItems(activeBagIDs)
-        if outOfPlace > 0 and currentPass < maxPasses then
-            -- Items still out of place, continue sorting
-            ns:Debug(string.format("Sort incomplete: %d items out of place, continuing...", outOfPlace))
-            noProgressCount = 0  -- Reset to allow more passes
-            nextPassTime = now + passDelay
+        if moveCount == 0 then
+            noProgressCount = noProgressCount + 1
+        else
+            noProgressCount = 0
+        end
+
+        -- Check if sort is complete
+        if noProgressCount >= 3 then
+            local outOfPlace = CountOutOfPlaceItems(activeBagIDs)
+            if outOfPlace > 0 and currentPass < maxPasses then
+                ns:Debug(string.format("Sort incomplete: %d items out of place, continuing...", outOfPlace))
+                noProgressCount = 0
+                return  -- Next frame will create new coroutine
+            end
+
+            if outOfPlace > 0 then
+                ns:Debug(string.format("Sort finished with %d items still out of place (may need another sort)", outOfPlace))
+            end
+
+            FinishSort()
             return
         end
 
-        if outOfPlace > 0 then
-            ns:Debug(string.format("Sort finished with %d items still out of place (may need another sort)", outOfPlace))
-        end
-
-        sortInProgress = false
-        soundsMuted = false
-        activeBagIDs = Constants.BAG_IDS
-        UnmutePickupSounds()
-        SortEngine:ClearCache()
-        if isBankSort and ns.OnBankUpdated then
-            ns.OnBankUpdated()
-        else
-            Events:Fire("BAGS_UPDATED")
-        end
-        return
+        -- More passes needed, next frame creates new coroutine automatically
     end
-
-    nextPassTime = now + passDelay
+    -- If coroutine yielded ("wait_locks" or "budget"), it resumes next frame
 end)
 
 -------------------------------------------------
@@ -1213,15 +1428,22 @@ function SortEngine:SortBags()
         return true
     end
 
+    -- Quick check: skip sort if bags are already in order
+    if IsSortComplete(Constants.BAG_IDS) then
+        ns:Debug("Bags already sorted, skipping")
+        return true
+    end
+
     -- Classic expansions use custom sort engine
     activeBagIDs = Constants.BAG_IDS
+    currentFrameBudget = FRAME_BUDGET_US
     self:ClearCache()
     soundsMuted = false
     sortInProgress = true
+    sortCoroutine = nil
     currentPass = 0
     noProgressCount = 0
     sortStartTime = GetTime()
-    nextPassTime = GetTime()
 
     return true
 end
@@ -1235,10 +1457,12 @@ function SortEngine:CancelSort()
         UnmutePickupSounds()
     end
     sortInProgress = false
+    sortCoroutine = nil
     soundsMuted = false
     currentPass = 0
     noProgressCount = 0
     activeBagIDs = Constants.BAG_IDS
+    currentFrameBudget = FRAME_BUDGET_US
     self:ClearCache()
 end
 
@@ -1273,15 +1497,22 @@ function SortEngine:SortBank()
         return true
     end
 
+    -- Quick check: skip sort if bank is already in order
+    if IsSortComplete(Constants.BANK_BAG_IDS) then
+        ns:Debug("Bank already sorted, skipping")
+        return true
+    end
+
     -- Classic expansions use custom sort engine
     activeBagIDs = Constants.BANK_BAG_IDS
+    currentFrameBudget = FRAME_BUDGET_BANK_US
     self:ClearCache()
     soundsMuted = false
     sortInProgress = true
+    sortCoroutine = nil
     currentPass = 0
     noProgressCount = 0
     sortStartTime = GetTime()
-    nextPassTime = GetTime()
 
     return true
 end
