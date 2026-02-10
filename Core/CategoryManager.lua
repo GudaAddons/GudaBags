@@ -425,6 +425,7 @@ function CategoryManager:SyncEquipmentSetCategories()
                 rules = {},
                 matchMode = "any",
                 priority = 95,
+                categoryMark = "Interface\\AddOns\\GudaBags\\Assets\\equipment.png",
             }
             -- Insert before Miscellaneous in order
             local insertIdx = #categories.order + 1

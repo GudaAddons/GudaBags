@@ -284,7 +284,7 @@ Constants.CATEGORY_UI = {
 
     -- Editor
     EDITOR_WIDTH = 420,
-    EDITOR_HEIGHT = 480,
+    EDITOR_HEIGHT = 516,
     EDITOR_PADDING = 12,
     RULE_ROW_HEIGHT = 34,
 

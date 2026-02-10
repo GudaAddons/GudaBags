@@ -444,7 +444,7 @@ local function CreateButton(parent)
     local equipSetIconShadow = button:CreateTexture(nil, "OVERLAY", nil, 2)
     equipSetIconShadow:SetSize(15, 15)
     equipSetIconShadow:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
-    equipSetIconShadow:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\guild.png")
+    equipSetIconShadow:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\equipment.png")
     equipSetIconShadow:SetVertexColor(0, 0, 0, 1)
     equipSetIconShadow:Hide()
     button.equipSetIconShadow = equipSetIconShadow
@@ -453,7 +453,7 @@ local function CreateButton(parent)
     local equipSetIcon = button:CreateTexture(nil, "OVERLAY", nil, 3)
     equipSetIcon:SetSize(13, 13)
     equipSetIcon:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
-    equipSetIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\guild.png")
+    equipSetIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\equipment.png")
     equipSetIcon:Hide()
     button.equipSetIcon = equipSetIcon
 
@@ -1214,13 +1214,33 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- Equipment set icon
+        -- Equipment set icon (use category mark if available)
         if button.equipSetIcon then
             if settings.markEquipmentSets and itemData.itemID then
                 local EquipSets = ns:GetModule("EquipmentSets")
                 if EquipSets and EquipSets:IsInSet(itemData.itemID) then
+                    -- Determine icon from category mark
+                    local markIcon = "Interface\\AddOns\\GudaBags\\Assets\\equipment.png"
+                    local Database = ns:GetModule("Database")
+                    if Database and Database:GetSetting("showEquipSetCategories") then
+                        local CategoryManager = ns:GetModule("CategoryManager")
+                        if CategoryManager then
+                            local setNames = EquipSets:GetSetNames(itemData.itemID)
+                            if setNames and #setNames > 0 then
+                                table.sort(setNames)
+                                local catDef = CategoryManager:GetCategory("EquipSet:" .. setNames[1])
+                                if catDef and catDef.categoryMark then
+                                    markIcon = catDef.categoryMark
+                                end
+                            end
+                        end
+                    end
+                    button.equipSetIcon:SetTexture(markIcon)
                     button.equipSetIcon:Show()
-                    if button.equipSetIconShadow then button.equipSetIconShadow:Show() end
+                    if button.equipSetIconShadow then
+                        button.equipSetIconShadow:SetTexture(markIcon)
+                        button.equipSetIconShadow:Show()
+                    end
                 else
                     button.equipSetIcon:Hide()
                     if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
