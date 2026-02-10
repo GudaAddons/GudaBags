@@ -64,6 +64,10 @@ function SettingsSchema.GetLayout()
             { type = "checkbox", key = "groupIdenticalItems", label = L["SETTINGS_GROUP_IDENTICAL"], tooltip = L["SETTINGS_GROUP_IDENTICAL_TIP"] },
         }},
 
+        { type = "row", children = {
+            { type = "checkbox", key = "showEquipSetCategories", label = L["SETTINGS_EQUIP_SET_CATEGORIES"], tooltip = L["SETTINGS_EQUIP_SET_CATEGORIES_TIP"] },
+        }},
+
     }
 end
 
@@ -90,9 +94,10 @@ function SettingsSchema.GetIcons()
             { type = "checkbox", key = "grayoutJunk", label = L["SETTINGS_GRAYOUT_JUNK"], tooltip = L["SETTINGS_GRAYOUT_JUNK_TIP"] },
         }},
 
-        -- Row 3 - Junk options
+        -- Row 3 - Junk and equipment set options
         { type = "row", children = {
             { type = "checkbox", key = "whiteItemsJunk", label = L["SETTINGS_WHITE_JUNK"], tooltip = L["SETTINGS_WHITE_JUNK_TIP"] },
+            { type = "checkbox", key = "markEquipmentSets", label = L["SETTINGS_MARK_EQUIP_SETS"], tooltip = L["SETTINGS_MARK_EQUIP_SETS_TIP"] },
         }},
     }
 end

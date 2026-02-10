@@ -11,8 +11,18 @@ local currentCategoryId
 local currentRules = {}
 local currentMatchMode = "any"
 local currentGroup = ""
+local currentMark = nil
 local ruleRows = {}
 local isCreatingNew = false
+
+-- Available mark icons for category items
+local MARK_ICONS = {
+    "Interface\\AddOns\\GudaBags\\Assets\\equipment.png",
+    "Interface\\AddOns\\GudaBags\\Assets\\plus.png",
+    "Interface\\AddOns\\GudaBags\\Assets\\guild.png",
+    "Interface\\AddOns\\GudaBags\\Assets\\combat.png",
+    "Interface\\AddOns\\GudaBags\\Assets\\cog.png",
+}
 
 local EDITOR_WIDTH = Constants.CATEGORY_UI.EDITOR_WIDTH
 local EDITOR_HEIGHT = Constants.CATEGORY_UI.EDITOR_HEIGHT
@@ -488,6 +498,7 @@ local function CreateEditorFrame()
     f:SetClampedToScreen(true)
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetFrameLevel(250)
+    f:EnableMouse(true)
 
     -- Hide portrait and button bar for clean look
     ButtonFrameTemplate_HidePortrait(f)
@@ -554,11 +565,89 @@ local function CreateEditorFrame()
 
     yOffset = yOffset - 50
 
+    -- Mark icon selector
+    local markLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    markLabel:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, yOffset)
+    markLabel:SetText(ns.L["CATEGORY_MARK"] or "Mark")
+    markLabel:SetTextColor(0.8, 0.8, 0.8)
+    f.markLabel = markLabel
+
+    local markButtons = {}
+    local MARK_BTN_SIZE = 22
+    local MARK_BTN_SPACING = 6
+
+    -- "None" button (clears mark)
+    local noneBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+    noneBtn:SetSize(MARK_BTN_SIZE, MARK_BTN_SIZE)
+    noneBtn:SetPoint("TOPLEFT", markLabel, "BOTTOMLEFT", 0, -4)
+    noneBtn:SetBackdrop({ bgFile = Constants.TEXTURES.WHITE_8x8, edgeFile = Constants.TEXTURES.WHITE_8x8, edgeSize = 1 })
+    noneBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
+    noneBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    local noneX = noneBtn:CreateTexture(nil, "ARTWORK")
+    noneX:SetSize(12, 12)
+    noneX:SetPoint("CENTER")
+    noneX:SetTexture("Interface\\Buttons\\UI-StopButton")
+    noneX:SetVertexColor(0.6, 0.6, 0.6)
+    noneBtn.markPath = nil
+    noneBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(ns.L["CATEGORY_NO_MARK"] or "No mark")
+        GameTooltip:Show()
+    end)
+    noneBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    noneBtn:SetScript("OnClick", function()
+        currentMark = nil
+        for _, btn in ipairs(markButtons) do
+            btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        end
+        noneBtn:SetBackdropBorderColor(1, 0.82, 0, 1)
+    end)
+    table.insert(markButtons, noneBtn)
+
+    -- Icon buttons
+    for i, iconPath in ipairs(MARK_ICONS) do
+        local btn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        btn:SetSize(MARK_BTN_SIZE, MARK_BTN_SIZE)
+        btn:SetPoint("LEFT", markButtons[i], "RIGHT", MARK_BTN_SPACING, 0)
+        btn:SetBackdrop({ bgFile = Constants.TEXTURES.WHITE_8x8, edgeFile = Constants.TEXTURES.WHITE_8x8, edgeSize = 1 })
+        btn:SetBackdropColor(0.15, 0.15, 0.15, 0.8)
+        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        local tex = btn:CreateTexture(nil, "ARTWORK")
+        tex:SetSize(16, 16)
+        tex:SetPoint("CENTER")
+        tex:SetTexture(iconPath)
+        btn.markPath = iconPath
+        btn:SetScript("OnClick", function()
+            currentMark = iconPath
+            for _, b in ipairs(markButtons) do
+                b:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+            end
+            btn:SetBackdropBorderColor(1, 0.82, 0, 1)
+        end)
+        table.insert(markButtons, btn)
+    end
+    f.markButtons = markButtons
+
+    yOffset = yOffset - 40
+
+    -- Equipment set description (shown only for equipment set categories)
+    local equipSetDesc = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    equipSetDesc:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, yOffset)
+    equipSetDesc:SetPoint("RIGHT", f, "RIGHT", -PADDING, 0)
+    equipSetDesc:SetJustifyH("LEFT")
+    equipSetDesc:SetText(ns.L["EQUIP_SET_DESC"] or "")
+    equipSetDesc:SetTextColor(1, 1, 1)
+    equipSetDesc:SetWordWrap(true)
+    equipSetDesc:SetSpacing(4)
+    equipSetDesc:Hide()
+    f.equipSetDesc = equipSetDesc
+
     -- Match Mode
     local matchLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     matchLabel:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, yOffset)
     matchLabel:SetText(ns.L["MATCH_MODE"])
     matchLabel:SetTextColor(0.8, 0.8, 0.8)
+    f.matchLabel = matchLabel
 
     local matchAnyBtn = CreateFrame("CheckButton", nil, f, "UIRadioButtonTemplate")
     matchAnyBtn:SetPoint("TOPLEFT", matchLabel, "BOTTOMLEFT", 0, -4)
@@ -568,6 +657,7 @@ local function CreateEditorFrame()
     matchAnyLabel:SetText(ns.L["MATCH_ANY"])
     matchAnyLabel:SetTextColor(1, 1, 1)
     f.matchAnyBtn = matchAnyBtn
+    f.matchAnyLabel = matchAnyLabel
 
     local matchAllBtn = CreateFrame("CheckButton", nil, f, "UIRadioButtonTemplate")
     matchAllBtn:SetPoint("LEFT", matchAnyLabel, "RIGHT", 20, 0)
@@ -577,6 +667,7 @@ local function CreateEditorFrame()
     matchAllLabel:SetText(ns.L["MATCH_ALL"])
     matchAllLabel:SetTextColor(1, 1, 1)
     f.matchAllBtn = matchAllBtn
+    f.matchAllLabel = matchAllLabel
 
     matchAnyBtn:SetScript("OnClick", function()
         matchAnyBtn:SetChecked(true)
@@ -597,6 +688,7 @@ local function CreateEditorFrame()
     rulesHeader:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING, yOffset)
     rulesHeader:SetText(ns.L["RULES"])
     rulesHeader:SetTextColor(0.8, 0.8, 0.8)
+    f.rulesHeader = rulesHeader
 
     -- Add Rule button (wider for some locales)
     local locale = GetLocale()
@@ -681,6 +773,18 @@ function CategoryEditor:Open(categoryId)
 
     currentMatchMode = categoryDef.matchMode or "any"
     currentGroup = categoryDef.group or ""
+    currentMark = categoryDef.categoryMark or nil
+
+    -- Update mark icon selection
+    if frame.markButtons then
+        for _, btn in ipairs(frame.markButtons) do
+            if btn.markPath == currentMark then
+                btn:SetBackdropBorderColor(1, 0.82, 0, 1)
+            else
+                btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+            end
+        end
+    end
 
     -- Update UI (use localized name for built-in categories)
     local displayName = categoryDef.isBuiltIn
@@ -707,6 +811,35 @@ function CategoryEditor:Open(categoryId)
     else
         frame.matchAnyBtn:SetChecked(true)
         frame.matchAllBtn:SetChecked(false)
+    end
+
+    -- Equipment set categories: hide rules section, disable name, show mark + description
+    if categoryDef.isEquipSet then
+        frame.nameBox:SetEnabled(false)
+        frame.nameBox:SetTextColor(0.5, 0.5, 0.5)
+        frame.markLabel:Show()
+        for _, btn in ipairs(frame.markButtons) do btn:Show() end
+        frame.equipSetDesc:Show()
+        frame.matchLabel:Hide()
+        frame.matchAnyBtn:Hide()
+        frame.matchAnyLabel:Hide()
+        frame.matchAllBtn:Hide()
+        frame.matchAllLabel:Hide()
+        frame.rulesHeader:Hide()
+        frame.addRuleBtn:Hide()
+        frame.scrollFrame:Hide()
+    else
+        frame.markLabel:Show()
+        for _, btn in ipairs(frame.markButtons) do btn:Show() end
+        frame.equipSetDesc:Hide()
+        frame.matchLabel:Show()
+        frame.matchAnyBtn:Show()
+        frame.matchAnyLabel:Show()
+        frame.matchAllBtn:Show()
+        frame.matchAllLabel:Show()
+        frame.rulesHeader:Show()
+        frame.addRuleBtn:Show()
+        frame.scrollFrame:Show()
     end
 
     self:RefreshRules()
@@ -772,6 +905,7 @@ function CategoryEditor:Save()
         if categoryDef then
             categoryDef.group = group
             categoryDef.matchMode = currentMatchMode
+            categoryDef.categoryMark = currentMark
             categoryDef.rules = {}
             for i, rule in ipairs(currentRules) do
                 categoryDef.rules[i] = { type = rule.type, value = rule.value }
@@ -794,6 +928,7 @@ function CategoryEditor:Save()
 
         categoryDef.group = group
         categoryDef.matchMode = currentMatchMode
+        categoryDef.categoryMark = currentMark
         categoryDef.rules = {}
         for i, rule in ipairs(currentRules) do
             categoryDef.rules[i] = { type = rule.type, value = rule.value }
@@ -837,6 +972,7 @@ function CategoryEditor:CreateNew()
     currentRules = {}
     currentMatchMode = "any"
     currentGroup = ""
+    currentMark = nil
 
     -- Update UI for new category
     frame:SetTitle(ns.L["CREATE_NEW_CATEGORY"])
@@ -845,6 +981,30 @@ function CategoryEditor:CreateNew()
     frame.nameBox:SetTextColor(1, 1, 1)
     frame.groupBox:SetText("")
     frame.builtInText:Hide()
+
+    -- Reset mark selection (select "none")
+    if frame.markButtons then
+        for _, btn in ipairs(frame.markButtons) do
+            if btn.markPath == nil then
+                btn:SetBackdropBorderColor(1, 0.82, 0, 1)
+            else
+                btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+            end
+        end
+    end
+
+    -- Show all sections for new categories
+    frame.markLabel:Show()
+    for _, btn in ipairs(frame.markButtons) do btn:Show() end
+    frame.equipSetDesc:Hide()
+    frame.matchLabel:Show()
+    frame.matchAnyBtn:Show()
+    frame.matchAnyLabel:Show()
+    frame.matchAllBtn:Show()
+    frame.matchAllLabel:Show()
+    frame.rulesHeader:Show()
+    frame.addRuleBtn:Show()
+    frame.scrollFrame:Show()
 
     frame.matchAnyBtn:SetChecked(true)
     frame.matchAllBtn:SetChecked(false)

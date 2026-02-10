@@ -196,6 +196,7 @@ Constants.DEFAULTS = {
     bankViewType = "single",
     showCategoryCount = true,
     groupIdenticalItems = false,  -- Group identical items into single slot in category view
+    showEquipSetCategories = true,  -- Show equipment set items as named categories
     mergedGroups = {},  -- Per-group merge settings: { ["Main"] = true, ["Other"] = false }
     recentDuration = 15,  -- Minutes items stay in Recent category
     showSoulBag = true,  -- Show soul bag in single view (Warlock only)
@@ -213,6 +214,7 @@ Constants.DEFAULTS = {
     equipmentBorders = true,
     otherBorders = true,
     markUnusableItems = true,
+    markEquipmentSets = true,
     reverseStackSort = false,
     sortRightToLeft = false,
 
@@ -282,7 +284,7 @@ Constants.CATEGORY_UI = {
 
     -- Editor
     EDITOR_WIDTH = 420,
-    EDITOR_HEIGHT = 480,
+    EDITOR_HEIGHT = 516,
     EDITOR_PADDING = 12,
     RULE_ROW_HEIGHT = 34,
 
