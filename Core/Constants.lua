@@ -213,6 +213,7 @@ Constants.DEFAULTS = {
     equipmentBorders = true,
     otherBorders = true,
     markUnusableItems = true,
+    markEquipmentSets = true,
     reverseStackSort = false,
     sortRightToLeft = false,
 

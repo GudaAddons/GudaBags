@@ -78,6 +78,8 @@ local function ResetButton(pool, button)
     if button.junkIcon then button.junkIcon:Hide() end
     if button.trackedIcon then button.trackedIcon:Hide() end
     if button.trackedIconShadow then button.trackedIconShadow:Hide() end
+    if button.equipSetIcon then button.equipSetIcon:Hide() end
+    if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.cooldown then button.cooldown:Clear() end
@@ -437,6 +439,23 @@ local function CreateButton(parent)
     trackedIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\fav.png")
     trackedIcon:Hide()
     button.trackedIcon = trackedIcon
+
+    -- Equipment set icon shadow (bottom-left corner)
+    local equipSetIconShadow = button:CreateTexture(nil, "OVERLAY", nil, 2)
+    equipSetIconShadow:SetSize(15, 15)
+    equipSetIconShadow:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 0, 0)
+    equipSetIconShadow:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\guild.png")
+    equipSetIconShadow:SetVertexColor(0, 0, 0, 1)
+    equipSetIconShadow:Hide()
+    button.equipSetIconShadow = equipSetIconShadow
+
+    -- Equipment set icon (bottom-left corner)
+    local equipSetIcon = button:CreateTexture(nil, "OVERLAY", nil, 3)
+    equipSetIcon:SetSize(13, 13)
+    equipSetIcon:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
+    equipSetIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\guild.png")
+    equipSetIcon:Hide()
+    button.equipSetIcon = equipSetIcon
 
     -- Quest starter icon (top left corner) - exclamation mark for quest starter items
     -- Use a frame container to ensure it draws above the border
@@ -979,6 +998,7 @@ local function GetCachedSettings()
             equipmentBorders = Database:GetSetting("equipmentBorders"),
             otherBorders = Database:GetSetting("otherBorders"),
             markUnusableItems = Database:GetSetting("markUnusableItems"),
+            markEquipmentSets = Database:GetSetting("markEquipmentSets"),
         }
         cachedSettingsFrame = currentFrame
     end
@@ -1003,6 +1023,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     -- These elements might not be explicitly set below
     if button.trackedIcon then button.trackedIcon:Hide() end
     if button.trackedIconShadow then button.trackedIconShadow:Hide() end
+    if button.equipSetIcon then button.equipSetIcon:Hide() end
+    if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.junkIcon then button.junkIcon:Hide() end
@@ -1191,6 +1213,23 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
                 end
             end
         end
+
+        -- Equipment set icon
+        if button.equipSetIcon then
+            if settings.markEquipmentSets and itemData.itemID then
+                local EquipSets = ns:GetModule("EquipmentSets")
+                if EquipSets and EquipSets:IsInSet(itemData.itemID) then
+                    button.equipSetIcon:Show()
+                    if button.equipSetIconShadow then button.equipSetIconShadow:Show() end
+                else
+                    button.equipSetIcon:Hide()
+                    if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
+                end
+            else
+                button.equipSetIcon:Hide()
+                if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
+            end
+        end
     else
         button.wrapper:SetID(0)
         button:SetID(0)
@@ -1221,6 +1260,12 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         if button.trackedIconShadow then
             button.trackedIconShadow:Hide()
+        end
+        if button.equipSetIcon then
+            button.equipSetIcon:Hide()
+        end
+        if button.equipSetIconShadow then
+            button.equipSetIconShadow:Hide()
         end
         if button.cooldown then
             button.cooldown:Clear()
@@ -1292,6 +1337,12 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     end
     if button.trackedIconShadow then
         button.trackedIconShadow:Hide()
+    end
+    if button.equipSetIcon then
+        button.equipSetIcon:Hide()
+    end
+    if button.equipSetIconShadow then
+        button.equipSetIconShadow:Hide()
     end
     if button.cooldown then
         button.cooldown:Clear()
@@ -1420,7 +1471,8 @@ if Events then
         -- Invalidate cache for any setting that affects item buttons
         if key == "iconSize" or key == "bgAlpha" or key == "iconFontSize"
             or key == "grayoutJunk" or key == "equipmentBorders"
-            or key == "otherBorders" or key == "markUnusableItems" then
+            or key == "otherBorders" or key == "markUnusableItems"
+            or key == "markEquipmentSets" then
             ItemButton:InvalidateSettingsCache()
         end
     end, ItemButton)
