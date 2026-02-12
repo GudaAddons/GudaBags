@@ -22,6 +22,7 @@ Core\Constants.lua
 Core\Utils.lua
 Core\Events.lua
 Core\Database.lua
+Core\Theme.lua
 Core\Bindings.lua
 Core\SlashCommands.lua
 

@@ -7,6 +7,7 @@ local Constants = ns.Constants
 local L = ns.L
 local Database = ns:GetModule("Database")
 local IconButton = ns:GetModule("IconButton")
+local Theme = ns:GetModule("Theme")
 
 local frame = nil
 local onDragStop = nil
@@ -80,10 +81,14 @@ local function CreateHeader(parent)
     end)
 
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-    })
-    titleBar:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
+    local headerBackdrop = Theme:GetValue("headerBackdrop")
+    if headerBackdrop then
+        titleBar:SetBackdrop(headerBackdrop)
+        local headerBg = Theme:GetValue("headerBg")
+        titleBar:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], bgAlpha)
+    else
+        titleBar:SetBackdrop(nil)
+    end
 
     -- Left side icons (use feature flags to show/hide)
     local lastLeftButton = nil
@@ -240,7 +245,22 @@ end
 
 function Header:SetBackdropAlpha(alpha)
     if not frame then return end
-    frame:SetBackdropColor(0.08, 0.08, 0.08, alpha)
+    local headerBackdrop = Theme:GetValue("headerBackdrop")
+    if headerBackdrop then
+        frame:SetBackdrop(headerBackdrop)
+        local headerBg = Theme:GetValue("headerBg")
+        frame:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], alpha)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 4, -4)
+        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", -4, -4)
+        if frame.closeButton then frame.closeButton:SetSize(22, 22) end
+    else
+        frame:SetBackdrop(nil)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
+        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
+        if frame.closeButton then frame.closeButton:SetSize(32, 32) end
+    end
 end
 
 function Header:SetViewingCharacter(fullName, charData)

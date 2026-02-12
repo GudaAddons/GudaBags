@@ -1,0 +1,214 @@
+local addonName, ns = ...
+
+local Theme = {}
+ns:RegisterModule("Theme", Theme)
+
+local Database = ns:GetModule("Database")
+local Events = ns:GetModule("Events")
+
+-------------------------------------------------
+-- Theme Definitions
+-------------------------------------------------
+local themes = {
+    guda = {
+        frameBg = {0.08, 0.08, 0.08, 1},
+        frameBorder = {0.30, 0.30, 0.30, 1},
+        headerBg = {0.12, 0.12, 0.12, 1},
+        titleColor = {1, 1, 1, 1},
+        slotBgColor = {0.15, 0.15, 0.15, 1},
+        bankTabBg = {0.12, 0.12, 0.12, 1},
+        bankTabBorder = {0.30, 0.30, 0.30, 1},
+        bankTabSelected = {0.20, 0.20, 0.20, 1},
+        footerButtonBg = {0.12, 0.12, 0.12, 1},
+        footerButtonBorder = {0.30, 0.30, 0.30, 1},
+        useBlizzardFrame = false,
+        backdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 14,
+            insets = {left = 3, right = 3, top = 3, bottom = 3},
+        },
+        headerBackdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+        },
+        backdropSolid = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        },
+    },
+    blizzard = {
+        frameBg = {1, 1, 1, 1},
+        frameBorder = {1, 1, 1, 1},
+        headerBg = {1, 1, 1, 1},
+        titleColor = {1, 1, 1, 1},
+        slotBgColor = {0.15, 0.15, 0.15, 1},
+        bankTabBg = {0.12, 0.12, 0.12, 1},
+        bankTabBorder = {0.30, 0.30, 0.30, 1},
+        bankTabSelected = {0.20, 0.20, 0.20, 1},
+        footerButtonBg = {0.12, 0.12, 0.12, 1},
+        footerButtonBorder = {0.30, 0.30, 0.30, 1},
+        useBlizzardFrame = true,
+        backdrop = nil,
+        headerBackdrop = nil,
+        backdropSolid = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        },
+    },
+}
+
+-------------------------------------------------
+-- Classic border texture keys in ButtonFrameTemplate
+-------------------------------------------------
+local classicBorderKeys = {
+    "BotLeftCorner", "BotRightCorner", "BottomBorder",
+    "LeftBorder", "RightBorder",
+    "TopRightCorner", "TopLeftCorner", "TopBorder",
+}
+
+-------------------------------------------------
+-- Cache
+-------------------------------------------------
+local cachedTheme = nil
+
+-------------------------------------------------
+-- API
+-------------------------------------------------
+
+--- Returns the active theme table
+function Theme:Get()
+    if cachedTheme then
+        return cachedTheme
+    end
+    local themeName = Database:GetSetting("theme") or "guda"
+    cachedTheme = themes[themeName] or themes.guda
+    return cachedTheme
+end
+
+--- Returns a single theme property value
+function Theme:GetValue(key)
+    local t = self:Get()
+    return t[key]
+end
+
+-------------------------------------------------
+-- ButtonFrameTemplate background helper
+-------------------------------------------------
+
+local blizzBgCount = 0
+
+--- Creates a hidden ButtonFrameTemplate child (once) to use as background
+local function EnsureBlizzardBg(frame)
+    if frame.blizzardBg then return frame.blizzardBg end
+
+    blizzBgCount = blizzBgCount + 1
+    local name = "GudaBagsThemeBg" .. blizzBgCount
+    local bliz = CreateFrame("Frame", name, frame, "ButtonFrameTemplate")
+    bliz:EnableMouse(false)
+    bliz:SetAllPoints(frame)
+    bliz:SetFrameLevel(frame:GetFrameLevel())
+
+    -- Hide all ButtonFrameTemplate UI elements
+    if ButtonFrameTemplate_HidePortrait then ButtonFrameTemplate_HidePortrait(bliz) end
+    if ButtonFrameTemplate_HideButtonBar then ButtonFrameTemplate_HideButtonBar(bliz) end
+    if bliz.Inset then bliz.Inset:Hide() end
+    if bliz.CloseButton then bliz.CloseButton:Hide() end
+    if bliz.TitleContainer then bliz.TitleContainer:Hide() end
+
+    bliz:Hide()
+    frame.blizzardBg = bliz
+    return bliz
+end
+
+--- Apply the correct background for the current theme.
+--- Call this from UpdateFrameAppearance in each frame module.
+--- @param frame table The main addon frame
+--- @param bgAlpha number 0-1 opacity
+--- @param showBorders boolean Whether borders are visible
+function Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
+    local useBlizzard = self:GetValue("useBlizzardFrame")
+
+    if useBlizzard then
+        -- Blizzard theme: ButtonFrameTemplate child provides bg + border
+        local bliz = EnsureBlizzardBg(frame)
+        bliz:SetFrameLevel(frame:GetFrameLevel())
+        bliz:Show()
+
+        -- Background texture
+        bliz.Bg:SetAlpha(bgAlpha)
+        bliz.Bg:ClearAllPoints()
+        if bliz.TopTileStreaks then
+            bliz.TopTileStreaks:SetAlpha(bgAlpha)
+            bliz.TopTileStreaks:ClearAllPoints()
+        end
+
+        if showBorders then
+            bliz.Bg:SetPoint("TOPLEFT", 2, -21)
+            bliz.Bg:SetPoint("BOTTOMRIGHT", -2, 2)
+            if bliz.TopTileStreaks then
+                bliz.TopTileStreaks:SetPoint("TOPLEFT", 2, -21)
+            end
+        else
+            bliz.Bg:SetPoint("TOPLEFT", 2, 0)
+            bliz.Bg:SetPoint("BOTTOMRIGHT", -2, 0)
+            if bliz.TopTileStreaks then
+                bliz.TopTileStreaks:SetPoint("TOPLEFT", 2, 0)
+            end
+        end
+
+        -- Title bar background
+        if bliz.TitleBg then
+            bliz.TitleBg:SetAlpha(showBorders and bgAlpha or 0)
+        end
+
+        -- Classic border pieces
+        for _, key in ipairs(classicBorderKeys) do
+            if bliz[key] then
+                bliz[key]:SetShown(showBorders)
+                bliz[key]:SetAlpha(bgAlpha)
+            end
+        end
+
+        -- Retail NineSlice borders
+        if bliz.NineSlice then
+            bliz.NineSlice:SetShown(showBorders)
+            bliz.NineSlice:SetAlpha(bgAlpha)
+        end
+
+        -- Clear the main frame backdrop entirely
+        frame:SetBackdrop(nil)
+
+        -- Hide the old themeBg texture if it exists from previous approach
+        if frame.themeBg then frame.themeBg:Hide() end
+    else
+        -- Guda theme: normal backdrop
+        if frame.blizzardBg then
+            frame.blizzardBg:Hide()
+        end
+        if frame.themeBg then frame.themeBg:Hide() end
+
+        frame:SetBackdrop(self:GetValue("backdrop"))
+        local bg = self:GetValue("frameBg")
+        frame:SetBackdropColor(bg[1], bg[2], bg[3], bgAlpha)
+
+        if showBorders then
+            local border = self:GetValue("frameBorder")
+            frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
+        else
+            frame:SetBackdropBorderColor(0, 0, 0, 0)
+        end
+    end
+end
+
+-------------------------------------------------
+-- Cache Invalidation
+-------------------------------------------------
+Events:Register("SETTING_CHANGED", function(event, key)
+    if key == "theme" then
+        cachedTheme = nil
+    end
+end, Theme)

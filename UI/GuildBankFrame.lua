@@ -17,6 +17,7 @@ local SearchBar = ns:GetModule("SearchBar")
 local LayoutEngine = ns:GetModule("BagFrame.LayoutEngine")
 local Utils = ns:GetModule("Utils")
 local CategoryHeaderPool = ns:GetModule("CategoryHeaderPool")
+local Theme = ns:GetModule("Theme")
 
 local GuildBankHeader = nil
 local GuildBankFooter = nil
@@ -94,7 +95,12 @@ local function UpdateFrameAppearance()
     if not frame then return end
 
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
-    frame:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
+    local showBorders = Database:GetSetting("showBorders")
+
+    -- Apply theme background (ButtonFrameTemplate for Blizzard, backdrop for Guda)
+    Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
+
+    GuildBankHeader:SetBackdropAlpha(bgAlpha)
 
     local showSearchBar = Database:GetSetting("showSearchBar")
     local showFooter = Database:GetSetting("showFooter")
@@ -129,8 +135,6 @@ local function UpdateFrameAppearance()
         GuildBankFooter:Hide()
     end
 
-    -- Update header alpha
-    GuildBankHeader:SetBackdropAlpha(bgAlpha)
 end
 
 -------------------------------------------------
@@ -604,10 +608,15 @@ local function CreateGuildBankFrame()
         end
     end)
 
-    f:SetBackdrop(Constants.BACKDROP)
-    local bgAlpha = Database:GetSetting("bgAlpha") / 100
-    f:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
-    f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    local backdrop = Theme:GetValue("backdrop")
+    if backdrop then
+        f:SetBackdrop(backdrop)
+        local bgAlpha = Database:GetSetting("bgAlpha") / 100
+        local bg = Theme:GetValue("frameBg")
+        f:SetBackdropColor(bg[1], bg[2], bg[3], bgAlpha)
+        local border = Theme:GetValue("frameBorder")
+        f:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
+    end
     f:Hide()
 
     -- Register for Escape key to close
@@ -1299,6 +1308,7 @@ end
 local appearanceSettings = {
     bgAlpha = true,
     showBorders = true,
+    theme = true,
 }
 
 -- Handle setting changes (live update)

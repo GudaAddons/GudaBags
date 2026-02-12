@@ -180,6 +180,7 @@ Constants.CATEGORY_ICON_SIZE_THRESHOLD = 28
 
 Constants.DEFAULTS = {
     -- General
+    theme = "guda",
     bagColumns = 10,
     bankColumns = 10,
     guildBankColumns = 14,
