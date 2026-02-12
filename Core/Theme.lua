@@ -118,6 +118,9 @@ local function EnsureBlizzardBg(frame)
     if bliz.Inset then bliz.Inset:Hide() end
     if bliz.CloseButton then bliz.CloseButton:Hide() end
     if bliz.TitleContainer then bliz.TitleContainer:Hide() end
+    if bliz.PortraitFrame then bliz.PortraitFrame:SetAlpha(0) end
+    if bliz.PortraitContainer then bliz.PortraitContainer:Hide() end
+    if bliz.portrait then bliz.portrait:SetAlpha(0) end
 
     bliz:Hide()
     frame.blizzardBg = bliz
@@ -142,25 +145,18 @@ function Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
         bliz.Bg:SetAlpha(bgAlpha)
         bliz.Bg:ClearAllPoints()
         if bliz.TopTileStreaks then
-            bliz.TopTileStreaks:SetAlpha(bgAlpha)
-            bliz.TopTileStreaks:ClearAllPoints()
+            bliz.TopTileStreaks:Hide()
         end
 
         if showBorders then
             bliz.Bg:SetPoint("TOPLEFT", 2, -21)
             bliz.Bg:SetPoint("BOTTOMRIGHT", -2, 2)
-            if bliz.TopTileStreaks then
-                bliz.TopTileStreaks:SetPoint("TOPLEFT", 2, -21)
-            end
         else
             bliz.Bg:SetPoint("TOPLEFT", 2, 0)
             bliz.Bg:SetPoint("BOTTOMRIGHT", -2, 0)
-            if bliz.TopTileStreaks then
-                bliz.TopTileStreaks:SetPoint("TOPLEFT", 2, 0)
-            end
         end
 
-        -- Title bar background
+        -- Hide title bar background (our custom header handles the title area)
         if bliz.TitleBg then
             bliz.TitleBg:SetAlpha(showBorders and bgAlpha or 0)
         end

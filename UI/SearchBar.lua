@@ -49,8 +49,8 @@ local function CreateSearchBar(parent)
 
     local searchBar = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     searchBar:SetHeight(Constants.FRAME.SEARCH_BAR_HEIGHT)
-    searchBar:SetPoint("TOPLEFT", parent.titleBar, "BOTTOMLEFT", Constants.FRAME.PADDING - 4, -4)
-    searchBar:SetPoint("TOPRIGHT", parent.titleBar, "BOTTOMRIGHT", -(Constants.FRAME.PADDING - 4), -4)
+    searchBar:SetPoint("TOPLEFT", parent, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING))
+    searchBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING))
     searchBar:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
