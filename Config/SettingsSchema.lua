@@ -11,6 +11,10 @@ function SettingsSchema.GetGeneral()
     return {
         { type = "description", text = L["SETTINGS_GENERAL_DESCRIPTION"], height = 28 },
         { type = "separator", label = L["SETTINGS_SECTION_APPEARANCE"] },
+        { type = "select", key = "theme", label = L["SETTINGS_THEME"], tooltip = L["SETTINGS_THEME_TIP"], options = {
+            { value = "guda", label = L["SETTINGS_THEME_GUDA"] },
+            { value = "blizzard", label = L["SETTINGS_THEME_BLIZZARD"] },
+        }},
         { type = "slider", key = "bgAlpha", label = L["SETTINGS_BG_OPACITY"], min = 0, max = 100, step = 5, format = "%" },
 
         { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },

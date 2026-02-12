@@ -4,6 +4,7 @@ local BagSlots = {}
 ns:RegisterModule("Footer.BagSlots", BagSlots)
 
 local Constants = ns.Constants
+local Theme = ns:GetModule("Theme")
 
 local function GetDatabase()
     return ns:GetModule("Database")
@@ -64,8 +65,10 @@ local function CreateBagSlotButton(parent, bagID, bagSlotSize)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    bagSlot:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    bagSlot:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    local fbBg = Theme:GetValue("footerButtonBg")
+    local fbBorder = Theme:GetValue("footerButtonBorder")
+    bagSlot:SetBackdropColor(fbBg[1], fbBg[2], fbBg[3], fbBg[4])
+    bagSlot:SetBackdropBorderColor(fbBorder[1], fbBorder[2], fbBorder[3], fbBorder[4])
 
     local icon = bagSlot:CreateTexture(nil, "ARTWORK")
     icon:SetSize(bagSlotSize - 2, bagSlotSize - 2)
@@ -178,8 +181,10 @@ local function CreateBagFlyout(parent)
         edgeSize = 10,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    flyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    flyout:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    local fbBg = Theme:GetValue("footerButtonBg")
+    local fbBorder = Theme:GetValue("footerButtonBorder")
+    flyout:SetBackdropColor(fbBg[1], fbBg[2], fbBg[3], 0.95)
+    flyout:SetBackdropBorderColor(fbBorder[1], fbBorder[2], fbBorder[3], 1)
 
     flyout.bagSlots = {}
 
@@ -267,7 +272,7 @@ function BagSlots:Show()
         end
         bagFlyoutExpanded = false
         -- Reset border color when switching modes
-        frame.mainBagSlot:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        local fb = Theme:GetValue("footerButtonBorder"); frame.mainBagSlot:SetBackdropBorderColor(fb[1], fb[2], fb[3], fb[4])
     else
         -- Collapsed mode: show only main bag
         for _, bagSlot in ipairs(frame.bagSlots) do
@@ -281,7 +286,7 @@ function BagSlots:Show()
         bagFlyoutExpanded = false
 
         -- Reset border color when switching modes
-        frame.mainBagSlot:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        local fb = Theme:GetValue("footerButtonBorder"); frame.mainBagSlot:SetBackdropBorderColor(fb[1], fb[2], fb[3], fb[4])
     end
 
     self:Update()
@@ -400,7 +405,7 @@ function BagSlots:ToggleFlyout()
     else
         bagFlyout:Hide()
         if frame.mainBagSlot then
-            frame.mainBagSlot:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+            local fb = Theme:GetValue("footerButtonBorder"); frame.mainBagSlot:SetBackdropBorderColor(fb[1], fb[2], fb[3], fb[4])
         end
     end
 end

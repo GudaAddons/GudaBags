@@ -7,6 +7,7 @@ local Constants = ns.Constants
 local L = ns.L
 local Database = ns:GetModule("Database")
 local IconButton = ns:GetModule("IconButton")
+local Theme = ns:GetModule("Theme")
 
 local frame = nil
 local onDragStop = nil
@@ -80,10 +81,14 @@ local function CreateHeader(parent)
     end)
 
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
-    titleBar:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-    })
-    titleBar:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
+    local headerBackdrop = Theme:GetValue("headerBackdrop")
+    if headerBackdrop then
+        titleBar:SetBackdrop(headerBackdrop)
+        local headerBg = Theme:GetValue("headerBg")
+        titleBar:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], bgAlpha)
+    else
+        titleBar:SetBackdrop(nil)
+    end
 
     -- Left side icons (use feature flags to show/hide)
     local lastLeftButton = nil
@@ -104,7 +109,19 @@ local function CreateHeader(parent)
         local chestButton = IconButton:Create(titleBar, "chest", {
             tooltip = L["TOOLTIP_BANK"],
             onClick = function(self)
-                BankCharacters:Toggle(self)
+                -- Close guild bank if open
+                local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
+                local wasGuildBankOpen = GuildBankFrameModule and GuildBankFrameModule:GetFrame() and GuildBankFrameModule:GetFrame():IsShown()
+                if wasGuildBankOpen then
+                    GuildBankFrameModule:Hide()
+                end
+                if wasGuildBankOpen then
+                    C_Timer.After(0, function()
+                        BankCharacters:Toggle(self)
+                    end)
+                else
+                    BankCharacters:Toggle(self)
+                end
             end,
         })
         if lastLeftButton then
@@ -120,9 +137,26 @@ local function CreateHeader(parent)
         local guildButton = IconButton:Create(titleBar, "guild", {
             tooltip = L["TOOLTIP_GUILD_BANK"],
             onClick = function()
+                -- Close bank view if open
+                local BankFrameModule = ns:GetModule("BankFrame")
+                local wasBankOpen = BankFrameModule and BankFrameModule:GetFrame() and BankFrameModule:GetFrame():IsShown()
+                if wasBankOpen then
+                    BankFrameModule:Hide()
+                end
+                -- Close bank characters dropdown if open
+                if BankCharacters then
+                    BankCharacters:Hide()
+                end
                 local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
                 if GuildBankFrameModule then
-                    GuildBankFrameModule:Toggle()
+                    if wasBankOpen then
+                        -- Defer to next frame to avoid script timeout from pool churn
+                        C_Timer.After(0, function()
+                            GuildBankFrameModule:Toggle()
+                        end)
+                    else
+                        GuildBankFrameModule:Toggle()
+                    end
                 end
             end,
         })
@@ -240,7 +274,28 @@ end
 
 function Header:SetBackdropAlpha(alpha)
     if not frame then return end
-    frame:SetBackdropColor(0.08, 0.08, 0.08, alpha)
+    local headerBackdrop = Theme:GetValue("headerBackdrop")
+    if headerBackdrop then
+        frame:SetBackdrop(headerBackdrop)
+        local headerBg = Theme:GetValue("headerBg")
+        frame:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], alpha)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 4, -4)
+        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", -4, -4)
+        if frame.closeButton then frame.closeButton:SetSize(22, 22) end
+    else
+        frame:SetBackdrop(nil)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
+        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
+        if frame.closeButton then frame.closeButton:SetSize(32, 32) end
+    end
+    Theme:ApplyHeaderButtons(
+        frame,
+        {frame.charactersButton, frame.chestButton, frame.guildButton, frame.envelopeButton},
+        {frame.settingsButton, frame.sortButton},
+        frame.closeButton
+    )
 end
 
 function Header:SetViewingCharacter(fullName, charData)

@@ -16,6 +16,7 @@ local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
 local LayoutEngine = ns:GetModule("BagFrame.LayoutEngine")
 local Utils = ns:GetModule("Utils")
 local CategoryHeaderPool = ns:GetModule("CategoryHeaderPool")
+local Theme = ns:GetModule("Theme")
 
 local frame
 local itemButtons = {}
@@ -164,10 +165,15 @@ local function CreateBagFrame()
             self.container:SetFrameLevel(frameLevel + 1)
         end
     end)
-    f:SetBackdrop(Constants.BACKDROP)
-    local bgAlpha = Database:GetSetting("bgAlpha") / 100
-    f:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
-    f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    local backdrop = Theme:GetValue("backdrop")
+    if backdrop then
+        f:SetBackdrop(backdrop)
+        local bgAlpha = Database:GetSetting("bgAlpha") / 100
+        local bg = Theme:GetValue("frameBg")
+        f:SetBackdropColor(bg[1], bg[2], bg[3], bgAlpha)
+        local border = Theme:GetValue("frameBorder")
+        f:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
+    end
     f:Hide()
 
     -- Create separate secure button container as child of UIParent (not f)
@@ -197,7 +203,18 @@ local function CreateBagFrame()
 
     -- Sync secure container visibility with main frame
     f:HookScript("OnShow", function() secureButtonContainer:Show() end)
-    f:HookScript("OnHide", function() secureButtonContainer:Hide() end)
+    f:HookScript("OnHide", function()
+        secureButtonContainer:Hide()
+        -- Reset to current character when bag closes
+        if viewingCharacter then
+            viewingCharacter = nil
+            Header:SetViewingCharacter(nil, nil)
+        end
+        -- Close any open character dropdown
+        if Characters then
+            Characters:Hide()
+        end
+    end)
 
     -- Enable container as drop zone for empty space
     secureButtonContainer:EnableMouse(true)
@@ -1335,9 +1352,13 @@ UpdateFrameAppearance = function()
 
     local isViewingCached = viewingCharacter ~= nil
 
-    -- Background alpha (same for frame and titleBar)
+    -- Background alpha
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
-    frame:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
+    local showBorders = Database:GetSetting("showBorders")
+
+    -- Apply theme background (ButtonFrameTemplate for Blizzard, backdrop for Guda)
+    Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
+
     Header:SetBackdropAlpha(bgAlpha)
 
     -- Update slot background alpha (item icons stay fully visible)
@@ -1381,13 +1402,6 @@ UpdateFrameAppearance = function()
         Footer:Hide()
     end
 
-    -- Show borders
-    local showBorders = Database:GetSetting("showBorders")
-    if showBorders then
-        frame:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-    else
-        frame:SetBackdropBorderColor(0, 0, 0, 0)
-    end
 end
 
 -- Settings that only need appearance update (no full refresh)
@@ -1399,6 +1413,7 @@ local appearanceSettings = {
     trackedBarColumns = true,
     questBarSize = true,
     questBarColumns = true,
+    theme = true,
 }
 
 -- Settings that need both appearance update AND resize
