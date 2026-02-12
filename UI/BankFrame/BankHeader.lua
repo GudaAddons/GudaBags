@@ -179,8 +179,8 @@ function BankHeader:SetBackdropAlpha(alpha)
     else
         frame:SetBackdrop(nil)
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 1, -1)
-        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", -1, -1)
+        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
+        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
         if frame.closeButton then frame.closeButton:SetSize(32, 32) end
     end
     Theme:ApplyHeaderButtons(

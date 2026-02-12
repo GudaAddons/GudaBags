@@ -206,18 +206,26 @@ local function CreateBankFrame()
     -- Register for Escape key to close
     tinsert(UISpecialFrames, "GudaBankFrame")
 
-    -- Close bank interaction when frame is hidden
+    -- Close bank interaction and reset character when frame is hidden
     f:SetScript("OnHide", function()
         if ns.IsRetail then
-            -- On Retail, use PlayerInteractionManager to close the bank interaction
             if C_PlayerInteractionManager and C_PlayerInteractionManager.ClearInteraction then
                 C_PlayerInteractionManager.ClearInteraction(Enum.PlayerInteractionType.Banker)
             end
         else
-            -- On Classic, use the traditional CloseBankFrame
             if CloseBankFrame then
                 CloseBankFrame()
             end
+        end
+        -- Reset to current character when bank closes
+        if viewingCharacter then
+            viewingCharacter = nil
+            BankHeader:SetViewingCharacter(nil, nil)
+        end
+        -- Close any open character dropdown
+        local BankCharactersModule = ns:GetModule("BankFrame.BankCharacters")
+        if BankCharactersModule then
+            BankCharactersModule:Hide()
         end
     end)
 

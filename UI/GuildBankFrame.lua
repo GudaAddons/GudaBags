@@ -645,6 +645,11 @@ local function CreateGuildBankFrame()
                 end
             end)
         end
+        -- Close any open character dropdown
+        local BankCharactersModule = ns:GetModule("BankFrame.BankCharacters")
+        if BankCharactersModule then
+            BankCharactersModule:Hide()
+        end
     end)
 
     -- Header

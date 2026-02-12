@@ -203,7 +203,18 @@ local function CreateBagFrame()
 
     -- Sync secure container visibility with main frame
     f:HookScript("OnShow", function() secureButtonContainer:Show() end)
-    f:HookScript("OnHide", function() secureButtonContainer:Hide() end)
+    f:HookScript("OnHide", function()
+        secureButtonContainer:Hide()
+        -- Reset to current character when bag closes
+        if viewingCharacter then
+            viewingCharacter = nil
+            Header:SetViewingCharacter(nil, nil)
+        end
+        -- Close any open character dropdown
+        if Characters then
+            Characters:Hide()
+        end
+    end)
 
     -- Enable container as drop zone for empty space
     secureButtonContainer:EnableMouse(true)

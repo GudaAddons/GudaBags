@@ -47,8 +47,8 @@ local themes = {
         bankTabBg = {0.12, 0.12, 0.12, 1},
         bankTabBorder = {0.30, 0.30, 0.30, 1},
         bankTabSelected = {0.20, 0.20, 0.20, 1},
-        footerButtonBg = {0.4, 0.05, 0.05, 0.6},
-        footerButtonBorder = {0.4, 0.05, 0.05, 1},
+        footerButtonBg = {0.5, 0.06, 0.06, 0.6},
+        footerButtonBorder = {0.5, 0.06, 0.06, 1},
         useBlizzardFrame = true,
         backdrop = nil,
         headerBackdrop = nil,
@@ -222,8 +222,8 @@ local function EnsureIconBg(button)
     bg:SetPoint("CENTER")
     bg:SetFrameLevel(button:GetFrameLevel())
     bg:SetBackdrop(iconBgBackdrop)
-    bg:SetBackdropColor(0.4, 0.05, 0.05, 0.6)
-    bg:SetBackdropBorderColor(0.4, 0.05, 0.05, 1)
+    bg:SetBackdropColor(0.5, 0.06, 0.06, 0.6)
+    bg:SetBackdropBorderColor(0.5, 0.06, 0.06, 1)
     bg:Hide()
     button.themeBg = bg
     return bg
@@ -250,6 +250,9 @@ end
 function Theme:ApplyHeaderButtons(headerFrame, leftButtons, rightButtons, closeButton)
     local useBlizzard = self:GetValue("useBlizzardFrame")
     local gap = useBlizzard and BLIZZARD_GAP or GUDA_GAP
+    -- Match footer's PADDING (8px from parent edge)
+    -- Blizzard header at x=0 → offset 13; Guda header at x=4 → offset 4
+    local firstLeftOffset = useBlizzard and 13 or 4
 
     -- Left side: first anchors to headerFrame LEFT, rest chain to previous
     local prevBtn = nil
@@ -260,7 +263,7 @@ function Theme:ApplyHeaderButtons(headerFrame, leftButtons, rightButtons, closeB
             if prevBtn then
                 btn:SetPoint("LEFT", prevBtn, "RIGHT", gap, 0)
             else
-                btn:SetPoint("LEFT", headerFrame, "LEFT", 6, 0)
+                btn:SetPoint("LEFT", headerFrame, "LEFT", firstLeftOffset, 0)
             end
             prevBtn = btn
         end

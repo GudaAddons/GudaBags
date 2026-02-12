@@ -109,7 +109,19 @@ local function CreateHeader(parent)
         local chestButton = IconButton:Create(titleBar, "chest", {
             tooltip = L["TOOLTIP_BANK"],
             onClick = function(self)
-                BankCharacters:Toggle(self)
+                -- Close guild bank if open
+                local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
+                local wasGuildBankOpen = GuildBankFrameModule and GuildBankFrameModule:GetFrame() and GuildBankFrameModule:GetFrame():IsShown()
+                if wasGuildBankOpen then
+                    GuildBankFrameModule:Hide()
+                end
+                if wasGuildBankOpen then
+                    C_Timer.After(0, function()
+                        BankCharacters:Toggle(self)
+                    end)
+                else
+                    BankCharacters:Toggle(self)
+                end
             end,
         })
         if lastLeftButton then
@@ -125,9 +137,26 @@ local function CreateHeader(parent)
         local guildButton = IconButton:Create(titleBar, "guild", {
             tooltip = L["TOOLTIP_GUILD_BANK"],
             onClick = function()
+                -- Close bank view if open
+                local BankFrameModule = ns:GetModule("BankFrame")
+                local wasBankOpen = BankFrameModule and BankFrameModule:GetFrame() and BankFrameModule:GetFrame():IsShown()
+                if wasBankOpen then
+                    BankFrameModule:Hide()
+                end
+                -- Close bank characters dropdown if open
+                if BankCharacters then
+                    BankCharacters:Hide()
+                end
                 local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
                 if GuildBankFrameModule then
-                    GuildBankFrameModule:Toggle()
+                    if wasBankOpen then
+                        -- Defer to next frame to avoid script timeout from pool churn
+                        C_Timer.After(0, function()
+                            GuildBankFrameModule:Toggle()
+                        end)
+                    else
+                        GuildBankFrameModule:Toggle()
+                    end
                 end
             end,
         })
