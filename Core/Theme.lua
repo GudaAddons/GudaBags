@@ -47,8 +47,8 @@ local themes = {
         bankTabBg = {0.12, 0.12, 0.12, 1},
         bankTabBorder = {0.30, 0.30, 0.30, 1},
         bankTabSelected = {0.20, 0.20, 0.20, 1},
-        footerButtonBg = {0.12, 0.12, 0.12, 1},
-        footerButtonBorder = {0.30, 0.30, 0.30, 1},
+        footerButtonBg = {0.4, 0.05, 0.05, 0.6},
+        footerButtonBorder = {0.4, 0.05, 0.05, 1},
         useBlizzardFrame = true,
         backdrop = nil,
         headerBackdrop = nil,
@@ -196,6 +196,84 @@ function Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
             frame:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
         else
             frame:SetBackdropBorderColor(0, 0, 0, 0)
+        end
+    end
+end
+
+-------------------------------------------------
+-- Header Icon Button Styling
+-------------------------------------------------
+local BLIZZARD_ICON_SIZE = 14
+local BLIZZARD_ICON_BG_W = 24
+local BLIZZARD_ICON_BG_H = 18
+local GUDA_ICON_SIZE = 16
+
+local iconBgBackdrop = {
+    bgFile = "Interface\\Buttons\\WHITE8x8",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeSize = 8,
+    insets = {left = 2, right = 2, top = 2, bottom = 2},
+}
+
+local function EnsureIconBg(button)
+    if button.themeBg then return button.themeBg end
+    local bg = CreateFrame("Frame", nil, button, "BackdropTemplate")
+    bg:SetSize(BLIZZARD_ICON_BG_W, BLIZZARD_ICON_BG_H)
+    bg:SetPoint("CENTER")
+    bg:SetFrameLevel(button:GetFrameLevel())
+    bg:SetBackdrop(iconBgBackdrop)
+    bg:SetBackdropColor(0.4, 0.05, 0.05, 0.6)
+    bg:SetBackdropBorderColor(0.4, 0.05, 0.05, 1)
+    bg:Hide()
+    button.themeBg = bg
+    return bg
+end
+
+local BLIZZARD_GAP = 10
+local GUDA_GAP = 4
+
+local function StyleButton(btn, useBlizzard)
+    if useBlizzard then
+        btn:SetSize(BLIZZARD_ICON_SIZE, BLIZZARD_ICON_SIZE)
+        EnsureIconBg(btn):Show()
+    else
+        btn:SetSize(GUDA_ICON_SIZE, GUDA_ICON_SIZE)
+        if btn.themeBg then btn.themeBg:Hide() end
+    end
+end
+
+--- Apply theme-appropriate styling and spacing to header icon buttons.
+--- @param headerFrame table The title bar frame
+--- @param leftButtons table Ordered array of left-side icon buttons (nil entries skipped)
+--- @param rightButtons table Ordered array of right-side icon buttons after closeButton (nil entries skipped)
+--- @param closeButton table The close button (anchor for right-side chain)
+function Theme:ApplyHeaderButtons(headerFrame, leftButtons, rightButtons, closeButton)
+    local useBlizzard = self:GetValue("useBlizzardFrame")
+    local gap = useBlizzard and BLIZZARD_GAP or GUDA_GAP
+
+    -- Left side: first anchors to headerFrame LEFT, rest chain to previous
+    local prevBtn = nil
+    for _, btn in ipairs(leftButtons) do
+        if btn then
+            StyleButton(btn, useBlizzard)
+            btn:ClearAllPoints()
+            if prevBtn then
+                btn:SetPoint("LEFT", prevBtn, "RIGHT", gap, 0)
+            else
+                btn:SetPoint("LEFT", headerFrame, "LEFT", 6, 0)
+            end
+            prevBtn = btn
+        end
+    end
+
+    -- Right side: chain from closeButton leftward
+    prevBtn = closeButton
+    for _, btn in ipairs(rightButtons) do
+        if btn then
+            StyleButton(btn, useBlizzard)
+            btn:ClearAllPoints()
+            btn:SetPoint("RIGHT", prevBtn, "LEFT", -gap, 0)
+            prevBtn = btn
         end
     end
 end

@@ -183,6 +183,12 @@ function BankHeader:SetBackdropAlpha(alpha)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", -1, -1)
         if frame.closeButton then frame.closeButton:SetSize(32, 32) end
     end
+    Theme:ApplyHeaderButtons(
+        frame,
+        {frame.charactersButton},
+        {frame.settingsButton, frame.sortButton},
+        frame.closeButton
+    )
 end
 
 function BankHeader:SetViewingCharacter(fullName, charData)

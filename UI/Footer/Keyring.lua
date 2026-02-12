@@ -22,6 +22,7 @@ local Keyring = {}
 ns:RegisterModule("Footer.Keyring", Keyring)
 
 local Constants = ns.Constants
+local Theme = ns:GetModule("Theme")
 local L = ns.L
 
 local button = nil
@@ -45,8 +46,10 @@ function Keyring:Init(parent)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 0.7)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    local fbBg = Theme:GetValue("footerButtonBg")
+    local fbBorder = Theme:GetValue("footerButtonBorder")
+    button:SetBackdropColor(fbBg[1], fbBg[2], fbBg[3], fbBg[4])
+    button:SetBackdropBorderColor(fbBorder[1], fbBorder[2], fbBorder[3], fbBorder[4])
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(18, 18)
@@ -120,7 +123,7 @@ function Keyring:UpdateState()
     if showKeyring then
         button:SetBackdropBorderColor(1, 0.82, 0, 1)
     else
-        button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        local fb = Theme:GetValue("footerButtonBorder"); button:SetBackdropBorderColor(fb[1], fb[2], fb[3], fb[4])
     end
 end
 

@@ -261,6 +261,12 @@ function Header:SetBackdropAlpha(alpha)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
         if frame.closeButton then frame.closeButton:SetSize(32, 32) end
     end
+    Theme:ApplyHeaderButtons(
+        frame,
+        {frame.charactersButton, frame.chestButton, frame.guildButton, frame.envelopeButton},
+        {frame.settingsButton, frame.sortButton},
+        frame.closeButton
+    )
 end
 
 function Header:SetViewingCharacter(fullName, charData)

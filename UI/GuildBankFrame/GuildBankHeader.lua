@@ -127,6 +127,12 @@ function GuildBankHeader:SetBackdropAlpha(alpha)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", -1, -1)
         if frame.closeButton then frame.closeButton:SetSize(32, 32) end
     end
+    Theme:ApplyHeaderButtons(
+        frame,
+        {},
+        {frame.settingsButton},
+        frame.closeButton
+    )
 end
 
 function GuildBankHeader:SetGuildName(guildName)
