@@ -288,7 +288,8 @@ function Header:SetBackdropAlpha(alpha)
         frame:ClearAllPoints()
         frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
-        if frame.closeButton then frame.closeButton:SetSize(22, 22) end
+        local closeSize = ns.IsRetail and 22 or 32
+        if frame.closeButton then frame.closeButton:SetSize(closeSize, closeSize) end
         -- Raise header above blizzardBg's NineSlice on retail
         local parent = frame:GetParent()
         if parent.blizzardBg then
