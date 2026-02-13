@@ -394,6 +394,8 @@ function CategoryManager:SyncEquipmentSetCategories()
     local changed = false
 
     -- Remove equipment set categories that no longer exist or setting is off
+    -- Preserve user-edited properties so they can be restored if the category is recreated
+    categories.savedEquipSetProps = categories.savedEquipSetProps or {}
     local toRemove = {}
     for catId, def in pairs(categories.definitions) do
         if def.isEquipSet and not activeSetIds[catId] then
@@ -401,6 +403,15 @@ function CategoryManager:SyncEquipmentSetCategories()
         end
     end
     for _, catId in ipairs(toRemove) do
+        local def = categories.definitions[catId]
+        if def then
+            categories.savedEquipSetProps[catId] = {
+                categoryMark = def.categoryMark,
+                group = def.group,
+                enabled = def.enabled,
+                priority = def.priority,
+            }
+        end
         categories.definitions[catId] = nil
         for i, id in ipairs(categories.order) do
             if id == catId then
@@ -415,18 +426,27 @@ function CategoryManager:SyncEquipmentSetCategories()
     for catId in pairs(activeSetIds) do
         if not categories.definitions[catId] then
             local setName = catId:sub(10)
+            local saved = categories.savedEquipSetProps and categories.savedEquipSetProps[catId]
+            local restoredEnabled = true
+            if saved and saved.enabled ~= nil then
+                restoredEnabled = saved.enabled
+            end
             categories.definitions[catId] = {
                 name = setName,
                 icon = "Interface\\PaperDollInfoFrame\\PaperDollSidebarTabs",
-                group = "Main",
-                enabled = true,
+                group = saved and saved.group or "Main",
+                enabled = restoredEnabled,
                 isEquipSet = true,
                 isBuiltIn = false,
                 rules = {},
                 matchMode = "any",
-                priority = 95,
-                categoryMark = "Interface\\AddOns\\GudaBags\\Assets\\equipment.png",
+                priority = saved and saved.priority or 95,
+                categoryMark = saved and saved.categoryMark or "Interface\\AddOns\\GudaBags\\Assets\\equipment.png",
             }
+            -- Clean up saved props after restoring
+            if categories.savedEquipSetProps then
+                categories.savedEquipSetProps[catId] = nil
+            end
             -- Insert before Miscellaneous in order
             local insertIdx = #categories.order + 1
             for i, id in ipairs(categories.order) do
