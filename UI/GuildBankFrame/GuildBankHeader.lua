@@ -125,7 +125,12 @@ function GuildBankHeader:SetBackdropAlpha(alpha)
         frame:ClearAllPoints()
         frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
-        if frame.closeButton then frame.closeButton:SetSize(32, 32) end
+        if frame.closeButton then frame.closeButton:SetSize(22, 22) end
+        -- Raise header above blizzardBg's NineSlice on retail
+        local parent = frame:GetParent()
+        if parent.blizzardBg then
+            frame:SetFrameLevel(parent:GetFrameLevel() + 5)
+        end
     end
     Theme:ApplyHeaderButtons(
         frame,

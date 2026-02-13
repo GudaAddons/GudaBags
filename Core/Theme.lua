@@ -100,6 +100,13 @@ end
 -------------------------------------------------
 
 local blizzBgCount = 0
+-- How far to extend the NineSlice beyond the frame on each side (retail
+-- NineSlice border is ~8-10px wide; extending pushes border outward so
+-- content at PADDING=8 sits comfortably inside the visible border)
+local BLIZ_EXTEND_LEFT = 4
+local BLIZ_EXTEND_TOP = 1
+local BLIZ_EXTEND_RIGHT = 0
+local BLIZ_EXTEND_BOTTOM = 1
 
 --- Creates a hidden ButtonFrameTemplate child (once) to use as background
 local function EnsureBlizzardBg(frame)
@@ -109,7 +116,6 @@ local function EnsureBlizzardBg(frame)
     local name = "GudaBagsThemeBg" .. blizzBgCount
     local bliz = CreateFrame("Frame", name, frame, "ButtonFrameTemplate")
     bliz:EnableMouse(false)
-    bliz:SetAllPoints(frame)
     bliz:SetFrameLevel(frame:GetFrameLevel())
 
     -- Hide all ButtonFrameTemplate UI elements
@@ -138,7 +144,9 @@ function Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
     if useBlizzard then
         -- Blizzard theme: ButtonFrameTemplate child provides bg + border
         local bliz = EnsureBlizzardBg(frame)
-        bliz:SetFrameLevel(frame:GetFrameLevel())
+        local baseLvl = math.max(1, frame:GetFrameLevel() - 5)
+        bliz:SetFrameLevel(baseLvl)
+        bliz:SetAllPoints(frame)
         bliz:Show()
 
         -- Background texture
@@ -161,7 +169,7 @@ function Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
             bliz.TitleBg:SetAlpha(showBorders and bgAlpha or 0)
         end
 
-        -- Classic border pieces
+        -- Classic border pieces (stay at frame edges — works fine on Classic)
         for _, key in ipairs(classicBorderKeys) do
             if bliz[key] then
                 bliz[key]:SetShown(showBorders)
@@ -169,10 +177,19 @@ function Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
             end
         end
 
-        -- Retail NineSlice borders
+        -- Retail NineSlice: extend outward so the thick border wraps around
+        -- content instead of eating into the PADDING area. Hide center fill
+        -- since Bg handles the background.
         if bliz.NineSlice then
             bliz.NineSlice:SetShown(showBorders)
             bliz.NineSlice:SetAlpha(bgAlpha)
+            bliz.NineSlice:SetFrameLevel(baseLvl)
+            bliz.NineSlice:ClearAllPoints()
+            bliz.NineSlice:SetPoint("TOPLEFT", bliz, "TOPLEFT", -BLIZ_EXTEND_LEFT, BLIZ_EXTEND_TOP)
+            bliz.NineSlice:SetPoint("BOTTOMRIGHT", bliz, "BOTTOMRIGHT", BLIZ_EXTEND_RIGHT, -BLIZ_EXTEND_BOTTOM)
+            if bliz.NineSlice.Center then
+                bliz.NineSlice.Center:Hide()
+            end
         end
 
         -- Clear the main frame backdrop entirely
