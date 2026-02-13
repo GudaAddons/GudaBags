@@ -181,10 +181,8 @@ local function CreateBagFlyout(parent)
         edgeSize = 10,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    local fbBg = Theme:GetValue("footerButtonBg")
-    local fbBorder = Theme:GetValue("footerButtonBorder")
-    flyout:SetBackdropColor(fbBg[1], fbBg[2], fbBg[3], 0.95)
-    flyout:SetBackdropBorderColor(fbBorder[1], fbBorder[2], fbBorder[3], 1)
+    flyout:SetBackdropColor(0.12, 0.12, 0.12, 0.95)
+    flyout:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
 
     flyout.bagSlots = {}
 
