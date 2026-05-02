@@ -2067,9 +2067,18 @@ Events:Register("MAIL_CLOSED", RefreshForInteractionWindow, BagFrame)
 Events:Register("MERCHANT_SHOW", RefreshForInteractionWindow, BagFrame)
 Events:Register("MERCHANT_CLOSED", RefreshForInteractionWindow, BagFrame)
 
--- Auto-vendor gray items at merchant
+-- Auto-vendor items the category system classifies as "Junk".
+-- Asks CategoryManager for the resolved category (which respects user
+-- itemOverrides), so items the user manually moved to Junk get sold and items
+-- they moved out of Junk are preserved — independent of the item's quality.
 local function AutoVendorJunk()
     if not Database:GetSetting("autoVendorJunk") then return end
+
+    local CategoryManager = ns:GetModule("CategoryManager")
+    if not CategoryManager then return end
+
+    local BagScanner = ns:GetModule("BagScanner")
+    local cachedBags = BagScanner and BagScanner:GetCachedBags() or {}
 
     local totalPrice = 0
     local itemsSold = 0
@@ -2080,13 +2089,30 @@ local function AutoVendorJunk()
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-            if itemInfo and itemInfo.quality == 0 and not Database:IsItemLocked(itemInfo.itemID)
+            if itemInfo and not Database:IsItemLocked(itemInfo.itemID)
                 and not (autoLockSets and EquipSets and EquipSets:IsInSet(itemInfo.itemID)) then
-                local _, _, _, _, _, _, _, _, _, _, sellPrice = GetItemInfo(itemInfo.hyperlink)
-                if sellPrice and sellPrice > 0 then
-                    C_Container.UseContainerItem(bagID, slot)
-                    totalPrice = totalPrice + sellPrice * itemInfo.stackCount
-                    itemsSold = itemsSold + 1
+                -- Prefer the scanner's full itemData (rich fields for rule
+                -- evaluation); fall back to a minimal inline build if the
+                -- cache is missing or stale for this slot. itemOverrides
+                -- only need itemID, so the fallback is enough for the
+                -- user-assignment path even before the scanner catches up.
+                local cachedSlots = cachedBags[bagID] and cachedBags[bagID].slots
+                local itemData = cachedSlots and cachedSlots[slot]
+                if not itemData or itemData.itemID ~= itemInfo.itemID then
+                    itemData = {
+                        itemID = itemInfo.itemID,
+                        quality = itemInfo.quality,
+                        hyperlink = itemInfo.hyperlink,
+                    }
+                end
+
+                if CategoryManager:CategorizeItem(itemData, bagID, slot, false) == "Junk" then
+                    local _, _, _, _, _, _, _, _, _, _, sellPrice = GetItemInfo(itemInfo.hyperlink)
+                    if sellPrice and sellPrice > 0 then
+                        C_Container.UseContainerItem(bagID, slot)
+                        totalPrice = totalPrice + sellPrice * itemInfo.stackCount
+                        itemsSold = itemsSold + 1
+                    end
                 end
             end
         end
