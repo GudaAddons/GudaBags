@@ -102,6 +102,7 @@ UI\SearchBar.lua
 UI\Components\SearchBarToggle.lua
 UI\Components\SearchToggleButton.lua
 UI\Components\HeaderButtonVisibility.lua
+UI\Components\HeaderViewControls.lua
 UI\Header.lua
 UI\SettingsPopup.lua
 UI\CategoryEditor.lua

@@ -240,6 +240,10 @@ Constants.CATEGORY_FONT_SMALL = 9        -- Font size when icon size < threshold
 Constants.CATEGORY_FONT_LARGE = 10       -- Font size when icon size >= threshold
 Constants.CATEGORY_ICON_SIZE_THRESHOLD = 28
 
+-- Bag/bank view modes — single source of truth for the cycle order, the select
+-- options in SettingsSchema, and the default values below.
+Constants.VIEW_TYPES = { "single", "category", "split" }
+
 Constants.DEFAULTS = {
     -- General
     theme = "guda",

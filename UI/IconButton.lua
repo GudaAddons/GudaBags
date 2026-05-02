@@ -43,7 +43,7 @@ local ICONS = {
     },
     viewCycle = {
         texture = "Interface\\AddOns\\GudaBags\\Assets\\categories.png",
-        size = 14,
+        size = 16,
     },
     recent = {
         texture = "Interface\\AddOns\\GudaBags\\Assets\\fav.png",
