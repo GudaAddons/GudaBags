@@ -268,6 +268,8 @@ Constants.DEFAULTS = {
     showHeaderMail = true,
     showHeaderSort = true,
     showHeaderSearch = true,
+    showHeaderViewCycle = true,
+    showHeaderRecentToggle = false,
     goldTrackAllRealms = false,  -- Show gold from all realms in money tooltip (Retail only)
     bagViewType = "single",
     bankViewType = "single",
@@ -369,7 +371,7 @@ Constants.CATEGORY_UI = {
 
     -- Settings popup
     POPUP_WIDTH = 520,
-    POPUP_HEIGHT = 600,
+    POPUP_HEIGHT = 625,
     POPUP_PADDING = 16,
 
     -- Editor

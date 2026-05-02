@@ -288,6 +288,73 @@ local function CreateHeader(parent)
         lastRightButton = sortButton
     end
 
+    -- Layout cycle: rotates bagViewType through single → category → split.
+    local VIEW_ORDER = { "single", "category", "split" }
+    local function nextViewType(current)
+        for i, v in ipairs(VIEW_ORDER) do
+            if v == current then return VIEW_ORDER[(i % #VIEW_ORDER) + 1] end
+        end
+        return VIEW_ORDER[1]
+    end
+    local viewCycleButton = IconButton:Create(titleBar, "viewCycle", {
+        tooltip = L["TOOLTIP_VIEW_CYCLE"],
+        onClick = function()
+            local current = Database:GetSetting("bagViewType") or "single"
+            local nextType = nextViewType(current)
+            Database:SetSetting("bagViewType", nextType)
+            local Events = ns:GetModule("Events")
+            Events:Fire("SETTING_CHANGED", "bagViewType", nextType)
+        end,
+    })
+    -- Button frame is sized by theme (StyleButton in Theme.lua); shrink only the
+    -- visible glyph by re-anchoring the normal texture to a smaller centered region.
+    do
+        local tex = viewCycleButton:GetNormalTexture()
+        if tex then
+            tex:ClearAllPoints()
+            tex:SetPoint("CENTER")
+            tex:SetSize(13, 13)
+        end
+    end
+    viewCycleButton:SetPoint("RIGHT", lastRightButton, "LEFT", -4, 0)
+    titleBar.viewCycleButton = viewCycleButton
+    HeaderButtonVisibility:SetKey(viewCycleButton, "showHeaderViewCycle")
+    HeaderButtonVisibility:ApplyState(viewCycleButton)
+    lastRightButton = viewCycleButton
+
+    -- Recent toggle: enables/disables the built-in Recent category.
+    local function applyRecentVisualState(btn)
+        if not btn then return end
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if not CategoryManager then return end
+        local def = CategoryManager:GetCategory("Recent")
+        local enabled = def and def.enabled
+        local tex = btn:GetNormalTexture()
+        if tex then
+            tex:SetDesaturated(not enabled)
+            tex:SetAlpha(enabled and 1.0 or 0.5)
+        end
+    end
+    local recentToggleButton = IconButton:Create(titleBar, "recent", {
+        tooltip = L["TOOLTIP_RECENT_TOGGLE"],
+        onClick = function()
+            local CategoryManager = ns:GetModule("CategoryManager")
+            if CategoryManager then
+                CategoryManager:ToggleCategory("Recent")
+            end
+        end,
+    })
+    recentToggleButton:SetPoint("RIGHT", lastRightButton, "LEFT", -4, 0)
+    titleBar.recentToggleButton = recentToggleButton
+    HeaderButtonVisibility:SetKey(recentToggleButton, "showHeaderRecentToggle")
+    HeaderButtonVisibility:ApplyState(recentToggleButton)
+    applyRecentVisualState(recentToggleButton)
+    local Events = ns:GetModule("Events")
+    Events:Register("CATEGORIES_UPDATED", function()
+        applyRecentVisualState(recentToggleButton)
+    end, "Header.RecentToggle")
+    lastRightButton = recentToggleButton
+
     -- Search toggle button (shown when "Always Show Search Bar" is off)
     local searchButton = SearchToggleButton:Create(titleBar, {
         targetModule = "BagFrame",
@@ -359,13 +426,19 @@ function Header:SetBackdropAlpha(alpha)
         HeaderButtonVisibility:ApplyState(frame.envelopeButton)
     end
     HeaderButtonVisibility:ApplyState(frame.sortButton)
+    HeaderButtonVisibility:ApplyState(frame.viewCycleButton)
+    HeaderButtonVisibility:ApplyState(frame.recentToggleButton)
+    -- Recent toggle is only meaningful in category view; force-hide elsewhere.
+    if frame.recentToggleButton and (Database:GetSetting("bagViewType") or "single") ~= "category" then
+        frame.recentToggleButton:Hide()
+    end
     -- searchButton manages its own Show/Hide via SearchToggleButton's listener
 
     local leftButtons = HeaderButtonVisibility:Filter({
         frame.charactersButton, frame.chestButton, frame.guildButton, frame.envelopeButton
     })
     local rightButtons = HeaderButtonVisibility:Filter({
-        frame.settingsButton, frame.sortButton, frame.searchButton
+        frame.settingsButton, frame.sortButton, frame.viewCycleButton, frame.recentToggleButton, frame.searchButton
     })
 
     Theme:ApplyHeaderButtons(
@@ -380,6 +453,16 @@ end
 HeaderButtonVisibility:Watch(Header, function()
     if frame then Header:SetBackdropAlpha(lastAlpha) end
 end)
+
+-- Recent toggle is gated by bagViewType too — re-lay out when the view cycles.
+local Events = ns:GetModule("Events")
+Events:Register("SETTING_CHANGED", function(event, key)
+    if key == "bagViewType" then
+        C_Timer.After(0, function()
+            if frame then Header:SetBackdropAlpha(lastAlpha) end
+        end)
+    end
+end, "Header.ViewTypeWatch")
 
 function Header:SetViewingCharacter(fullName, charData)
     viewingCharacterData = charData

@@ -132,17 +132,21 @@ function SettingsSchema.GetLayout()
 
         { type = "separator", label = L["SETTINGS_SECTION_HEADER_BUTTONS"] },
         { type = "row", children = {
-            { type = "checkbox", key = "showHeaderCharacters", label = L["SETTINGS_SHOW_HEADER_CHARACTERS"] },
-            { type = "checkbox", key = "showHeaderBank", label = L["SETTINGS_SHOW_HEADER_BANK"] },
+            { type = "checkbox", key = "showHeaderCharacters", label = L["SETTINGS_SHOW_HEADER_CHARACTERS"], tooltip = L["SETTINGS_SHOW_HEADER_CHARACTERS_TIP"] },
+            { type = "checkbox", key = "showHeaderBank", label = L["SETTINGS_SHOW_HEADER_BANK"], tooltip = L["SETTINGS_SHOW_HEADER_BANK_TIP"] },
         }},
         { type = "row", children = {
-            { type = "checkbox", key = "showHeaderGuildBank", label = L["SETTINGS_SHOW_HEADER_GUILD_BANK"],
+            { type = "checkbox", key = "showHeaderGuildBank", label = L["SETTINGS_SHOW_HEADER_GUILD_BANK"], tooltip = L["SETTINGS_SHOW_HEADER_GUILD_BANK_TIP"],
               hidden = function() return not (ns.Constants.FEATURES and ns.Constants.FEATURES.GUILD_BANK) end },
-            { type = "checkbox", key = "showHeaderMail", label = L["SETTINGS_SHOW_HEADER_MAIL"] },
+            { type = "checkbox", key = "showHeaderMail", label = L["SETTINGS_SHOW_HEADER_MAIL"], tooltip = L["SETTINGS_SHOW_HEADER_MAIL_TIP"] },
         }},
         { type = "row", children = {
-            { type = "checkbox", key = "showHeaderSort", label = L["SETTINGS_SHOW_HEADER_SORT"] },
-            { type = "checkbox", key = "showHeaderSearch", label = L["SETTINGS_SHOW_HEADER_SEARCH"] },
+            { type = "checkbox", key = "showHeaderSort", label = L["SETTINGS_SHOW_HEADER_SORT"], tooltip = L["SETTINGS_SHOW_HEADER_SORT_TIP"] },
+            { type = "checkbox", key = "showHeaderSearch", label = L["SETTINGS_SHOW_HEADER_SEARCH"], tooltip = L["SETTINGS_SHOW_HEADER_SEARCH_TIP"] },
+        }},
+        { type = "row", children = {
+            { type = "checkbox", key = "showHeaderViewCycle", label = L["SETTINGS_SHOW_HEADER_VIEW_CYCLE"], tooltip = L["SETTINGS_SHOW_HEADER_VIEW_CYCLE_TIP"] },
+            { type = "checkbox", key = "showHeaderRecentToggle", label = L["SETTINGS_SHOW_HEADER_RECENT_TOGGLE"], tooltip = L["SETTINGS_SHOW_HEADER_RECENT_TOGGLE_TIP"] },
         }},
 
         { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },
