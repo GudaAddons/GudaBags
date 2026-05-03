@@ -11,6 +11,8 @@ local Database = ns:GetModule("Database")
 -- This is stored in character DB and persists across sessions
 local recentItems = nil  -- Lazy loaded from DB
 
+local JUNK_RULE = { type = "isJunk", value = true }
+
 -- Flag to indicate Recent items were removed (for triggering full refresh)
 local recentItemsRemoved = false
 
@@ -54,7 +56,7 @@ local function IsItemCurrentlyJunk(itemID)
     local itemData, bagID, slot = FindItemSlot(itemID)
     if not itemData then return false end
     local context = RuleEngine:BuildContext(bagID, slot, false)
-    return RuleEngine:Evaluate({ type = "isJunk", value = true }, itemData, context)
+    return RuleEngine:Evaluate(JUNK_RULE, itemData, context)
 end
 
 -- Get the recent duration from the Recent category rule (in seconds)
@@ -201,7 +203,7 @@ RuleEngine:RegisterEvaluator("isRecent", function(ruleValue, itemData, context)
     end
 
     if itemData and itemData.itemID
-       and RuleEngine:Evaluate({ type = "isJunk", value = true }, itemData, context) then
+       and RuleEngine:Evaluate(JUNK_RULE, itemData, context) then
         local items = GetRecentItems()
         if items[itemData.itemID] then
             items[itemData.itemID] = nil
