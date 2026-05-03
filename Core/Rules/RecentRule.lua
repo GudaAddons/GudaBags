@@ -33,6 +33,30 @@ local function SaveRecentItems()
     end
 end
 
+local function FindItemSlot(itemID)
+    local BagScanner = ns:GetModule("BagScanner")
+    if not BagScanner then return nil end
+    local bags = BagScanner:GetCachedBags()
+    if not bags then return nil end
+    for bagID, bagData in pairs(bags) do
+        if bagData.slots then
+            for slot, itemData in pairs(bagData.slots) do
+                if itemData and itemData.itemID == itemID then
+                    return itemData, bagID, slot
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function IsItemCurrentlyJunk(itemID)
+    local itemData, bagID, slot = FindItemSlot(itemID)
+    if not itemData then return false end
+    local context = RuleEngine:BuildContext(bagID, slot, false)
+    return RuleEngine:Evaluate({ type = "isJunk", value = true }, itemData, context)
+end
+
 -- Get the recent duration from the Recent category rule (in seconds)
 -- Falls back to 5 minutes if not configured
 local function GetRecentDuration()
@@ -94,6 +118,10 @@ local function MarkItemRecent(itemID)
         if categories.itemOverrides and categories.itemOverrides[itemID] then
             return  -- Item was manually assigned, don't mark as recent
         end
+    end
+
+    if IsItemCurrentlyJunk(itemID) then
+        return
     end
 
     local items = GetRecentItems()
@@ -169,6 +197,16 @@ end
 RuleEngine:RegisterEvaluator("isRecent", function(ruleValue, itemData, context)
     -- Can't track recent for other characters
     if context.isOtherChar then
+        return false
+    end
+
+    if itemData and itemData.itemID
+       and RuleEngine:Evaluate({ type = "isJunk", value = true }, itemData, context) then
+        local items = GetRecentItems()
+        if items[itemData.itemID] then
+            items[itemData.itemID] = nil
+            SaveRecentItems()
+        end
         return false
     end
 
