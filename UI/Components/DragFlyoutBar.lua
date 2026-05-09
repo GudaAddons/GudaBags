@@ -9,8 +9,8 @@ ns:RegisterModule("DragFlyoutBar", DragFlyoutBar)
 
 local BUTTON_SIZE = 36
 local BUTTON_SPACING = 6
-local BAR_PADDING = 6
-local BAR_GAP = 4
+local BAR_PADDING = 3
+local BAR_GAP = 2
 
 local TARGETS = { "track", "lock", "pin", "junk" }
 
