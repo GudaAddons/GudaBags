@@ -143,6 +143,50 @@ function BagFrame:HandleContainerDrop()
     ClearCursor()
 end
 
+-- Locate the cursor item's source slot by scanning for the locked slot.
+-- Returns bagID, slot, source ("bag"|"bank") or nil if not found.
+function BagFrame:GetCursorBagSlot()
+    -- Player bags
+    for bagID = 0, NUM_BAG_SLOTS do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for slot = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+            if itemInfo and itemInfo.isLocked then
+                return bagID, slot, "bag"
+            end
+        end
+    end
+
+    -- Bank slots
+    local bankBags = {}
+    if Constants.CHARACTER_BANK_TAB_IDS and #Constants.CHARACTER_BANK_TAB_IDS > 0 then
+        for _, tabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    end
+    if Constants.WARBAND_BANK_TAB_IDS and #Constants.WARBAND_BANK_TAB_IDS > 0 then
+        for _, tabID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+            table.insert(bankBags, tabID)
+        end
+    end
+    if #bankBags == 0 and Constants.BANK_BAG_IDS and #Constants.BANK_BAG_IDS > 0 then
+        for _, bagID in ipairs(Constants.BANK_BAG_IDS) do
+            table.insert(bankBags, bagID)
+        end
+    end
+    for _, bagID in ipairs(bankBags) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        if numSlots and numSlots > 0 then
+            for slot = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+                if itemInfo and itemInfo.isLocked then
+                    return bagID, slot, "bank"
+                end
+            end
+        end
+    end
+end
+
 -- Separate container for secure item buttons - NOT a child of the bag frame
 -- This prevents the bag frame from becoming protected
 local secureButtonContainer = nil
@@ -1060,6 +1104,10 @@ function BagFrame:Hide()
         if dragCheckTicker then
             dragCheckTicker:Cancel()
             dragCheckTicker = nil
+        end
+        local DragFlyoutBar = ns:GetModule("DragFlyoutBar")
+        if DragFlyoutBar then
+            DragFlyoutBar:OnDragEnd()
         end
     end
 end
@@ -1986,44 +2034,61 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
         ItemButton:UpdateLockForItem(bagID, slotID)
     end
 
-    -- Detect drag start for showing empty category drop targets
+    -- Detect drag start for showing the flyout drop bar (all views) and the
+    -- empty-category drop targets (category view only).
     -- Deferred by one frame to distinguish equip operations (cursor clears within
     -- the same frame) from actual user drags (cursor persists across frames).
     -- Without this, right-click equip triggers false drag detection because the
     -- WoW client briefly puts the item on the cursor during the internal swap,
     -- causing two full Refresh() calls that destroy ghost slots.
     if frame and frame:IsShown() and not viewingCharacter and not isDraggingItem then
-        local viewType = Database:GetSetting("bagViewType") or "single"
-        if viewType == "category" then
-            C_Timer.After(0, function()
-                if isDraggingItem then return end
-                if not frame or not frame:IsShown() then return end
-                if viewingCharacter then return end
-                -- Ignore lock events while the sort engine is moving items
-                local SortEngine = ns:GetModule("SortEngine")
-                if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then
-                    return
+        C_Timer.After(0, function()
+            if isDraggingItem then return end
+            if not frame or not frame:IsShown() then return end
+            if viewingCharacter then return end
+            -- Ignore lock events while the sort engine is moving items
+            local SortEngine = ns:GetModule("SortEngine")
+            if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then
+                return
+            end
+            local cursorType, cursorItemID = GetCursorInfo()
+            if cursorType == "item" then
+                isDraggingItem = true
+
+                local sourceBag, sourceSlot, source = BagFrame:GetCursorBagSlot()
+
+                local DragFlyoutBar = ns:GetModule("DragFlyoutBar")
+                if DragFlyoutBar then
+                    DragFlyoutBar:OnDragStart(cursorItemID, sourceBag, sourceSlot, source)
                 end
-                local cursorType = GetCursorInfo()
-                if cursorType == "item" then
-                    isDraggingItem = true
+
+                local viewType = Database:GetSetting("bagViewType") or "single"
+                if viewType == "category" then
                     BagFrame:Refresh()
-                    -- Poll for cursor clear (item dropped/cancelled)
-                    dragCheckTicker = C_Timer.NewTicker(0.1, function()
-                        if not CursorHasItem() then
-                            isDraggingItem = false
-                            if dragCheckTicker then
-                                dragCheckTicker:Cancel()
-                                dragCheckTicker = nil
-                            end
-                            if frame and frame:IsShown() then
+                end
+
+                -- Poll for cursor clear (item dropped/cancelled)
+                dragCheckTicker = C_Timer.NewTicker(0.1, function()
+                    if not CursorHasItem() then
+                        isDraggingItem = false
+                        if dragCheckTicker then
+                            dragCheckTicker:Cancel()
+                            dragCheckTicker = nil
+                        end
+                        local DragFlyoutBar = ns:GetModule("DragFlyoutBar")
+                        if DragFlyoutBar then
+                            DragFlyoutBar:OnDragEnd()
+                        end
+                        if frame and frame:IsShown() then
+                            local viewType = Database:GetSetting("bagViewType") or "single"
+                            if viewType == "category" then
                                 BagFrame:Refresh()
                             end
                         end
-                    end)
-                end
-            end)
-        end
+                    end
+                end)
+            end
+        end)
     end
 end, BagFrame)
 
