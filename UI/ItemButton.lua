@@ -357,6 +357,14 @@ local function IsJunkItem(itemData)
     -- (GetItemInfo hasn't cached yet — name defaults to "")
     if not itemData.name or itemData.name == "" then return false end
 
+    -- User-marked junk overrides quality and profession-tool protection.
+    if itemData.itemID then
+        local Database = ns:GetModule("Database")
+        if Database and Database:IsItemMarkedJunk(itemData.itemID) then
+            return true
+        end
+    end
+
     -- Profession tools are never junk
     if IsTool(itemData.name) then
         return false

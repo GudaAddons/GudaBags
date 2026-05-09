@@ -552,6 +552,17 @@ L["PROFILE_RESET_DEFAULTS"] = "Reset Defaults"
 L["PROFILE_RESET_CONFIRM"] = "Reset all settings to defaults? This cannot be undone."
 L["PROFILE_RESET_MSG"] = "Settings reset to defaults"
 
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Track this item"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Untrack this item"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Lock this item"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Unlock this item"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Pin this slot"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Unpin this slot"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Mark as junk"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Unmark as junk"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Will be auto-sold at vendor"
+
 -------------------------------------------------
 -- Other Languages (placeholders for translators)
 -------------------------------------------------
@@ -933,6 +944,17 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Épinglez un emplacement pour le protéger du tri.
 Les emplacements épinglés sont |cff00ccccignorés|r lors du tri.
 L'épingle reste sur l'emplacement, pas sur l'objet.
 Une icône d'épingle apparaît en bas à gauche.]]
+
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Suivre cet objet"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Ne plus suivre cet objet"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Verrouiller cet objet"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Déverrouiller cet objet"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Épingler cet emplacement"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Désépingler cet emplacement"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Marquer comme camelote"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Démarquer la camelote"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Sera vendu automatiquement chez le marchand"
 
 -- German
 local L = Locales.deDE
@@ -1368,6 +1390,17 @@ Die Nadel bleibt am Platz, nicht am Gegenstand.
 Ein Nadel-Symbol erscheint unten links.]]
 --@localization(locale="deDE", format="lua_additive_table")@
 
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Diesen Gegenstand verfolgen"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Verfolgung beenden"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Gegenstand sperren"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Gegenstand entsperren"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Platz anheften"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Platz lösen"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Als Müll markieren"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Müll-Markierung entfernen"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Wird beim Händler automatisch verkauft"
+
 -- Russian
 local L = Locales.ruRU
 L["ADDON_LOADED"] = "v%s загружен. Введите /guda для открытия."
@@ -1743,6 +1776,17 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Закрепите ячейку сумки, что�
 Закреплённые ячейки |cff00ccccпропускаются|r при сортировке.
 Закрепление остаётся на ячейке, а не на предмете.
 Значок булавки появляется слева внизу.]]
+
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Отслеживать предмет"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Прекратить отслеживание"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Заблокировать предмет"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Разблокировать предмет"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Закрепить ячейку"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Открепить ячейку"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Отметить как хлам"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Снять метку хлама"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Будет автоматически продано у торговца"
 
 -- Brazilian Portuguese
 local L = Locales.ptBR
@@ -2120,6 +2164,17 @@ Slots fixados são |cff00ccccignorados|r durante a ordenação.
 A fixação fica no slot, não no item.
 Um ícone de pino aparece no canto inferior esquerdo.]]
 
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Rastrear este item"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Parar de rastrear este item"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Bloquear este item"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Desbloquear este item"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Fixar este slot"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Desafixar este slot"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Marcar como lixo"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Desmarcar como lixo"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Será vendido automaticamente no vendedor"
+
 -- Spanish (Spain)
 local L = Locales.esES
 L["ADDON_LOADED"] = "v%s cargado. Escribe /guda para abrir."
@@ -2495,6 +2550,17 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Fija una ranura de bolsa para protegerla al ordenar
 Las ranuras fijadas se |cff00ccccignoran|r al ordenar.
 La fijación queda en la ranura, no en el objeto.
 Un icono de pin aparece en la esquina inferior izquierda.]]
+
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Seguir este objeto"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Dejar de seguir este objeto"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Bloquear este objeto"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Desbloquear este objeto"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Fijar esta ranura"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Soltar esta ranura"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Marcar como basura"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Quitar marca de basura"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Se venderá automáticamente al vendedor"
 
 -- Spanish (Mexico) - Uses esES translations
 local L = Locales.esMX
@@ -2880,6 +2946,17 @@ L["GUIDE_PIN_SLOT_DESC"] = [[釘選背包欄位以保護其不被排序。
 釘選綁定在欄位上，不跟隨物品。
 釘選圖示顯示在左下角。]]
 
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "追蹤此物品"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "取消追蹤此物品"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "鎖定此物品"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "解鎖此物品"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "釘選此欄位"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "取消釘選此欄位"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "標記為垃圾"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "取消標記為垃圾"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "將自動售予商人"
+
 -- Simplified Chinese
 local L = Locales.zhCN
 L["ADDON_LOADED"] = "v%s 已加载。输入 /guda 打开。"
@@ -3257,6 +3334,17 @@ L["GUIDE_PIN_SLOT_DESC"] = [[钉选背包栏位以保护其不被排序。
 钉选绑定在栏位上，不跟随物品。
 钉选图标显示在左下角。]]
 
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "追踪此物品"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "取消追踪此物品"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "锁定此物品"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "解锁此物品"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "钉选此栏位"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "取消钉选此栏位"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "标记为垃圾"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "取消标记为垃圾"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "将自动售给商人"
+
 -- Korean
 local L = Locales.koKR
 L["SETTINGS_GENERAL_DESCRIPTION"] = "GudaBags는 가벼운 가방 애드온입니다. 기능과 팁은 |cffffd100가이드|r 탭을 확인하세요."
@@ -3570,6 +3658,17 @@ L["GUIDE_PIN_SLOT_DESC"] = [[가방 슬롯을 고정하여 정렬에서 보호�
 고정은 슬롯에 유지되며, 아이템을 따라가지 않습니다.
 핀 아이콘이 왼쪽 하단에 표시됩니다.]]
 
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "이 아이템 추적"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "추적 해제"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "아이템 잠금"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "아이템 잠금 해제"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "이 슬롯 고정"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "고정 해제"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "쓰레기로 표시"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "쓰레기 표시 해제"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "상인에게 자동 판매됩니다"
+
 -- Italian
 local L = Locales.itIT
 L["SETTINGS_GENERAL_DESCRIPTION"] = "GudaBags è un addon per borse leggero. Controlla la scheda |cffffd100Guida|r per funzionalità e suggerimenti."
@@ -3882,3 +3981,14 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Fissa uno slot borsa per proteggerlo dall'ordinamen
 Gli slot fissati vengono |cff00ccccignora|r durante l'ordinamento.
 La fissatura resta sullo slot, non sull'oggetto.
 Un'icona puntina appare in basso a sinistra.]]
+
+-- Drag-Flyout Drop Targets
+L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Traccia questo oggetto"
+L["TOOLTIP_FLYOUT_TRACK_ON"] = "Smetti di tracciare"
+L["TOOLTIP_FLYOUT_LOCK_OFF"] = "Blocca oggetto"
+L["TOOLTIP_FLYOUT_LOCK_ON"] = "Sblocca oggetto"
+L["TOOLTIP_FLYOUT_PIN_OFF"] = "Fissa questo slot"
+L["TOOLTIP_FLYOUT_PIN_ON"] = "Sblocca questo slot"
+L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Segna come spazzatura"
+L["TOOLTIP_FLYOUT_JUNK_ON"] = "Rimuovi marchio spazzatura"
+L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Sarà venduto automaticamente al mercante"
