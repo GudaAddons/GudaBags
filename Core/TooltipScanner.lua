@@ -238,3 +238,58 @@ function TooltipScanner:HasSpecialProperties(bagID, slotID)
 
     return self:HasText({"Use:", "Equip:", "Chance on hit"})
 end
+
+-------------------------------------------------
+-- Charges (Wizard Oil, Sharpening Stones, etc.)
+-------------------------------------------------
+
+-- Per-slot cache: charges depend on slot state (uses deplete a charge), not on the link.
+-- Value = number (charges remaining), false (scanned, no charges), nil (not scanned yet)
+local chargesCache = {}
+
+function TooltipScanner:GetCharges(bagID, slotID)
+    if not bagID or not slotID then return nil end
+    local key = bagID * 1000 + slotID
+    local cached = chargesCache[key]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached
+    end
+
+    if not self:SetBagItem(bagID, slotID) then
+        return nil  -- tooltip not ready; don't poison cache
+    end
+
+    local charges = nil
+    self:ScanLines(function(lineNum, text)
+        local _, _, num = string.find(text:lower(), "^(%d+) charges?$")
+        if num then
+            charges = tonumber(num)
+            return true
+        end
+    end, 10)
+
+    chargesCache[key] = charges or false
+    return charges
+end
+
+function TooltipScanner:InvalidateCharges(bagID)
+    if bagID then
+        local lo = bagID * 1000
+        local hi = lo + 999
+        for key in pairs(chargesCache) do
+            if key >= lo and key <= hi then
+                chargesCache[key] = nil
+            end
+        end
+    else
+        chargesCache = {}
+    end
+end
+
+local Events = ns:GetModule("Events")
+if Events then
+    Events:Register("BAG_UPDATE", function(event, bagID)
+        TooltipScanner:InvalidateCharges(bagID)
+    end, "TooltipScanner_Charges")
+end

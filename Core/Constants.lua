@@ -309,6 +309,7 @@ Constants.DEFAULTS = {
     markEquipmentSets = true,
     autoLockSetItems = true,  -- Prevent selling/deleting equipment set items
     showItemLevel = true,
+    showCharges = true,
     reverseStackSort = false,
     sortRightToLeft = false,
     smoothSort = false,  -- Spread sort moves across frames to avoid stuttering

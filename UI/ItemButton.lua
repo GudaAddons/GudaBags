@@ -301,6 +301,7 @@ local function ResetButton(pool, button)
     if button.equipSetIcon then button.equipSetIcon:Hide() end
     if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
     if button.itemLevelText then button.itemLevelText:Hide() end
+    if button.chargesText then button.chargesText:Hide() end
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.craftingQualityIcon then button.craftingQualityIcon:Hide() end
@@ -325,6 +326,9 @@ local function ApplyFontSize(button, fontSize)
     end
     if button.itemLevelText then
         button.itemLevelText:SetFont(Constants.FONTS.DEFAULT, fontSize, "OUTLINE")
+    end
+    if button.chargesText then
+        button.chargesText:SetFont(Constants.FONTS.DEFAULT, fontSize, "OUTLINE")
     end
 end
 
@@ -749,6 +753,15 @@ local function CreateButton(parent)
     itemLevelText:SetJustifyH("LEFT")
     itemLevelText:Hide()
     button.itemLevelText = itemLevelText
+
+    -- Charges text (bottom-right corner, e.g. "x5" for Wizard Oil)
+    local chargesText = button:CreateFontString(nil, "OVERLAY", nil)
+    chargesText:SetFont(Constants.FONTS.DEFAULT, 12, "OUTLINE")
+    chargesText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
+    chargesText:SetJustifyH("RIGHT")
+    chargesText:SetTextColor(1, 0.82, 0)
+    chargesText:Hide()
+    button.chargesText = chargesText
 
     -- Quest starter icon (top left corner) - exclamation mark for quest starter items
     -- Use a frame container to ensure it draws above the border
@@ -1463,6 +1476,7 @@ local function GetCachedSettings()
             markUnusableItems = Database:GetSetting("markUnusableItems"),
             markEquipmentSets = Database:GetSetting("markEquipmentSets"),
             showItemLevel = Database:GetSetting("showItemLevel"),
+            showCharges = Database:GetSetting("showCharges"),
         }
         cachedSettingsFrame = currentFrame
     end
@@ -1599,6 +1613,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.junkOverlay:Hide()
         button.lockOverlay:Hide()
         if button.itemLevelText then button.itemLevelText:Hide() end
+        if button.chargesText then button.chargesText:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Mark this button as empty slot handler
@@ -1631,6 +1646,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.junkOverlay:Hide()
         button.lockOverlay:Hide()
         if button.itemLevelText then button.itemLevelText:Hide() end
+        if button.chargesText then button.chargesText:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Animated glow border
@@ -1866,6 +1882,23 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
+        -- Charges display (Wizard Oil, Sharpening Stones, etc.)
+        if button.chargesText then
+            local charges = nil
+            if settings.showCharges and not isReadOnly then
+                local TooltipScanner = ns:GetModule("TooltipScanner")
+                if TooltipScanner then
+                    charges = TooltipScanner:GetCharges(itemData.bagID, itemData.slot)
+                end
+            end
+            if charges and charges > 0 then
+                button.chargesText:SetText("x" .. charges)
+                button.chargesText:Show()
+            else
+                button.chargesText:Hide()
+            end
+        end
+
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
 
@@ -1910,6 +1943,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         if button.itemLevelText then
             button.itemLevelText:Hide()
+        end
+        if button.chargesText then
+            button.chargesText:Hide()
         end
         if button.userLockIcon then
             button.userLockIcon:Hide()
@@ -2064,6 +2100,9 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     end
     if button.itemLevelText then
         button.itemLevelText:Hide()
+    end
+    if button.chargesText then
+        button.chargesText:Hide()
     end
     if button.userLockIcon then
         button.userLockIcon:Hide()
@@ -2396,7 +2435,7 @@ if Events then
             or key == "grayoutJunk" or key == "equipmentBorders"
             or key == "otherBorders" or key == "markUnusableItems"
             or key == "markEquipmentSets"
-            or key == "showItemLevel" then
+            or key == "showItemLevel" or key == "showCharges" then
             ItemButton:InvalidateSettingsCache()
         end
     end, ItemButton)

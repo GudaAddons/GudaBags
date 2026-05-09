@@ -191,6 +191,11 @@ function SettingsSchema.GetIcons()
             { type = "checkbox", key = "markEquipmentSets", label = L["SETTINGS_MARK_EQUIP_SETS"], tooltip = L["SETTINGS_MARK_EQUIP_SETS_TIP"] },
             { type = "checkbox", key = "autoLockSetItems", label = L["SETTINGS_AUTO_LOCK_SET_ITEMS"], tooltip = L["SETTINGS_AUTO_LOCK_SET_ITEMS_TIP"] },
         }},
+
+        -- Row 5 - Charges
+        { type = "row", children = {
+            { type = "checkbox", key = "showCharges", label = L["SETTINGS_SHOW_CHARGES"], tooltip = L["SETTINGS_SHOW_CHARGES_TIP"] },
+        }},
     }
 end
 
