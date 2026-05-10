@@ -35,6 +35,9 @@ local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-speci
 local cachedItemData = {} -- Key: "bagID:slot" -> previous itemID (for comparison)
 local cachedItemCount = {} -- Key: "bagID:slot" -> previous count (for stack updates)
 local cachedItemCategory = {} -- Key: "bagID:slot" -> previous categoryId (for category view)
+-- cachedItemCharges values: number (charges remaining), false (scanned, no charges), nil (unknown)
+-- The `false` sentinel lets reused-button refresh skip GetCharges for non-charge items.
+local cachedItemCharges = {} -- Key: "bagID:slot" -> previous charges value
 local layoutCached = false -- True when layout is cached and can do incremental updates
 
 -- Category View: Item-key-based button tracking for efficient reuse
@@ -82,6 +85,55 @@ local function TableCount(tbl)
         count = count + 1
     end
     return count
+end
+
+-- Lazily resolved (TooltipScanner registers its module at file load; ns:GetModule
+-- once per addon load is fine, but we cache it to avoid repeated lookups in
+-- per-button hot paths).
+local _tooltipScannerCached
+local function GetTooltipScanner()
+    if _tooltipScannerCached == nil then
+        _tooltipScannerCached = ns:GetModule("TooltipScanner") or false
+    end
+    return _tooltipScannerCached or nil
+end
+
+-- Populate cachedItemCharges for a slot whose button was just (re)rendered via
+-- ItemButton:SetItem. Stores number, false (scanned/no charges), or nil (cleared).
+local function CacheChargesForSlot(slotKey, bagID, slot)
+    if not Database:GetSetting("showCharges") then
+        cachedItemCharges[slotKey] = nil
+        return
+    end
+    local TS = GetTooltipScanner()
+    if not TS then
+        cachedItemCharges[slotKey] = nil
+        return
+    end
+    cachedItemCharges[slotKey] = TS:GetCharges(bagID, slot) or false
+end
+
+-- Refresh the chargesText overlay on a button whose item didn't change identity
+-- but may have had its charge count decrement (Wizard Oil, Sharpening Stone, etc.).
+-- Short-circuits if the slot is known to have no charges, so this is free for
+-- non-charge items in dirty bags.
+local function RefreshChargesForReusedButton(button, bagID, slot, slotKey)
+    local cachedCharges = cachedItemCharges[slotKey]
+    if cachedCharges == false then return end
+    if not Database:GetSetting("showCharges") then return end
+    local TS = GetTooltipScanner()
+    if not TS then return end
+    local newCharges = TS:GetCharges(bagID, slot) or false
+    if newCharges == cachedCharges then return end
+    cachedItemCharges[slotKey] = newCharges
+    if button.chargesText then
+        if type(newCharges) == "number" and newCharges > 0 then
+            button.chargesText:SetText("x" .. newCharges)
+            button.chargesText:Show()
+        else
+            button.chargesText:Hide()
+        end
+    end
 end
 
 -- Forward declarations
@@ -416,6 +468,7 @@ function BagFrame:Refresh()
     buttonsByBag = {}
     cachedItemData = {}
     cachedItemCount = {}
+    cachedItemCharges = {}
     cachedItemCategory = {}
     -- Note: buttonsByItemKey preserved for category view reuse (unless view type changed)
     buttonPositions = {}
@@ -567,6 +620,7 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isVie
             -- Cache item data for incremental updates
             cachedItemData[slotKey] = slotInfo.itemData.itemID
             cachedItemCount[slotKey] = slotInfo.itemData.count
+            CacheChargesForSlot(slotKey, slotInfo.bagID, slotInfo.slot)
         else
             ItemButton:SetEmpty(button, slotInfo.bagID, slotInfo.slot, iconSize, isViewingCached)
             if hasSearch then
@@ -576,6 +630,7 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isVie
             end
             cachedItemData[slotKey] = nil
             cachedItemCount[slotKey] = nil
+            cachedItemCharges[slotKey] = nil
         end
 
         -- Position the wrapper frame
@@ -657,6 +712,7 @@ function BagFrame:RefreshSplitView(bags, bagsToShow, settings, hasSearch, isView
                 end
                 cachedItemData[slotKey] = itemData.itemID
                 cachedItemCount[slotKey] = itemData.count
+                CacheChargesForSlot(slotKey, bagID, slot)
             else
                 ItemButton:SetEmpty(button, bagID, slot, iconSize, isViewingCached)
                 if hasSearch then
@@ -666,6 +722,7 @@ function BagFrame:RefreshSplitView(bags, bagsToShow, settings, hasSearch, isView
                 end
                 cachedItemData[slotKey] = nil
                 cachedItemCount[slotKey] = nil
+                cachedItemCharges[slotKey] = nil
             end
 
             local col = (slot - 1) % sectionColumns
@@ -753,6 +810,7 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
     buttonsByBag = {}
     cachedItemData = {}
     cachedItemCount = {}
+    cachedItemCharges = {}
     cachedItemCategory = {}
     buttonsByItemKey = {}
     buttonPositions = {}
@@ -960,6 +1018,7 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
             cachedItemData[slotKey] = itemData.itemID
             cachedItemCount[slotKey] = itemData.count
             cachedItemCategory[slotKey] = itemInfo.categoryId
+            CacheChargesForSlot(slotKey, itemData.bagID, itemData.slot)
 
             -- Store by bagID for fast bag-specific lookups
             local bagID = itemData.bagID
@@ -1100,6 +1159,7 @@ function BagFrame:Hide()
         buttonsByBag = {}
         cachedItemData = {}
         cachedItemCount = {}
+        cachedItemCharges = {}
         cachedItemCategory = {}
         -- Category view item-key tracking
         buttonsByItemKey = {}
@@ -1473,6 +1533,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             ItemButton:SetEmpty(button, bID, sID, iconSize, false)
                             cachedItemData[slotKey] = nil
                             cachedItemCount[slotKey] = nil
+                            cachedItemCharges[slotKey] = nil
                         end
                     end
                 end
@@ -1490,6 +1551,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                                     ItemButton:SetEmpty(button, bID, sID, iconSize, false)
                                     cachedItemData[slotKey] = nil
                                     cachedItemCount[slotKey] = nil
+                                    cachedItemCharges[slotKey] = nil
                                 end
                                 break
                             end
@@ -1540,6 +1602,9 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                         cachedItemCount[slotKey] = newItemData.count
                         countUpdates = countUpdates + 1
                     end
+                    -- Item identity unchanged but charges may have decremented
+                    -- (Wizard Oil, Sharpening Stone, scrolls, etc.)
+                    RefreshChargesForReusedButton(button, newItemData.bagID, newItemData.slot, slotKey)
                     buttonsReused = buttonsReused + 1
                 elseif oldItemID == nil then
                     -- Ghost slot getting an item back - update it
@@ -1547,6 +1612,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     cachedItemData[slotKey] = newItemID
                     cachedItemCount[slotKey] = newItemData.count
                     cachedItemCategory[slotKey] = currentSlot.category
+                    CacheChargesForSlot(slotKey, newItemData.bagID, newItemData.slot)
                     ghostsReused = ghostsReused + 1
 
                     if hasSearch then
@@ -1560,6 +1626,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     cachedItemData[slotKey] = newItemID
                     cachedItemCount[slotKey] = newItemData.count
                     cachedItemCategory[slotKey] = currentSlot.category
+                    CacheChargesForSlot(slotKey, newItemData.bagID, newItemData.slot)
                     buttonsUpdated = buttonsUpdated + 1
 
                     if hasSearch then
@@ -1580,6 +1647,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                         ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
                         cachedItemData[slotKey] = nil
                         cachedItemCount[slotKey] = nil
+                        cachedItemCharges[slotKey] = nil
                         if hasSearch then
                             ItemButton:SetSearchState(button, false)
                         else
@@ -1608,6 +1676,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                                 ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
                                 cachedItemData[slotKey] = nil
                                 cachedItemCount[slotKey] = nil
+                                cachedItemCharges[slotKey] = nil
                                 if hasSearch then
                                     ItemButton:SetSearchState(button, false)
                                 else
@@ -1649,6 +1718,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                         ItemButton:SetItem(button, newItemData, iconSize, false)
                         cachedItemData[slotKey] = newItemID
                         cachedItemCount[slotKey] = newItemData.count
+                        CacheChargesForSlot(slotKey, bagID, slot)
                         if hasSearch then
                             ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newItemData))
                         else
@@ -1658,6 +1728,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                         ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
                         cachedItemData[slotKey] = nil
                         cachedItemCount[slotKey] = nil
+                        cachedItemCharges[slotKey] = nil
                         if hasSearch then
                             ItemButton:SetSearchState(button, false)
                         else
@@ -1671,6 +1742,8 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                         SetItemButtonCount(button, newItemData.count)
                         cachedItemCount[slotKey] = newItemData.count
                     end
+                    -- Item identity unchanged but charges may have decremented
+                    RefreshChargesForReusedButton(button, bagID, slot, slotKey)
                 end
             end
         end
@@ -1692,6 +1765,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             ItemButton:SetItem(button, newItemData, iconSize, false)
                             cachedItemData[slotKey] = newItemID
                             cachedItemCount[slotKey] = newItemData.count
+                            CacheChargesForSlot(slotKey, bagID, slot)
                             if hasSearch then
                                 ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newItemData))
                             else
@@ -1701,6 +1775,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
                             cachedItemData[slotKey] = nil
                             cachedItemCount[slotKey] = nil
+                            cachedItemCharges[slotKey] = nil
                             if hasSearch then
                                 ItemButton:SetSearchState(button, false)
                             else
@@ -1714,6 +1789,8 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             SetItemButtonCount(button, newItemData.count)
                             cachedItemCount[slotKey] = newItemData.count
                         end
+                        -- Item identity unchanged but charges may have decremented
+                        RefreshChargesForReusedButton(button, bagID, slot, slotKey)
                     end
                 end
             end
@@ -1725,6 +1802,41 @@ function BagFrame:IncrementalUpdate(dirtyBags)
     local totalSlots, freeSlots = BagScanner:GetTotalSlots()
     Footer:UpdateSlotInfo(totalSlots - freeSlots, totalSlots, regularTotal, regularFree, specialBags)
     Footer:Update()
+end
+
+-- Targeted charges-only refresh — walks already-rendered buttons and updates
+-- chargesText for any slot whose charges differ from cache. Skips slots known
+-- to have no charges (cache value `false`), so this is free for non-charge items.
+-- Triggered by UNIT_SPELLCAST_SUCCEEDED for actions like applying Wizard Oil
+-- where BAG_UPDATE may not fire reliably for charge-only state changes.
+function BagFrame:RefreshChargesOnly()
+    if not frame or not frame:IsShown() then return end
+    if viewingCharacter then return end
+    if not Database:GetSetting("showCharges") then return end
+    local TS = GetTooltipScanner()
+    if not TS then return end
+
+    for slotKey, button in pairs(buttonsBySlot) do
+        if not button.isEmptySlotButton and button.itemData and button.itemData.bagID then
+            local cachedCharges = cachedItemCharges[slotKey]
+            if cachedCharges ~= false then
+                local bagID = button.itemData.bagID
+                local slot = button.itemData.slot
+                local newCharges = TS:GetCharges(bagID, slot) or false
+                if newCharges ~= cachedCharges then
+                    cachedItemCharges[slotKey] = newCharges
+                    if button.chargesText then
+                        if type(newCharges) == "number" and newCharges > 0 then
+                            button.chargesText:SetText("x" .. newCharges)
+                            button.chargesText:Show()
+                        else
+                            button.chargesText:Hide()
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 -- dirtyBags: table of {bagID = true} for bags that were updated
@@ -1990,6 +2102,7 @@ function BagFrame:RestackAndClean()
                     buttonsByBag = {}
                     cachedItemData = {}
                     cachedItemCount = {}
+                    cachedItemCharges = {}
                     cachedItemCategory = {}
                     buttonsByItemKey = {}
                     buttonPositions = {}
@@ -2025,6 +2138,7 @@ function BagFrame:Clean()
     buttonsByBag = {}
     cachedItemData = {}
     cachedItemCount = {}
+    cachedItemCharges = {}
     cachedItemCategory = {}
     buttonsByItemKey = {}
     buttonPositions = {}
@@ -2094,6 +2208,19 @@ Events:Register("PLAYER_MONEY", function()
         Footer:UpdateMoney()
         Database:SaveMoney(GetMoney())
     end
+end, BagFrame)
+
+-- Refresh charge counters after the player casts something. Applying Wizard
+-- Oil, Sharpening Stones, scrolls, etc. fires UNIT_SPELLCAST_SUCCEEDED but
+-- does not always fire BAG_UPDATE for the charge-only state change. The 50ms
+-- delay lets the local item record settle before the tooltip is re-scanned.
+Events:Register("UNIT_SPELLCAST_SUCCEEDED", function(event, unit)
+    if unit ~= "player" then return end
+    if not frame or not frame:IsShown() then return end
+    if viewingCharacter then return end
+    C_Timer.After(0.05, function()
+        BagFrame:RefreshChargesOnly()
+    end)
 end, BagFrame)
 
 -- Update item lock state (when picking up/putting down items)

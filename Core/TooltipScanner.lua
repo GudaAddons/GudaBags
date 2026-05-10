@@ -303,4 +303,12 @@ if Events then
     Events:Register("BAG_UPDATE", function(event, bagID)
         TooltipScanner:InvalidateCharges(bagID)
     end, "TooltipScanner_Charges")
+
+    -- Applying oils, sharpening stones, scrolls, etc. fires UNIT_SPELLCAST_SUCCEEDED
+    -- but does NOT reliably fire BAG_UPDATE in Classic — the slot's itemID and
+    -- stackCount are unchanged, only the embedded charge count decremented.
+    Events:Register("UNIT_SPELLCAST_SUCCEEDED", function(event, unit)
+        if unit ~= "player" then return end
+        TooltipScanner:InvalidateCharges()
+    end, "TooltipScanner_Charges_Cast")
 end
