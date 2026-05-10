@@ -44,6 +44,89 @@ local currentSlot = nil
 local UpdateButtonState
 
 -------------------------------------------------
+-- Orbit-streak glow (matches search match animation in ItemButton.lua)
+-------------------------------------------------
+
+local STREAK_COUNT     = 4
+local STREAK_PERIOD    = 3.2
+local STREAK_SIZE      = 4
+local TRAIL_PER_STREAK = 2
+local TRAIL_PHASE_STEP = 0.035
+local ORBIT_INSET      = 7
+local ROUND_MASK       = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+
+local function UpdateOrbitStreaks(glow, elapsed)
+    glow.orbitPhase = ((glow.orbitPhase or 0) + elapsed / STREAK_PERIOD) % 1
+    local fw, fh = glow:GetSize()
+    local w, h = fw - 2 * ORBIT_INSET, fh - 2 * ORBIT_INSET
+    if w <= 0 or h <= 0 then return end
+    local perim = 2 * (w + h)
+    local phase = glow.orbitPhase
+    for _, streak in ipairs(glow.streaks) do
+        local p = (phase + streak.phaseOffset) % 1
+        local d = p * perim
+        local x, y
+        if d < w then
+            x, y = d, 0
+        elseif d < w + h then
+            x, y = w, -(d - w)
+        elseif d < 2 * w + h then
+            x, y = w - (d - w - h), -h
+        else
+            x, y = 0, -(perim - d)
+        end
+        streak:SetPoint("CENTER", glow, "TOPLEFT", ORBIT_INSET + x, -ORBIT_INSET + y)
+    end
+end
+
+local function CreateOrbitGlow(button)
+    local glow = CreateFrame("Frame", nil, button, "BackdropTemplate")
+    glow:SetPoint("TOPLEFT", button, "TOPLEFT", -3, 3)
+    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 3, -3)
+    glow:SetFrameLevel(button:GetFrameLevel() + 10)
+
+    glow:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 10,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    glow:SetBackdropBorderColor(1.0, 0.85, 0.2, 0.95)
+
+    glow.streaks = {}
+    for i = 1, STREAK_COUNT do
+        local basePhase = (i - 1) / STREAK_COUNT
+
+        local primary = glow:CreateTexture(nil, "OVERLAY")
+        primary:SetSize(STREAK_SIZE, STREAK_SIZE)
+        primary:SetTexture("Interface\\Buttons\\WHITE8x8")
+        if primary.SetMask then primary:SetMask(ROUND_MASK) end
+        primary:SetVertexColor(1.0, 0.95, 0.45, 1.0)
+        primary:SetBlendMode("ADD")
+        primary:SetPoint("CENTER", glow, "TOPLEFT", 0, 0)
+        primary.phaseOffset = basePhase
+        glow.streaks[#glow.streaks + 1] = primary
+
+        for t = 1, TRAIL_PER_STREAK do
+            local trail = glow:CreateTexture(nil, "OVERLAY")
+            local size = math.max(2, STREAK_SIZE - t)
+            trail:SetSize(size, size)
+            trail:SetTexture("Interface\\Buttons\\WHITE8x8")
+            if trail.SetMask then trail:SetMask(ROUND_MASK) end
+            trail:SetVertexColor(1.0, 0.85, 0.2, 1.0)
+            trail:SetBlendMode("ADD")
+            trail:SetAlpha(0.65 - t * 0.18)
+            trail:SetPoint("CENTER", glow, "TOPLEFT", 0, 0)
+            trail.phaseOffset = (basePhase - t * TRAIL_PHASE_STEP) % 1
+            glow.streaks[#glow.streaks + 1] = trail
+        end
+    end
+
+    glow:SetScript("OnUpdate", UpdateOrbitStreaks)
+    glow:SetScript("OnShow", function(self) self.orbitPhase = 0 end)
+    return glow
+end
+
+-------------------------------------------------
 -- Tooltip helpers (state-aware, reads cursor item state)
 -------------------------------------------------
 
@@ -140,6 +223,7 @@ local function CreateButton(targetType, index)
     end)
 
     btn.targetType = targetType
+    btn.orbitGlow = CreateOrbitGlow(btn)
     return btn
 end
 
@@ -153,6 +237,7 @@ local function CreateBar()
     bar:SetSize(barWidth, barHeight)
     bar:SetFrameStrata("FULLSCREEN_DIALOG")
     bar:SetFrameLevel(500)
+    bar:SetScale(0.8)
 
     for i, targetType in ipairs(TARGETS) do
         buttons[targetType] = CreateButton(targetType, i)
@@ -194,6 +279,9 @@ function DragFlyoutBar:OnDragStart(itemID, bagID, slot, source)
     if dropCooldown then return end
     if source ~= "bag" then return end
     if not itemID then return end
+
+    local Database = ns:GetModule("Database")
+    if Database and not Database:GetSetting("showDragFlyout") then return end
 
     local BagFrame = ns:GetModule("BagFrame")
     if not BagFrame or not BagFrame:IsShown() then return end

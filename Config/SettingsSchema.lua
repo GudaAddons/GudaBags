@@ -160,6 +160,7 @@ function SettingsSchema.GetFeatures()
         }},
         { type = "row", children = {
             { type = "checkbox", key = "showFooter", label = L["SETTINGS_SHOW_FOOTER"], tooltip = L["SETTINGS_SHOW_FOOTER_TIP"] },
+            { type = "checkbox", key = "showDragFlyout", label = L["SETTINGS_SHOW_DRAG_FLYOUT"], tooltip = L["SETTINGS_SHOW_DRAG_FLYOUT_TIP"] },
         }},
     }
 end
