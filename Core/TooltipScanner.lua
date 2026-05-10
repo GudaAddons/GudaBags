@@ -24,7 +24,18 @@ function TooltipScanner:SetBagItem(bagID, slotID)
     local tooltip = self:GetTooltip()
     tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
     tooltip:ClearLines()
-    tooltip:SetBagItem(bagID, slotID)
+
+    if bagID == -1 then
+        -- BANK_CONTAINER's 28 main slots use inventory slot IDs, not bag/slot.
+        -- tooltip:SetBagItem(-1, slot) does not reliably return per-slot data
+        -- (e.g. "X Charges") in Classic. Mirrors UI/Tooltip.lua:208-219.
+        local invSlot = BankButtonIDToInvSlotID and BankButtonIDToInvSlotID(slotID)
+        if invSlot then
+            tooltip:SetInventoryItem("player", invSlot)
+        end
+    else
+        tooltip:SetBagItem(bagID, slotID)
+    end
 
     return tooltip:NumLines() and tooltip:NumLines() > 0
 end
