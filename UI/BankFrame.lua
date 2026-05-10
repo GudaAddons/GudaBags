@@ -3313,12 +3313,17 @@ end, BankFrame)
 
 -- Refresh charge counters after the player casts something. Mirrors BagFrame —
 -- handles the case where bank-stored charge items (or items in bags while bank
--- is open) decrement charges without triggering BAG_UPDATE.
+-- is open) decrement charges without triggering BAG_UPDATE. The pending flag
+-- coalesces rapid casts into a single refresh.
+local chargesRefreshPending = false
 Events:Register("UNIT_SPELLCAST_SUCCEEDED", function(event, unit)
     if unit ~= "player" then return end
     if not frame or not frame:IsShown() then return end
     if viewingCharacter then return end
+    if chargesRefreshPending then return end
+    chargesRefreshPending = true
     C_Timer.After(0.05, function()
+        chargesRefreshPending = false
         BankFrame:RefreshChargesOnly()
     end)
 end, BankFrame)

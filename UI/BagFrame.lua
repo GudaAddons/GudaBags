@@ -2214,11 +2214,17 @@ end, BagFrame)
 -- Oil, Sharpening Stones, scrolls, etc. fires UNIT_SPELLCAST_SUCCEEDED but
 -- does not always fire BAG_UPDATE for the charge-only state change. The 50ms
 -- delay lets the local item record settle before the tooltip is re-scanned.
+-- Heavy combat fires this event many times per second; the pending flag
+-- coalesces all casts in a 50ms window into a single refresh pass.
+local chargesRefreshPending = false
 Events:Register("UNIT_SPELLCAST_SUCCEEDED", function(event, unit)
     if unit ~= "player" then return end
     if not frame or not frame:IsShown() then return end
     if viewingCharacter then return end
+    if chargesRefreshPending then return end
+    chargesRefreshPending = true
     C_Timer.After(0.05, function()
+        chargesRefreshPending = false
         BagFrame:RefreshChargesOnly()
     end)
 end, BagFrame)
