@@ -125,7 +125,15 @@ function SettingsSchema.GetLayout()
           children = {
             { type = "checkbox", key = "groupIdenticalItems", label = L["SETTINGS_GROUP_IDENTICAL"], tooltip = L["SETTINGS_GROUP_IDENTICAL_TIP"] },
         }},
+    }
+end
 
+-------------------------------------------------
+-- Features Tab Schema
+-------------------------------------------------
+function SettingsSchema.GetFeatures()
+    local L = ns.L
+    return {
         { type = "separator", label = L["SETTINGS_SECTION_HEADER_BUTTONS"] },
         { type = "row", children = {
             { type = "checkbox", key = "showHeaderCharacters", label = L["SETTINGS_SHOW_HEADER_CHARACTERS"], tooltip = L["SETTINGS_SHOW_HEADER_CHARACTERS_TIP"] },
@@ -145,7 +153,7 @@ function SettingsSchema.GetLayout()
             { type = "checkbox", key = "showHeaderRecentToggle", label = L["SETTINGS_SHOW_HEADER_RECENT_TOGGLE"], tooltip = L["SETTINGS_SHOW_HEADER_RECENT_TOGGLE_TIP"] },
         }},
 
-        { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },
+        { type = "separator", label = L["SETTINGS_SECTION_VISIBILITY"] },
         { type = "row", children = {
             { type = "checkbox", key = "showSearchBar", label = L["SETTINGS_SHOW_SEARCH"], tooltip = L["SETTINGS_SHOW_SEARCH_TIP"] },
             { type = "checkbox", key = "showFilterChips", label = L["SETTINGS_SHOW_FILTER_CHIPS"], tooltip = L["SETTINGS_SHOW_FILTER_CHIPS_TIP"] },
@@ -153,7 +161,6 @@ function SettingsSchema.GetLayout()
         { type = "row", children = {
             { type = "checkbox", key = "showFooter", label = L["SETTINGS_SHOW_FOOTER"], tooltip = L["SETTINGS_SHOW_FOOTER_TIP"] },
         }},
-
     }
 end
 
