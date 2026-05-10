@@ -264,6 +264,7 @@ Constants.DEFAULTS = {
     hideQuestBarInBGs = true,
     hoverBagline = false,
     showFooter = true,
+    showDragFlyout = true,
     showTooltipCounts = true,
     -- Header button visibility (see UI/Components/HeaderButtonVisibility.lua)
     showHeaderCharacters = true,
