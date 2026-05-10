@@ -84,11 +84,16 @@ local function CreateHeader(parent)
     titleBar:SetScript("OnDragStart", function()
         if not Database:GetSetting("locked") then
             parent:StartMoving()
+            -- Public flag observed by satellite buttons (Disenchant, Pick Lock,
+            -- Prospecting) so they can hide during the drag. Frame:IsMoving()
+            -- is not available on all Classic clients.
+            parent._isDragging = true
         end
     end)
 
     titleBar:SetScript("OnDragStop", function()
         parent:StopMovingOrSizing()
+        parent._isDragging = nil
         if onDragStop then
             onDragStop()
         end

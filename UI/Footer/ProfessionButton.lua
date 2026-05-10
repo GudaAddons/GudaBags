@@ -114,12 +114,18 @@ local function ShowButton(instance)
         instance.button:Show()
         instance.isShown = true
     end
+    -- Restore alpha in case we dimmed it as a fallback during combat
+    instance.button:SetAlpha(1)
 end
 
 local function HideButton(instance)
     if not instance.isShown then return end
     if InCombatLockdown() then
         instance.pendingVisible = false
+        -- Hide() is blocked on secure buttons in combat. SetAlpha is allowed
+        -- and makes the button invisible until FlushPending hides it properly
+        -- after PLAYER_REGEN_ENABLED.
+        instance.button:SetAlpha(0)
         return
     end
     instance.button:Hide()
@@ -134,7 +140,15 @@ local function OnUpdate(instance, dt)
     if not instance.button then return end
 
     local bagFrame = _G["GudaBagsBagFrame"]
-    if bagFrame and bagFrame:IsShown() then
+    -- Hide while the bag frame is being dragged or the player is in combat.
+    -- Drag: buttons are parented to UIParent and don't follow the drag, so
+    -- they look detached until release. Combat: the buttons can't be used
+    -- (out-of-combat spells) and Hide() is blocked anyway — so we dim them
+    -- via SetAlpha(0) inside HideButton and properly Hide() once combat ends.
+    -- The 10Hz poll itself debounces.
+    if bagFrame and bagFrame:IsShown()
+        and not bagFrame._isDragging
+        and not InCombatLockdown() then
         ShowButton(instance)
     else
         HideButton(instance)
