@@ -340,6 +340,9 @@ local function CreateBagFrame()
     Footer:SetSoulBagCallback(function(isVisible)
         BagFrame:Refresh()
     end)
+    Footer:SetQuiverBagCallback(function(isVisible)
+        BagFrame:Refresh()
+    end)
     Footer:SetBagVisibilityCallback(function()
         BagFrame:Refresh()
     end)
@@ -481,7 +484,8 @@ function BagFrame:Refresh()
     -- Build display order
     local showKeyring = Footer:IsKeyringVisible()
     local showSoulBag = Footer:IsSoulBagVisible()
-    local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag)
+    local showQuiverBag = Footer:IsQuiverBagVisible()
+    local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag, showQuiverBag)
 
     -- Filter out hidden bags in single/split view mode (not when viewing cached character)
     if (viewType == "single" or viewType == "split") and not isViewingCached then
@@ -689,7 +693,7 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
     local iconSize = settings.iconSize
 
     -- Collect items and count empty slots (including soul bag slots)
-    local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCached)
+    local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCached)
 
     -- Note: Search filtering removed - now uses alpha dimming like Single View
     -- Items stay in layout, non-matching items are dimmed to 0.3 alpha
@@ -757,7 +761,7 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
 
     -- Build category sections (include empty slot count for "Empty" and "Soul" categories)
     -- When dragging an item, also show empty categories as drop targets
-    local sections = LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, nil, isDraggingItem)
+    local sections = LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, nil, isDraggingItem, quiverEmptyCount, firstQuiverEmptySlot)
 
     -- Calculate frame size
     local frameWidth, frameHeight = LayoutEngine:CalculateCategoryFrameSize(sections, settings)
@@ -940,7 +944,15 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
             local pseudoKey = "DropTarget:" .. itemInfo.categoryId
             pseudoItemButtons[pseudoKey] = button
         elseif itemData.isEmptySlots then
-            local pseudoKey = (itemData.isSoulSlots and "Soul:" or "Empty:") .. itemInfo.categoryId
+            local prefix
+            if itemData.isSoulSlots then
+                prefix = "Soul:"
+            elseif itemData.isQuiverSlots then
+                prefix = "Quiver:"
+            else
+                prefix = "Empty:"
+            end
+            local pseudoKey = prefix .. itemInfo.categoryId
             pseudoItemButtons[pseudoKey] = button
         else
             -- Store button by slot key for incremental updates (legacy)
@@ -1183,32 +1195,40 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         local currentItemsBySlot = {}  -- slotKey -> {itemData, itemKey, category}
         local totalCurrentItems = 0
 
-        -- Check soul bag status for category override (must match BuildCategorySections logic)
+        -- Check soul/quiver bag status for category override (must match BuildCategorySections logic)
         local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
         local Database = ns:GetModule("Database")
         local hideSoulItems = Database and Database:GetSetting("hideSoulItems")
+        local hideQuiverItems = Database and Database:GetSetting("hideQuiverItems")
         local soulCategoryEnabled = false
+        local quiverCategoryEnabled = false
         if CategoryManager then
             local cats = CategoryManager:GetCategories()
             local soulDef = cats and cats.definitions and cats.definitions["Soul"]
             soulCategoryEnabled = soulDef and soulDef.enabled
+            local quiverDef = cats and cats.definitions and cats.definitions["Quiver"]
+            quiverCategoryEnabled = quiverDef and quiverDef.enabled
         end
 
         local bagsToShow = Constants.BAG_IDS  -- Player bags
         for _, bagID in ipairs(bagsToShow) do
             local bagData = bags[bagID]
             if bagData and bagData.slots then
-                -- Detect soul bags for category override
+                -- Detect soul/quiver bags for category override
                 local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
                 local isSoulBag = (bagType == "soul")
+                local isQuiverBag = (bagType == "quiver" or bagType == "ammo")
 
                 for slot, itemData in pairs(bagData.slots) do
                     if itemData then
                         local itemKey = GetItemKey(itemData)
                         local slotKey = GetSlotKey(bagID, slot)
-                        -- Soul bag items use "Soul" category override (same as BuildCategorySections)
+                        -- Quiver/ammo and Soul bag items use their pseudo-category overrides
+                        -- (same as BuildCategorySections)
                         local category
-                        if soulCategoryEnabled and isSoulBag and not hideSoulItems then
+                        if quiverCategoryEnabled and isQuiverBag and not hideQuiverItems then
+                            category = "Quiver"
+                        elseif soulCategoryEnabled and isSoulBag and not hideSoulItems then
                             category = "Soul"
                         else
                             category = CategoryManager and CategoryManager:CategorizeItem(itemData, bagID, slot, false) or "Miscellaneous"
@@ -1282,14 +1302,17 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
         local emptyCount = 0
         local soulEmptyCount = 0
+        local quiverEmptyCount = 0
         local firstEmptyBagID, firstEmptySlot = nil, nil
         local firstSoulBagID, firstSoulSlot = nil, nil
+        local firstQuiverBagID, firstQuiverSlot = nil, nil
 
         for bagID = 0, NUM_BAG_SLOTS do
             local numSlots = C_Container.GetContainerNumSlots(bagID)
             if numSlots and numSlots > 0 then
                 local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
                 local isSoulBag = (bagType == "soul")
+                local isQuiverBag = (bagType == "quiver" or bagType == "ammo")
                 for slot = 1, numSlots do
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                     if not itemInfo then
@@ -1297,6 +1320,11 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             soulEmptyCount = soulEmptyCount + 1
                             if not firstSoulBagID then
                                 firstSoulBagID, firstSoulSlot = bagID, slot
+                            end
+                        elseif isQuiverBag then
+                            quiverEmptyCount = quiverEmptyCount + 1
+                            if not firstQuiverBagID then
+                                firstQuiverBagID, firstQuiverSlot = bagID, slot
                             end
                         elseif bagType == "regular" or bagID == 0 then
                             emptyCount = emptyCount + 1
@@ -1309,13 +1337,41 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
         end
 
-        -- Check if Empty category needs to appear or disappear (requires full refresh)
+        -- Check if Empty/Soul/Quiver category needs to appear or disappear (requires full refresh)
         local emptyButtonExists = FindPseudoItemButton("Empty") ~= nil
         local emptyNeedsButton = emptyCount > 0
 
         if (emptyNeedsButton and not emptyButtonExists) or (not emptyNeedsButton and emptyButtonExists) then
             ns:Debug("CategoryView REFRESH: Empty category visibility changed")
             needsFullRefresh = true
+        end
+
+        local quiverButtonExists = FindPseudoItemButton("Quiver") ~= nil
+        local quiverNeedsButton = quiverEmptyCount > 0
+        if (quiverNeedsButton and not quiverButtonExists) or (not quiverNeedsButton and quiverButtonExists) then
+            ns:Debug("CategoryView REFRESH: Quiver category visibility changed")
+            needsFullRefresh = true
+        end
+
+        -- Detect items that newly appeared in soul/quiver bag slots. Those slots
+        -- previously had no entry in buttonsBySlot (they were tracked only by the
+        -- pseudo Soul/Quiver button), so the per-slot incremental passes below
+        -- can't render them. Force a full refresh.
+        if not needsFullRefresh and lastCategoryLayout then
+            local prevSlotKeys = {}
+            for _, prevItem in ipairs(lastCategoryLayout) do
+                if prevItem.slotKey then
+                    prevSlotKeys[prevItem.slotKey] = true
+                end
+            end
+            for slotKey, currentSlot in pairs(currentItemsBySlot) do
+                if (currentSlot.category == "Soul" or currentSlot.category == "Quiver")
+                    and not prevSlotKeys[slotKey] then
+                    ns:Debug("CategoryView REFRESH: new item in pseudo-category bag at", slotKey)
+                    needsFullRefresh = true
+                    break
+                end
+            end
         end
 
         -- Update pseudo-item counters and slot references directly (if no full refresh needed)
@@ -1345,6 +1401,20 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                         soulBtn.itemData.slot = firstSoulSlot
                         soulBtn.wrapper:SetID(firstSoulBagID)
                         soulBtn:SetID(firstSoulSlot)
+                    end
+                end
+            end
+            local quiverBtn = FindPseudoItemButton("Quiver")
+            if quiverBtn then
+                SetItemButtonCount(quiverBtn, quiverEmptyCount)
+                if quiverBtn.itemData then
+                    quiverBtn.itemData.emptyCount = quiverEmptyCount
+                    quiverBtn.itemData.count = quiverEmptyCount
+                    if firstQuiverBagID then
+                        quiverBtn.itemData.bagID = firstQuiverBagID
+                        quiverBtn.itemData.slot = firstQuiverSlot
+                        quiverBtn.wrapper:SetID(firstQuiverBagID)
+                        quiverBtn:SetID(firstQuiverSlot)
                     end
                 end
             end

@@ -2097,9 +2097,9 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
     local iconSize = settings.iconSize
 
     -- Bank always shows soul bag items (no toggle button in bank footer)
-    local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bank, isReadOnly, true)
+    local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bank, isReadOnly, true, true)
 
-    local sections = LayoutEngine:BuildCategorySections(items, isReadOnly, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, true)
+    local sections = LayoutEngine:BuildCategorySections(items, isReadOnly, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, true, nil, quiverEmptyCount, firstQuiverEmptySlot)
 
     local frameWidth, frameHeight = LayoutEngine:CalculateCategoryFrameSize(sections, settings)
 
@@ -2317,11 +2317,19 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
         button.wrapper:ClearAllPoints()
         button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", itemInfo.x, itemInfo.y)
 
-        -- Track Empty/Soul pseudo-item buttons separately
+        -- Track Empty/Soul/Quiver pseudo-item buttons separately
         -- Use a unique key combining pseudo-item type and categoryId to avoid overwrites
-        -- when multiple pseudo-items (Empty, Soul) are in the same merged group
+        -- when multiple pseudo-items (Empty, Soul, Quiver) are in the same merged group
         if itemData.isEmptySlots then
-            local pseudoKey = (itemData.isSoulSlots and "Soul:" or "Empty:") .. itemInfo.categoryId
+            local prefix
+            if itemData.isSoulSlots then
+                prefix = "Soul:"
+            elseif itemData.isQuiverSlots then
+                prefix = "Quiver:"
+            else
+                prefix = "Empty:"
+            end
+            local pseudoKey = prefix .. itemInfo.categoryId
             pseudoItemButtons[pseudoKey] = button
         else
             -- Store button by slot key for incremental updates (not for pseudo-items)
@@ -2507,13 +2515,16 @@ function BankFrame:IncrementalUpdate(dirtyBags)
         local countUpdates = {}
         local ghostSlots = {}
 
-        -- Detect soul bags for category override (must match BuildCategorySections logic)
+        -- Detect soul/quiver bags for category override (must match BuildCategorySections logic)
         -- Bank always shows soul items (forceSoulVisible)
         local soulCategoryEnabled = false
+        local quiverCategoryEnabled = false
         if CategoryManager then
             local cats = CategoryManager:GetCategories()
             local soulDef = cats and cats.definitions and cats.definitions["Soul"]
             soulCategoryEnabled = soulDef and soulDef.enabled
+            local quiverDef = cats and cats.definitions and cats.definitions["Quiver"]
+            quiverCategoryEnabled = quiverDef and quiverDef.enabled
         end
 
         local function checkBag(bagID)
@@ -2555,9 +2566,10 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                 ns:Debug("Bank CategoryView LAZY: bag", bagID, "has FEWER items", currentItemCount, "<", cachedButtonCount, "- keeping ghosts")
             end
 
-            -- Detect soul bag for category override
+            -- Detect soul/quiver bag for category override
             local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
             local isSoulBag = (bagType == "soul")
+            local isQuiverBag = (bagType == "quiver" or bagType == "ammo")
 
             for slot, button in pairs(slotButtons) do
                 local slotKey = bagID .. ":" .. slot
@@ -2576,9 +2588,11 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                         -- Keep cachedItemCategory so we know this slot existed
                         table.insert(ghostSlots, slotKey)
                     else
-                        -- Soul bag items use "Soul" category override (same as BuildCategorySections)
+                        -- Quiver/Soul bag items use their pseudo-category overrides (same as BuildCategorySections)
                         local newCategory
-                        if soulCategoryEnabled and isSoulBag then
+                        if quiverCategoryEnabled and isQuiverBag then
+                            newCategory = "Quiver"
+                        elseif soulCategoryEnabled and isSoulBag then
                             newCategory = "Soul"
                         else
                             newCategory = CategoryManager and CategoryManager:CategorizeItem(newItemData, bagID, slot, isReadOnly) or "Miscellaneous"

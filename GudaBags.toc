@@ -92,6 +92,7 @@ UI\Header\Characters.lua
 UI\Footer\BagSlots.lua
 UI\Footer\Keyring.lua
 UI\Footer\SoulBag.lua
+UI\Footer\QuiverBag.lua
 UI\Footer\Money.lua
 UI\Footer\Currency.lua
 UI\Footer.lua

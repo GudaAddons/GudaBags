@@ -928,6 +928,8 @@ local function CreateButton(parent)
 
         -- Check if this is a Soul category pseudo-item
         local isSoulCategory = btn.categoryId == "Soul" or (btn.itemData and btn.itemData.isSoulSlots)
+        -- Check if this is a Quiver category pseudo-item (Hunter equivalent of Soul)
+        local isQuiverCategory = btn.categoryId == "Quiver" or (btn.itemData and btn.itemData.isQuiverSlots)
 
         -- Determine if this button belongs to the bank or player bags
         -- by checking the current bagID on the button
@@ -954,11 +956,14 @@ local function CreateButton(parent)
                 -- Check bag type using BagClassifier
                 local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
                 local isSoulBag = (bagType == "soul")
+                local isQuiverBag = (bagType == "quiver" or bagType == "ammo")
 
                 -- Match bag type to category
                 local shouldSearchThisBag = false
                 if isSoulCategory then
                     shouldSearchThisBag = isSoulBag
+                elseif isQuiverCategory then
+                    shouldSearchThisBag = isQuiverBag
                 else
                     -- Empty category: regular bags only (backpack/main bank or regular bag type)
                     shouldSearchThisBag = (bagID == 0) or (bagID == Constants.BANK_MAIN_BAG) or (bagType == "regular")

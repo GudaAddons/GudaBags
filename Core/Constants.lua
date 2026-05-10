@@ -283,6 +283,7 @@ Constants.DEFAULTS = {
     mergedGroups = {},  -- Per-group merge settings: { ["Main"] = true, ["Other"] = false }
     recentDuration = 15,  -- Minutes items stay in Recent category
     showSoulBag = true,  -- Show soul bag in single view (Warlock only)
+    hideQuiverItems = false,  -- Hide arrow/bullet items in category view (Hunter only)
     autoOpenBags = true,  -- Auto open bags when interacting with mail, trade, AH, bank, guild bank
     autoCloseBags = true,  -- Auto close bags when ending those interactions
     autoVendorJunk = true,  -- Auto sell gray items at merchants
