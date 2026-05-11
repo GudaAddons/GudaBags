@@ -1558,6 +1558,30 @@ local function ApplyMasqueAfterSizing(button)
     end
 end
 
+-- Resize a pool button. If Masque has already skinned it, unregister first so
+-- ApplyMasqueAfterSizing's next AddButton re-skins at the new size. Mirrors
+-- TrackedBar:UpdateSize — Masque caches region geometry at AddButton time
+-- and Group:ReSkin does not refresh it.
+local function EnsureButtonSize(button, size)
+    if button.currentSize == size then return end
+
+    if button._masqueApplied then
+        local MasqueModule = ns:GetModule("Masque")
+        if MasqueModule and MasqueModule:IsActive() then
+            MasqueModule:RemoveButton(button)
+        end
+        button._masqueApplied = false
+    end
+
+    button:SetSize(size, size)
+    if button.wrapper then
+        button.wrapper:SetSize(size, size)
+    end
+    button.currentSize = size
+
+    UpdateSlotBackgroundSize(button, size)
+end
+
 function ItemButton:SetItem(button, itemData, size, isReadOnly)
     -- Hide Blizzard template's built-in textures (they may re-show from events)
     if button.IconBorder then button.IconBorder:Hide() end
@@ -1592,14 +1616,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     local settings = GetCachedSettings()
     size = size or settings.iconSize
 
-    -- Only resize if size actually changed
-    if button.currentSize ~= size then
-        button:SetSize(size, size)
-        button.wrapper:SetSize(size, size)
-        button.currentSize = size
-
-        UpdateSlotBackgroundSize(button, size)
-    end
+    EnsureButtonSize(button, size)
 
     -- Register with Masque after sizing (deferred from Acquire to avoid icon anchor issues)
     ApplyMasqueAfterSizing(button)
@@ -2062,14 +2079,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     local settings = GetCachedSettings()
     size = size or settings.iconSize
 
-    -- Only resize if size actually changed
-    if button.currentSize ~= size then
-        button:SetSize(size, size)
-        button.wrapper:SetSize(size, size)
-        button.currentSize = size
-
-        UpdateSlotBackgroundSize(button, size)
-    end
+    EnsureButtonSize(button, size)
 
     -- Register with Masque after sizing (deferred from Acquire to avoid icon anchor issues)
     ApplyMasqueAfterSizing(button)
