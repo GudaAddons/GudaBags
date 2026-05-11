@@ -36,6 +36,9 @@ local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-speci
 local cachedItemData = {} -- Key: "bagID:slot" -> previous itemID (for comparison)
 local cachedItemCount = {} -- Key: "bagID:slot" -> previous count (for stack updates)
 local cachedItemCategory = {} -- Key: "bagID:slot" -> previous categoryId (for category view)
+-- cachedItemCharges values: number (charges remaining), false (scanned, no charges), nil (unknown)
+-- The `false` sentinel lets reused-button refresh skip GetCharges for non-charge items.
+local cachedItemCharges = {} -- Key: "bagID:slot" -> previous charges value
 local layoutCached = false -- True when layout is cached and can do incremental updates
 local lastLayoutSettings = nil  -- Delta tracking for layout recalculation
 
@@ -66,6 +69,52 @@ end
 
 local function GetSlotKey(bagID, slot)
     return Utils:GetSlotKey(bagID, slot)
+end
+
+-- Lazily resolved TooltipScanner reference, cached after first lookup.
+local _tooltipScannerCached
+local function GetTooltipScanner()
+    if _tooltipScannerCached == nil then
+        _tooltipScannerCached = ns:GetModule("TooltipScanner") or false
+    end
+    return _tooltipScannerCached or nil
+end
+
+-- Populate cachedItemCharges for a slot whose button was just (re)rendered via
+-- ItemButton:SetItem. Stores number, false (scanned/no charges), or nil (cleared).
+local function CacheChargesForSlot(slotKey, bagID, slot)
+    if not Database:GetSetting("showCharges") then
+        cachedItemCharges[slotKey] = nil
+        return
+    end
+    local TS = GetTooltipScanner()
+    if not TS then
+        cachedItemCharges[slotKey] = nil
+        return
+    end
+    cachedItemCharges[slotKey] = TS:GetCharges(bagID, slot) or false
+end
+
+-- Refresh the chargesText overlay on a button whose item didn't change identity
+-- but may have had its charge count change. Short-circuits if the slot is known
+-- to have no charges, so this is free for non-charge items.
+local function RefreshChargesForReusedButton(button, bagID, slot, slotKey)
+    local cachedCharges = cachedItemCharges[slotKey]
+    if cachedCharges == false then return end
+    if not Database:GetSetting("showCharges") then return end
+    local TS = GetTooltipScanner()
+    if not TS then return end
+    local newCharges = TS:GetCharges(bagID, slot) or false
+    if newCharges == cachedCharges then return end
+    cachedItemCharges[slotKey] = newCharges
+    if button.chargesText then
+        if type(newCharges) == "number" and newCharges > 0 then
+            button.chargesText:SetText("x" .. newCharges)
+            button.chargesText:Show()
+        else
+            button.chargesText:Hide()
+        end
+    end
 end
 
 -- Hidden frame to reparent Blizzard bank UI
@@ -1403,6 +1452,7 @@ function BankFrame:Refresh()
     buttonsByBag = {}
     cachedItemData = {}
     cachedItemCount = {}
+    cachedItemCharges = {}
     cachedItemCategory = {}
     buttonsByItemKey = {}
     categoryViewItems = {}
@@ -1718,6 +1768,7 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, hasSearch, isRe
             -- Cache item data for incremental updates
             cachedItemData[slotKey] = slotInfo.itemData.itemID
             cachedItemCount[slotKey] = slotInfo.itemData.count
+            CacheChargesForSlot(slotKey, slotInfo.bagID, slotInfo.slot)
         else
             ItemButton:SetEmpty(button, slotInfo.bagID, slotInfo.slot, iconSize, isReadOnly)
             if hasSearch then
@@ -1727,6 +1778,7 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, hasSearch, isRe
             end
             cachedItemData[slotKey] = nil
             cachedItemCount[slotKey] = nil
+            cachedItemCharges[slotKey] = nil
         end
 
         local pos = positions[i]
@@ -1861,6 +1913,7 @@ function BankFrame:RefreshSplitView(bank, bagsToShow, settings, hasSearch, isRea
                 end
                 cachedItemData[slotKey] = itemData.itemID
                 cachedItemCount[slotKey] = itemData.count
+                CacheChargesForSlot(slotKey, bagID, slot)
             else
                 ItemButton:SetEmpty(button, bagID, slot, iconSize, isReadOnly)
                 if hasSearch then
@@ -1870,6 +1923,7 @@ function BankFrame:RefreshSplitView(bank, bagsToShow, settings, hasSearch, isRea
                 end
                 cachedItemData[slotKey] = nil
                 cachedItemCount[slotKey] = nil
+                cachedItemCharges[slotKey] = nil
             end
 
             local col = (slot - 1) % sectionColumns
@@ -2060,6 +2114,7 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, hasSearch, isReadOn
                 end
                 cachedItemData[slotKey] = slotInfo.itemData.itemID
                 cachedItemCount[slotKey] = slotInfo.itemData.count
+                CacheChargesForSlot(slotKey, slotInfo.bagID, slotInfo.slot)
             else
                 ItemButton:SetEmpty(button, slotInfo.bagID, slotInfo.slot, iconSize, isReadOnly)
                 if hasSearch then
@@ -2069,6 +2124,7 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, hasSearch, isReadOn
                 end
                 cachedItemData[slotKey] = nil
                 cachedItemCount[slotKey] = nil
+                cachedItemCharges[slotKey] = nil
             end
 
             -- Calculate position within section
@@ -2337,6 +2393,7 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
             cachedItemData[slotKey] = itemData.itemID
             cachedItemCount[slotKey] = itemData.count
             cachedItemCategory[slotKey] = itemInfo.categoryId
+            CacheChargesForSlot(slotKey, itemData.bagID, itemData.slot)
 
             -- Store by bagID for fast bag-specific lookups
             local bagID = itemData.bagID
@@ -2432,6 +2489,7 @@ function BankFrame:Hide()
         buttonsByBag = {}
         cachedItemData = {}
         cachedItemCount = {}
+        cachedItemCharges = {}
         cachedItemCategory = {}
         buttonsByItemKey = {}
         categoryViewItems = {}
@@ -2585,6 +2643,7 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                         ItemButton:SetEmpty(button, bagID, slot, iconSize, isReadOnly)
                         cachedItemData[slotKey] = nil
                         cachedItemCount[slotKey] = nil
+                        cachedItemCharges[slotKey] = nil
                         -- Keep cachedItemCategory so we know this slot existed
                         table.insert(ghostSlots, slotKey)
                     else
@@ -2611,6 +2670,8 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                     if oldCount ~= newItemData.count then
                         countUpdates[slotKey] = {button = button, count = newItemData.count}
                     end
+                    -- Item identity unchanged but charges may have decremented
+                    RefreshChargesForReusedButton(button, bagID, slot, slotKey)
                 end
             end
 
@@ -2653,6 +2714,7 @@ function BankFrame:IncrementalUpdate(dirtyBags)
             cachedItemData[slotKey] = update.itemData.itemID
             cachedItemCount[slotKey] = update.itemData.count
             cachedItemCategory[slotKey] = update.category
+            CacheChargesForSlot(slotKey, update.itemData.bagID, update.itemData.slot)
             if hasSearch then
                 ItemButton:SetSearchState(update.button, SearchBar:ItemMatchesFilters(frame, update.itemData))
             else
@@ -2770,6 +2832,7 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                         ItemButton:SetItem(button, newItemData, iconSize, isReadOnly)
                         cachedItemData[slotKey] = newItemID
                         cachedItemCount[slotKey] = newItemData.count
+                        CacheChargesForSlot(slotKey, bagID, slot)
                         if hasSearch then
                             ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newItemData))
                         else
@@ -2779,6 +2842,7 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                         ItemButton:SetEmpty(button, bagID, slot, iconSize, isReadOnly)
                         cachedItemData[slotKey] = nil
                         cachedItemCount[slotKey] = nil
+                        cachedItemCharges[slotKey] = nil
                         if hasSearch then
                             ItemButton:SetSearchState(button, false)
                         else
@@ -2792,6 +2856,8 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                         SetItemButtonCount(button, newItemData.count)
                         cachedItemCount[slotKey] = newItemData.count
                     end
+                    -- Item identity unchanged but charges may have decremented
+                    RefreshChargesForReusedButton(button, bagID, slot, slotKey)
                 end
             end
         end
@@ -2812,6 +2878,7 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                             ItemButton:SetItem(button, newItemData, iconSize, isReadOnly)
                             cachedItemData[slotKey] = newItemID
                             cachedItemCount[slotKey] = newItemData.count
+                            CacheChargesForSlot(slotKey, bagID, slot)
                             if hasSearch then
                                 ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newItemData))
                             else
@@ -2821,6 +2888,7 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                             ItemButton:SetEmpty(button, bagID, slot, iconSize, isReadOnly)
                             cachedItemData[slotKey] = nil
                             cachedItemCount[slotKey] = nil
+                            cachedItemCharges[slotKey] = nil
                             if hasSearch then
                                 ItemButton:SetSearchState(button, false)
                             else
@@ -2834,6 +2902,8 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                             SetItemButtonCount(button, newItemData.count)
                             cachedItemCount[slotKey] = newItemData.count
                         end
+                        -- Item identity unchanged but charges may have decremented
+                        RefreshChargesForReusedButton(button, bagID, slot, slotKey)
                     end
                 end
             end
@@ -2846,6 +2916,39 @@ function BankFrame:IncrementalUpdate(dirtyBags)
     BankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots, regularTotal, regularFree, specialBags)
     if BankScanner:IsBankOpen() and not viewingCharacter then
         BankFooter:Update()
+    end
+end
+
+-- Targeted charges-only refresh — walks already-rendered buttons and updates
+-- chargesText for any slot whose charges differ from cache. Skips slots known
+-- to have no charges (cache value `false`), so this is free for non-charge items.
+function BankFrame:RefreshChargesOnly()
+    if not frame or not frame:IsShown() then return end
+    if viewingCharacter then return end
+    if not Database:GetSetting("showCharges") then return end
+    local TS = GetTooltipScanner()
+    if not TS then return end
+
+    for slotKey, button in pairs(buttonsBySlot) do
+        if not button.isEmptySlotButton and button.itemData and button.itemData.bagID then
+            local cachedCharges = cachedItemCharges[slotKey]
+            if cachedCharges ~= false then
+                local bagID = button.itemData.bagID
+                local slot = button.itemData.slot
+                local newCharges = TS:GetCharges(bagID, slot) or false
+                if newCharges ~= cachedCharges then
+                    cachedItemCharges[slotKey] = newCharges
+                    if button.chargesText then
+                        if type(newCharges) == "number" and newCharges > 0 then
+                            button.chargesText:SetText("x" .. newCharges)
+                            button.chargesText:Show()
+                        else
+                            button.chargesText:Hide()
+                        end
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -3142,6 +3245,7 @@ function BankFrame:RestackAndClean()
                     buttonsByBag = {}
                     cachedItemData = {}
                     cachedItemCount = {}
+                    cachedItemCharges = {}
                     cachedItemCategory = {}
                     buttonsByItemKey = {}
                     categoryViewItems = {}
@@ -3205,6 +3309,23 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     if frame and frame:IsShown() and bagID and slotID then
         ItemButton:UpdateLockForItem(bagID, slotID)
     end
+end, BankFrame)
+
+-- Refresh charge counters after the player casts something. Mirrors BagFrame —
+-- handles the case where bank-stored charge items (or items in bags while bank
+-- is open) decrement charges without triggering BAG_UPDATE. The pending flag
+-- coalesces rapid casts into a single refresh.
+local chargesRefreshPending = false
+Events:Register("UNIT_SPELLCAST_SUCCEEDED", function(event, unit)
+    if unit ~= "player" then return end
+    if not frame or not frame:IsShown() then return end
+    if viewingCharacter then return end
+    if chargesRefreshPending then return end
+    chargesRefreshPending = true
+    C_Timer.After(0.05, function()
+        chargesRefreshPending = false
+        BankFrame:RefreshChargesOnly()
+    end)
 end, BankFrame)
 
 -- Callback for when Retail bank tab changes

@@ -1432,6 +1432,13 @@ local function CreateSettingsFrame()
         f.Inset:Hide()
     end
 
+    -- Bypass HideParentPanel -> HideUIPanel (blocked in combat because it
+    -- touches UIParent's panel-management attributes). frame:Hide() on a
+    -- non-protected frame is combat-safe, matching the ESC / bag-frame toggle path.
+    if f.CloseButton then
+        f.CloseButton:SetScript("OnClick", function() f:Hide() end)
+    end
+
     -- Set title
     f:SetTitle(L["SETTINGS_TITLE"])
 
