@@ -369,6 +369,11 @@ local function CreateBagFrame()
         if Characters then
             Characters:Hide()
         end
+
+        local ProfessionButton = ns:GetModule("Footer.ProfessionButton")
+        if ProfessionButton and ProfessionButton.HideAllInstantly then
+            ProfessionButton:HideAllInstantly()
+        end
     end)
 
     -- Enable container as drop zone for empty space
