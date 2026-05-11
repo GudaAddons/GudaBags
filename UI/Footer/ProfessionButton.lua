@@ -17,6 +17,8 @@ ns:RegisterModule("Footer.ProfessionButton", ProfessionButton)
 local Constants = ns.Constants
 local L = ns.L
 
+local Database  -- lazy-initialized on first OnUpdate
+
 local POLL_INTERVAL = 0.1
 
 -- Ordered list of created instances. Insertion order = TOC load order of
@@ -139,16 +141,20 @@ local function OnUpdate(instance, dt)
 
     if not instance.button then return end
 
+    Database = Database or ns:GetModule("Database")
+
     local bagFrame = _G["GudaBagsBagFrame"]
-    -- Hide while the bag frame is being dragged or the player is in combat.
-    -- Drag: buttons are parented to UIParent and don't follow the drag, so
-    -- they look detached until release. Combat: the buttons can't be used
-    -- (out-of-combat spells) and Hide() is blocked anyway — so we dim them
-    -- via SetAlpha(0) inside HideButton and properly Hide() once combat ends.
-    -- The 10Hz poll itself debounces.
+    local showFooter = Database and Database:GetSetting("showFooter")
+    -- Hide while the bag frame is being dragged, the player is in combat, or
+    -- the user has disabled "Show Footer" in settings. Drag: buttons are
+    -- parented to UIParent and don't follow the drag, so they look detached
+    -- until release. Combat: the buttons can't be used (out-of-combat spells)
+    -- and Hide() is blocked anyway — so we dim them via SetAlpha(0) inside
+    -- HideButton and properly Hide() once combat ends. The 10Hz poll itself debounces.
     if bagFrame and bagFrame:IsShown()
         and not bagFrame._isDragging
-        and not InCombatLockdown() then
+        and not InCombatLockdown()
+        and showFooter then
         ShowButton(instance)
     else
         HideButton(instance)

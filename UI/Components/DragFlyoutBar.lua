@@ -412,6 +412,10 @@ function DragFlyoutBar:HandleDrop(targetType)
         ClearCursor()
         if Database then
             Database:ToggleItemMarkedJunk(itemID)
+            local CategoryManager = ns:GetModule("CategoryManager")
+            if CategoryManager and CategoryManager.ClearCategoryCache then
+                CategoryManager:ClearCategoryCache()
+            end
         end
         if BagFrame then
             BagFrame:Refresh()
