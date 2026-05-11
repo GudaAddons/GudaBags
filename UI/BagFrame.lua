@@ -1418,23 +1418,30 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             needsFullRefresh = true
         end
 
-        -- Detect items that newly appeared in soul/quiver bag slots. Those slots
-        -- previously had no entry in buttonsBySlot (they were tracked only by the
-        -- pseudo Soul/Quiver button), so the per-slot incremental passes below
-        -- can't render them. Force a full refresh.
+        -- Detect items whose category has become Soul/Quiver since the last layout.
+        -- Two cases need a full refresh:
+        --   1. Brand-new slot: an item was looted into a previously empty soul/quiver bag slot
+        --      (tracked only by the pseudo button before).
+        --   2. Re-classified slot: BagClassifier returned "regular" on first render (live
+        --      bagFamily not yet ready), the slot was placed under "Reagent"/"Miscellaneous"
+        --      etc., then on a later BAG_UPDATE the bag is correctly classified as soul/quiver.
+        --      Without this check the section would stay empty until a manual view toggle.
         if not needsFullRefresh and lastCategoryLayout then
-            local prevSlotKeys = {}
+            local prevSlotCategory = {}
             for _, prevItem in ipairs(lastCategoryLayout) do
                 if prevItem.slotKey then
-                    prevSlotKeys[prevItem.slotKey] = true
+                    prevSlotCategory[prevItem.slotKey] = prevItem.categoryId
                 end
             end
             for slotKey, currentSlot in pairs(currentItemsBySlot) do
-                if (currentSlot.category == "Soul" or currentSlot.category == "Quiver")
-                    and not prevSlotKeys[slotKey] then
-                    ns:Debug("CategoryView REFRESH: new item in pseudo-category bag at", slotKey)
-                    needsFullRefresh = true
-                    break
+                if currentSlot.category == "Soul" or currentSlot.category == "Quiver" then
+                    local prev = prevSlotCategory[slotKey]
+                    if prev == nil or prev ~= currentSlot.category then
+                        ns:Debug("CategoryView REFRESH: slot", slotKey,
+                            "category changed", tostring(prev), "->", currentSlot.category)
+                        needsFullRefresh = true
+                        break
+                    end
                 end
             end
         end
