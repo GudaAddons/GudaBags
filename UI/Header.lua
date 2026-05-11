@@ -88,6 +88,13 @@ local function CreateHeader(parent)
             -- Prospecting) so they can hide during the drag. Frame:IsMoving()
             -- is not available on all Classic clients.
             parent._isDragging = true
+
+            if parent == _G["GudaBagsBagFrame"] then
+                local ProfessionButton = ns:GetModule("Footer.ProfessionButton")
+                if ProfessionButton and ProfessionButton.HideAllInstantly then
+                    ProfessionButton:HideAllInstantly()
+                end
+            end
         end
     end)
 

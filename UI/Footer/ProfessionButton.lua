@@ -165,6 +165,15 @@ local function FlushPending(instance)
     end
 end
 
+-- Called by Header.lua the instant the bag frame starts being dragged so the
+-- satellite buttons disappear immediately instead of waiting up to POLL_INTERVAL
+-- for the next OnUpdate tick.
+function ProfessionButton:HideAllInstantly()
+    for i = 1, #registry do
+        HideButton(registry[i])
+    end
+end
+
 -- Public API
 -- config fields:
 --   spellID         (number, required)
