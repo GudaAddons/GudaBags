@@ -14,6 +14,18 @@ local BAR_GAP = 2
 
 local TARGETS = { "track", "lock", "pin", "junk" }
 
+local function IsTargetEnabled(targetType)
+    if targetType == "pin" then
+        if ns.IsRetail then
+            local Database = ns:GetModule("Database")
+            if Database and not Database:GetSetting("gudaSort") then
+                return false
+            end
+        end
+    end
+    return true
+end
+
 local TARGET_ICONS = {
     track = "Interface\\AddOns\\GudaBags\\Assets\\fav.png",
     lock  = "Interface\\AddOns\\GudaBags\\Assets\\lock.png",
@@ -294,6 +306,27 @@ function DragFlyoutBar:OnDragStart(itemID, bagID, slot, source)
     currentItemID = itemID
     currentBagID = bagID
     currentSlot = slot
+
+    local visibleCount = 0
+    for _, targetType in ipairs(TARGETS) do
+        local btn = buttons[targetType]
+        if btn then
+            if IsTargetEnabled(targetType) then
+                visibleCount = visibleCount + 1
+                local x = BAR_PADDING + (visibleCount - 1) * (BUTTON_SIZE + BUTTON_SPACING)
+                btn:ClearAllPoints()
+                btn:SetPoint("TOPLEFT", bar, "TOPLEFT", x, -BAR_PADDING)
+                btn:Show()
+            else
+                btn:Hide()
+            end
+        end
+    end
+
+    if visibleCount == 0 then return end
+
+    local barWidth = BAR_PADDING * 2 + visibleCount * BUTTON_SIZE + math.max(0, visibleCount - 1) * BUTTON_SPACING
+    bar:SetWidth(barWidth)
 
     UpdateButtonState()
 
