@@ -2427,8 +2427,11 @@ Events:Register("AUCTION_HOUSE_CLOSED", RefreshForInteractionWindow, BagFrame)
 
 -- Auto open/close bags on interaction windows
 -- Blizzard calls OpenAllBags/CloseAllBags internally when interactions start/end.
--- We use a suppression flag so our overrides can block those calls when the setting is disabled.
--- The flag is set on the interaction event and cleared next frame.
+-- Our overrides gate those calls by the autoOpenBags / autoCloseBags settings,
+-- because Blizzard's MailFrame/MerchantFrame/etc. OnEvent runs BEFORE our event
+-- handler in the same event dispatch — a same-frame suppression flag is too late.
+-- The suppressAuto* flags still short-circuit redundant Show/Hide work when our
+-- own handler has already explicitly opened or closed the frame.
 local suppressAutoOpen = false
 local suppressAutoClose = false
 
@@ -2581,27 +2584,39 @@ Events:OnPlayerLogin(function()
     end
 
     OpenAllBags = function()
-        if not suppressAutoOpen then BagFrame:Show() end
+        if suppressAutoOpen then return end
+        if not Database:GetSetting("autoOpenBags") then return end
+        BagFrame:Show()
     end
 
     CloseAllBags = function()
-        if not suppressAutoClose then BagFrame:Hide() end
+        if suppressAutoClose then return end
+        if not Database:GetSetting("autoCloseBags") then return end
+        BagFrame:Hide()
     end
 
     OpenBag = function(bagID)
-        if not suppressAutoOpen then BagFrame:Show() end
+        if suppressAutoOpen then return end
+        if not Database:GetSetting("autoOpenBags") then return end
+        BagFrame:Show()
     end
 
     CloseBag = function(bagID)
-        if not suppressAutoClose then BagFrame:Hide() end
+        if suppressAutoClose then return end
+        if not Database:GetSetting("autoCloseBags") then return end
+        BagFrame:Hide()
     end
 
     OpenBackpack = function()
-        if not suppressAutoOpen then BagFrame:Show() end
+        if suppressAutoOpen then return end
+        if not Database:GetSetting("autoOpenBags") then return end
+        BagFrame:Show()
     end
 
     CloseBackpack = function()
-        if not suppressAutoClose then BagFrame:Hide() end
+        if suppressAutoClose then return end
+        if not Database:GetSetting("autoCloseBags") then return end
+        BagFrame:Hide()
     end
 
     ToggleAllBags = function()
