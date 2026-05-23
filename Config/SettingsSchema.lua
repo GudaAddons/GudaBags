@@ -200,9 +200,10 @@ function SettingsSchema.GetIcons()
             { type = "checkbox", key = "autoLockSetItems", label = L["SETTINGS_AUTO_LOCK_SET_ITEMS"], tooltip = L["SETTINGS_AUTO_LOCK_SET_ITEMS_TIP"] },
         }},
 
-        -- Row 5 - Charges
+        -- Row 5 - Charges and BoE label
         { type = "row", children = {
-            { type = "checkbox", key = "showCharges", label = L["SETTINGS_SHOW_CHARGES"], tooltip = L["SETTINGS_SHOW_CHARGES_TIP"] },
+            { type = "checkbox", key = "showCharges",  label = L["SETTINGS_SHOW_CHARGES"],   tooltip = L["SETTINGS_SHOW_CHARGES_TIP"] },
+            { type = "checkbox", key = "showBoeLabel", label = L["SETTINGS_SHOW_BOE_LABEL"], tooltip = L["SETTINGS_SHOW_BOE_LABEL_TIP"] },
         }},
     }
 end

@@ -302,6 +302,7 @@ local function ResetButton(pool, button)
     if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
     if button.itemLevelText then button.itemLevelText:Hide() end
     if button.chargesText then button.chargesText:Hide() end
+    if button.boeText then button.boeText:Hide() end
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.craftingQualityIcon then button.craftingQualityIcon:Hide() end
@@ -770,6 +771,18 @@ local function CreateButton(parent)
     chargesText:SetTextColor(1, 0.82, 0)
     chargesText:Hide()
     button.chargesText = chargesText
+
+    -- BoE label (bottom-left corner, drawn above equipment-set and pin icons
+    -- which sit on the same corner — sublayer 6 puts it above those
+    -- sublayer 2-5 icons. OUTLINE keeps it readable when stacked on top of them.)
+    -- Color is set per-item in SetItem() based on item quality.
+    local boeText = button:CreateFontString(nil, "OVERLAY", nil, 6)
+    boeText:SetFont(Constants.FONTS.DEFAULT, 10, "OUTLINE")
+    boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
+    boeText:SetJustifyH("LEFT")
+    boeText:SetText("BoE")
+    boeText:Hide()
+    button.boeText = boeText
 
     -- Quest starter icon (top left corner) - exclamation mark for quest starter items
     -- Use a frame container to ensure it draws above the border
@@ -1490,6 +1503,7 @@ local function GetCachedSettings()
             markEquipmentSets = Database:GetSetting("markEquipmentSets"),
             showItemLevel = Database:GetSetting("showItemLevel"),
             showCharges = Database:GetSetting("showCharges"),
+            showBoeLabel = Database:GetSetting("showBoeLabel"),
         }
         cachedSettingsFrame = currentFrame
     end
@@ -1644,6 +1658,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.lockOverlay:Hide()
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
+        if button.boeText then button.boeText:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Mark this button as empty slot handler
@@ -1677,6 +1692,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.lockOverlay:Hide()
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
+        if button.boeText then button.boeText:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Animated glow border
@@ -1929,6 +1945,34 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
+        -- BoE label (bottom-left corner). Only on unbound BoE weapons/armor;
+        -- TooltipScanner:IsBindOnEquip excludes soulbound, BoP, and non-gear.
+        -- The itemType pre-check skips the tooltip scan for the common case
+        -- (consumables, reagents, etc.) so this stays cheap.
+        if button.boeText then
+            local showBoe = settings.showBoeLabel
+                and not isReadOnly
+                and (itemData.itemType == "Weapon" or itemData.itemType == "Armor")
+                and (itemData.quality or 0) > 0
+                and itemData.bagID and itemData.slot
+            if showBoe then
+                local TooltipScanner = ns:GetModule("TooltipScanner")
+                if TooltipScanner and TooltipScanner:IsBindOnEquip(itemData.bagID, itemData.slot, itemData) then
+                    local c = Constants.QUALITY_COLORS[itemData.quality]
+                    if c then
+                        button.boeText:SetTextColor(c[1], c[2], c[3], 1)
+                    else
+                        button.boeText:SetTextColor(1, 1, 1, 1)
+                    end
+                    button.boeText:Show()
+                else
+                    button.boeText:Hide()
+                end
+            else
+                button.boeText:Hide()
+            end
+        end
+
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
 
@@ -1976,6 +2020,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         if button.chargesText then
             button.chargesText:Hide()
+        end
+        if button.boeText then
+            button.boeText:Hide()
         end
         if button.userLockIcon then
             button.userLockIcon:Hide()
@@ -2126,6 +2173,9 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     end
     if button.chargesText then
         button.chargesText:Hide()
+    end
+    if button.boeText then
+        button.boeText:Hide()
     end
     if button.userLockIcon then
         button.userLockIcon:Hide()
@@ -2458,7 +2508,8 @@ if Events then
             or key == "grayoutJunk" or key == "equipmentBorders"
             or key == "otherBorders" or key == "markUnusableItems"
             or key == "markEquipmentSets"
-            or key == "showItemLevel" or key == "showCharges" then
+            or key == "showItemLevel" or key == "showCharges"
+            or key == "showBoeLabel" then
             ItemButton:InvalidateSettingsCache()
         end
     end, ItemButton)
