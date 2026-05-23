@@ -1677,6 +1677,13 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.wrapper:SetID(itemData.bagID)
         button:SetID(itemData.slot)
 
+        -- Refresh tooltip in place if user is hovering this pseudo-slot
+        -- (e.g. another bag-update changed the empty count).
+        if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+            local onEnter = button:GetScript("OnEnter")
+            if onEnter then onEnter(button) end
+        end
+
         return
     end
 
@@ -1711,6 +1718,12 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.isDropTargetButton = true
         button.wrapper:SetID(0)
         button:SetID(0)
+
+        -- Refresh tooltip in place if user is hovering this drop-target slot.
+        if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+            local onEnter = button:GetScript("OnEnter")
+            if onEnter then onEnter(button) end
+        end
 
         return
     end
@@ -2045,6 +2058,17 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.cooldown then
             CooldownFrame_Set(button.cooldown, 0, 0, false)
         end
+    end
+
+    -- If the tooltip is currently hovering over this button, the user just saw
+    -- the OLD item's tooltip. Re-run our OnEnter so they see the NEW item
+    -- without having to move the mouse off and back on. (Blizzard's stock
+    -- ContainerFrameItemButton_OnUpdate does this automatically, but our
+    -- custom OnUpdate only listens for shift-key changes.) Combat-gated to
+    -- match Blizzard's stock pattern.
+    if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+        local onEnter = button:GetScript("OnEnter")
+        if onEnter then onEnter(button) end
     end
 end
 
