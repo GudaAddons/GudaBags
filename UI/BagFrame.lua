@@ -29,6 +29,10 @@ local viewingCharacter = nil -- nil = current character, or fullName string
 local pendingAction = nil  -- "show", "toggle", or nil
 local combatLockdownRegistered = false
 
+-- Smart auto-open/auto-close state (see SmartAutoOpen / SmartAutoClose below)
+local bagsAutoOpened = false   -- Did the addon open the bags for the current interaction?
+local inInteraction  = false   -- True between any interaction-open and its matching close
+
 -- Layout caching for incremental updates (Single View)
 local buttonsBySlot = {}  -- Key: "bagID:slot" -> button reference
 local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-specific lookups
@@ -355,9 +359,17 @@ local function CreateBagFrame()
     f.container.masqueGroup = "Bags"
 
     -- Sync secure container visibility with main frame
-    f:HookScript("OnShow", function() secureButtonContainer:Show() end)
+    f:HookScript("OnShow", function()
+        secureButtonContainer:Show()
+        ns:Debug("[AUTO] OnShow fired, bagsAutoOpened=", tostring(bagsAutoOpened), "inInteraction=", tostring(inInteraction))
+    end)
     f:HookScript("OnHide", function()
         secureButtonContainer:Hide()
+        -- Any close (X button, B key, /script CloseAllBags, ProfileManager, etc.)
+        -- clears the addon's auto-opened claim so the next interaction-close won't
+        -- close bags the user has manually reopened.
+        ns:Debug("[AUTO] OnHide fired, bagsAutoOpened was=", tostring(bagsAutoOpened), "inInteraction=", tostring(inInteraction))
+        bagsAutoOpened = false
         -- Clear search bar text and filters
         SearchBar:Clear(f)
         -- Reset to current character when bag closes
@@ -2425,36 +2437,88 @@ Events:Register("MERCHANT_SHOW", AutoRepair, "AutoRepair")
 Events:Register("AUCTION_HOUSE_SHOW", RefreshForInteractionWindow, BagFrame)
 Events:Register("AUCTION_HOUSE_CLOSED", RefreshForInteractionWindow, BagFrame)
 
--- Auto open/close bags on interaction windows
--- Blizzard calls OpenAllBags/CloseAllBags internally when interactions start/end.
--- Our overrides gate those calls by the autoOpenBags / autoCloseBags settings,
--- because Blizzard's MailFrame/MerchantFrame/etc. OnEvent runs BEFORE our event
--- handler in the same event dispatch — a same-frame suppression flag is too late.
--- The suppressAuto* flags still short-circuit redundant Show/Hide work when our
--- own handler has already explicitly opened or closed the frame.
-local suppressAutoOpen = false
-local suppressAutoClose = false
+-- Auto open/close bags on interaction windows.
+--
+-- Smart behavior, modelled on Baganator:
+--   * If the addon opened the bags for an interaction, it closes them when the
+--     interaction ends.
+--   * If the user already had the bags open (or opens them mid-interaction with
+--     B / X), the addon leaves them alone — bagsAutoOpened is cleared by the
+--     frame's OnHide hook the moment the user closes the bags.
+--
+-- Blizzard's stock MailFrame/MerchantFrame/etc. OnEvent runs BEFORE our handler
+-- in the same event dispatch. We rely on two cooperating pieces:
+--   * The OpenAllBags / OpenBag / OpenBackpack overrides (further down) capture
+--     frame:IsShown() BEFORE calling Show, so they can reliably tell whether
+--     Blizzard's auto-call actually opened the bags (wasShown=false) or the
+--     user had them open already (wasShown=true). They set bagsAutoOpened only
+--     in the former case.
+--   * inInteraction is set by SmartAutoOpen and cleared by SmartAutoClose, so
+--     Blizzard's CloseAllBags during MAIL_CLOSED short-circuits and defers to
+--     SmartAutoClose's "did the addon open this?" check.
 
-local function OnInteractionOpen()
-    if Database:GetSetting("autoOpenBags") then
-        -- Explicitly open bags (Retail doesn't always call OpenAllBags)
+local function SmartAutoOpen()
+    inInteraction = true
+    local autoOpen = Database:GetSetting("autoOpenBags")
+    local shown = frame and frame:IsShown()
+    ns:Debug("[AUTO] SmartAutoOpen: autoOpenBags=", tostring(autoOpen), "shown=", tostring(shown), "bagsAutoOpened=", tostring(bagsAutoOpened))
+    if not autoOpen then return end
+
+    -- If Blizzard's MailFrame/MerchantFrame/etc. already called OpenAllBags in
+    -- this same event dispatch, our override has already shown the bag and
+    -- (if it was previously closed) set bagsAutoOpened. Nothing left to do.
+    -- Otherwise (e.g. Blizzard's "Open Bags Automatically" option is off, or
+    -- this is the bank/guild-bank path that doesn't call OpenAllBags), open
+    -- the bag ourselves and claim it.
+    if not shown then
+        ns:Debug("[AUTO] SmartAutoOpen: opening bags + setting bagsAutoOpened=true")
         BagFrame:Show()
-        -- Keep bags at base level so the interaction frame stays on top
-        C_Timer.After(0, function()
-            if frame and frame:IsShown() then
-                frame:SetFrameLevel(Constants.FRAME_LEVELS.BASE)
-                Theme:SyncBlizzardBgLevel(frame)
-                if frame.container then
-                    frame.container:SetFrameLevel(Constants.FRAME_LEVELS.BASE + Constants.FRAME_LEVELS.CONTAINER)
-                    ItemButton:SyncFrameLevels(frame.container)
-                end
-            end
-        end)
+        bagsAutoOpened = true
     end
-    -- Always suppress Blizzard's OpenAllBags to prevent double-open
-    suppressAutoOpen = true
-    C_Timer.After(0, function() suppressAutoOpen = false end)
+end
 
+local function SmartAutoClose()
+    local autoClose = Database:GetSetting("autoCloseBags")
+    local shown = frame and frame:IsShown()
+    ns:Debug("[AUTO] SmartAutoClose: autoCloseBags=", tostring(autoClose), "bagsAutoOpened=", tostring(bagsAutoOpened), "shown=", tostring(shown), "inInteraction=", tostring(inInteraction))
+    if bagsAutoOpened and autoClose then
+        ns:Debug("[AUTO] SmartAutoClose: calling BagFrame:Hide()")
+        BagFrame:Hide()  -- OnHide hook clears bagsAutoOpened
+    else
+        ns:Debug("[AUTO] SmartAutoClose: NOT hiding (bagsAutoOpened or autoCloseBags is false)")
+    end
+    -- Defer the inInteraction clear by one frame so the gate in CloseAllBags /
+    -- CloseBag / CloseBackpack stays effective for ALL of Blizzard's interaction
+    -- handlers in the current event dispatch, regardless of whether they run
+    -- before or after this handler. The order between Blizzard's MerchantFrame
+    -- (and MailFrame, etc.) OnEvent and our addon's eventFrame OnEvent is not
+    -- guaranteed. Without this defer, when our handler wins the race,
+    -- Blizzard's subsequent CloseAllBags (called from *_OnHide) would see
+    -- inInteraction=false and forcibly hide the bags — breaking the
+    -- "user-opened bags stay open" and "autoCloseBags=off" guarantees.
+    C_Timer.After(0, function() inInteraction = false end)
+end
+
+-- Public hooks so GuildBankFrame (and any other future external interaction
+-- module) can route through the same smart-open/close logic.
+function BagFrame:OnAutoInteractionOpen()  SmartAutoOpen()  end
+function BagFrame:OnAutoInteractionClose() SmartAutoClose() end
+
+local function OnInteractionOpen(event)
+    ns:Debug("[AUTO] === Event:", tostring(event), "=== (OnInteractionOpen)")
+    SmartAutoOpen()
+    -- Keep bags at base level so the interaction frame stays on top (whether
+    -- the addon or the user opened the bags).
+    C_Timer.After(0, function()
+        if frame and frame:IsShown() then
+            frame:SetFrameLevel(Constants.FRAME_LEVELS.BASE)
+            Theme:SyncBlizzardBgLevel(frame)
+            if frame.container then
+                frame.container:SetFrameLevel(Constants.FRAME_LEVELS.BASE + Constants.FRAME_LEVELS.CONTAINER)
+                ItemButton:SyncFrameLevels(frame.container)
+            end
+        end
+    end)
     -- Deferred refresh to unstack grouped items — interaction frame needs a frame to be fully shown
     -- so IsInteractionWindowOpen() can detect it
     C_Timer.After(0.05, function()
@@ -2464,15 +2528,9 @@ local function OnInteractionOpen()
     end)
 end
 
-local function OnInteractionClose()
-    if Database:GetSetting("autoCloseBags") then
-        -- Explicitly close bags (Retail doesn't always call CloseAllBags)
-        BagFrame:Hide()
-    end
-    -- Always suppress Blizzard's CloseAllBags to prevent unintended close
-    suppressAutoClose = true
-    C_Timer.After(0, function() suppressAutoClose = false end)
-
+local function OnInteractionClose(event)
+    ns:Debug("[AUTO] === Event:", tostring(event), "=== (OnInteractionClose)")
+    SmartAutoClose()
     -- Deferred refresh to re-enable grouping after interaction window fully closes
     C_Timer.After(0.05, function()
         if frame and frame:IsShown() then
@@ -2481,48 +2539,38 @@ local function OnInteractionClose()
     end)
 end
 
-local function OnBankOpen()
-    if Database:GetSetting("autoOpenBags") then
-        -- Explicitly open bags (Retail bank UI doesn't call OpenAllBags)
-        BagFrame:Show()
-        -- Keep bags at base level so bank frame stays on top
-        C_Timer.After(0, function()
-            if frame and frame:IsShown() then
-                frame:SetFrameLevel(Constants.FRAME_LEVELS.BASE)
-                Theme:SyncBlizzardBgLevel(frame)
-                if frame.container then
-                    frame.container:SetFrameLevel(Constants.FRAME_LEVELS.BASE + Constants.FRAME_LEVELS.CONTAINER)
-                    ItemButton:SyncFrameLevels(frame.container)
+local function OnBankOpen(event)
+    ns:Debug("[AUTO] === Event:", tostring(event), "=== (OnBankOpen)")
+    SmartAutoOpen()
+    -- Keep bags at base level and raise the bank frame above them (whether the
+    -- addon or the user opened the bags).
+    C_Timer.After(0, function()
+        if frame and frame:IsShown() then
+            frame:SetFrameLevel(Constants.FRAME_LEVELS.BASE)
+            Theme:SyncBlizzardBgLevel(frame)
+            if frame.container then
+                frame.container:SetFrameLevel(Constants.FRAME_LEVELS.BASE + Constants.FRAME_LEVELS.CONTAINER)
+                ItemButton:SyncFrameLevels(frame.container)
+            end
+        end
+        local BankFrameModule = ns:GetModule("BankFrame")
+        if BankFrameModule then
+            local bankFrame = BankFrameModule:GetFrame()
+            if bankFrame then
+                bankFrame:SetFrameLevel(Constants.FRAME_LEVELS.RAISED)
+                Theme:SyncBlizzardBgLevel(bankFrame)
+                if bankFrame.container then
+                    bankFrame.container:SetFrameLevel(Constants.FRAME_LEVELS.RAISED + Constants.FRAME_LEVELS.CONTAINER)
+                    ItemButton:SyncFrameLevels(bankFrame.container)
                 end
             end
-            -- Raise bank frame
-            local BankFrameModule = ns:GetModule("BankFrame")
-            if BankFrameModule then
-                local bankFrame = BankFrameModule:GetFrame()
-                if bankFrame then
-                    bankFrame:SetFrameLevel(Constants.FRAME_LEVELS.RAISED)
-                    Theme:SyncBlizzardBgLevel(bankFrame)
-                    if bankFrame.container then
-                        bankFrame.container:SetFrameLevel(Constants.FRAME_LEVELS.RAISED + Constants.FRAME_LEVELS.CONTAINER)
-                        ItemButton:SyncFrameLevels(bankFrame.container)
-                    end
-                end
-            end
-        end)
-    end
-    -- Always suppress Blizzard's OpenAllBags to prevent double-open
-    suppressAutoOpen = true
-    C_Timer.After(0, function() suppressAutoOpen = false end)
+        end
+    end)
 end
 
-local function OnBankClose()
-    if Database:GetSetting("autoCloseBags") then
-        -- Explicitly close bags (Retail bank UI doesn't call CloseAllBags)
-        BagFrame:Hide()
-    end
-    -- Always suppress Blizzard's CloseAllBags to prevent unintended close
-    suppressAutoClose = true
-    C_Timer.After(0, function() suppressAutoClose = false end)
+local function OnBankClose(event)
+    ns:Debug("[AUTO] === Event:", tostring(event), "=== (OnBankClose)")
+    SmartAutoClose()
 end
 
 Events:Register("TRADE_SHOW", OnInteractionOpen, "AutoOpenBags_Trade")
@@ -2536,12 +2584,12 @@ Events:Register("AUCTION_HOUSE_CLOSED", OnInteractionClose, "AutoCloseBags_AH")
 -- Socketing UI — load-on-demand, so hook via SOCKET_INFO_UPDATE event
 local socketFrameHooked = false
 Events:Register("SOCKET_INFO_UPDATE", function()
-    OnInteractionOpen()
+    OnInteractionOpen("SOCKET_INFO_UPDATE")
     -- Hook OnHide for close detection (only once, after frame is created)
     if not socketFrameHooked and ItemSocketingFrame then
         socketFrameHooked = true
         ItemSocketingFrame:HookScript("OnHide", function()
-            OnInteractionClose()
+            OnInteractionClose("ItemSocketingFrame:OnHide")
         end)
     end
 end, "AutoOpenBags_Socket")
@@ -2583,41 +2631,71 @@ Events:OnPlayerLogin(function()
         BagFrame:Toggle()
     end
 
-    OpenAllBags = function()
-        if suppressAutoOpen then return end
-        if not Database:GetSetting("autoOpenBags") then return end
+    -- OpenAllBags / OpenBag / OpenBackpack:
+    --   Pass through to GudaBags so macros calling these still work, but gate
+    --   by autoOpenBags so Blizzard's MailFrame/MerchantFrame internal calls
+    --   respect the user's auto-open setting.
+    --
+    --   If the bags are already shown, return early WITHOUT calling Show. This
+    --   is critical: Blizzard's MailFrame calls OpenAllBags on every
+    --   MAIL_INBOX_UPDATE (and similar refresh events) during a mail session,
+    --   so this override fires repeatedly. Calling frame:Show() on an
+    --   already-shown frame can trigger a spurious OnHide → OnShow cycle on
+    --   Classic Anniversary, which our OnHide hook interprets as the user
+    --   closing bags — clearing bagsAutoOpened and breaking the smart-close
+    --   path at MAIL_CLOSED. The guard makes repeat calls a true no-op.
+    --
+    --   First-call semantics: if wasShown == false, this is the one true
+    --   addon-driven open for this interaction. Mark bagsAutoOpened = true so
+    --   SmartAutoClose knows to close them when the interaction ends.
+    local function DoBlizzardOpen(caller)
+        local autoOpen = Database:GetSetting("autoOpenBags")
+        local shown = frame and frame:IsShown()
+        ns:Debug("[AUTO] DoBlizzardOpen via", tostring(caller), "autoOpenBags=", tostring(autoOpen), "shown=", tostring(shown), "bagsAutoOpened=", tostring(bagsAutoOpened))
+        if not autoOpen then return end
+        if shown then
+            ns:Debug("[AUTO] DoBlizzardOpen: already shown, skipping")
+            return
+        end
+        ns:Debug("[AUTO] DoBlizzardOpen: opening + setting bagsAutoOpened=true")
         BagFrame:Show()
+        bagsAutoOpened = true
     end
+    OpenAllBags  = function()      DoBlizzardOpen("OpenAllBags")  end
+    OpenBag      = function(bagID) DoBlizzardOpen("OpenBag")      end
+    OpenBackpack = function()      DoBlizzardOpen("OpenBackpack") end
 
-    CloseAllBags = function()
-        if suppressAutoClose then return end
-        if not Database:GetSetting("autoCloseBags") then return end
+    -- CloseAllBags / CloseBag / CloseBackpack:
+    --   Short-circuit while inInteraction is true. Blizzard's stock interaction
+    --   handlers (MailFrame_OnEvent etc.) call CloseAllBags BEFORE our own
+    --   handler runs in the same event dispatch — letting it through would
+    --   close bags before SmartAutoClose can apply the "did the addon open
+    --   them?" check. Macros calling these outside an interaction still close
+    --   the bags normally.
+    local function DoBlizzardClose(caller)
+        ns:Debug("[AUTO] DoBlizzardClose via", tostring(caller), "inInteraction=", tostring(inInteraction), "bagsAutoOpened=", tostring(bagsAutoOpened))
+        if inInteraction then
+            -- Inside an active interaction (mail/vendor/AH/etc.). Blizzard's stock
+            -- *_OnHide handler is calling CloseAllBags as part of its close path.
+            -- Treat this as the canonical interaction-close signal and apply our
+            -- smart close, then let MAIL_CLOSED / MERCHANT_CLOSED / etc. fire
+            -- afterwards (where SmartAutoClose is idempotent — bagsAutoOpened will
+            -- already be false from this call's Hide → OnHide hook).
+            --
+            -- Why we can't just rely on the event: in Classic Anniversary,
+            -- MAIL_CLOSED is not dispatched to addon event frames (or fires too
+            -- late), so the only reliable close signal for mail is Blizzard's
+            -- CloseAllBags call here.
+            ns:Debug("[AUTO] DoBlizzardClose: inside interaction, routing to SmartAutoClose")
+            SmartAutoClose()
+            return
+        end
+        ns:Debug("[AUTO] DoBlizzardClose: calling BagFrame:Hide()")
         BagFrame:Hide()
     end
-
-    OpenBag = function(bagID)
-        if suppressAutoOpen then return end
-        if not Database:GetSetting("autoOpenBags") then return end
-        BagFrame:Show()
-    end
-
-    CloseBag = function(bagID)
-        if suppressAutoClose then return end
-        if not Database:GetSetting("autoCloseBags") then return end
-        BagFrame:Hide()
-    end
-
-    OpenBackpack = function()
-        if suppressAutoOpen then return end
-        if not Database:GetSetting("autoOpenBags") then return end
-        BagFrame:Show()
-    end
-
-    CloseBackpack = function()
-        if suppressAutoClose then return end
-        if not Database:GetSetting("autoCloseBags") then return end
-        BagFrame:Hide()
-    end
+    CloseAllBags  = function()      DoBlizzardClose("CloseAllBags")  end
+    CloseBag      = function(bagID) DoBlizzardClose("CloseBag")      end
+    CloseBackpack = function()      DoBlizzardClose("CloseBackpack") end
 
     ToggleAllBags = function()
         BagFrame:Toggle()
