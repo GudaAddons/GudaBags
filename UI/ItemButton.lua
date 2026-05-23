@@ -565,6 +565,7 @@ local function CreateButton(parent)
     if button.questStarterIcon then button.questStarterIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
     if button.questIcon then button.questIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
     if button.userLockFrame then button.userLockFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 2) end
+    if button.craftingQualityFrame then button.craftingQualityFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 1) end
 
     -- Reset hit rect to cover the full button (template might shrink it)
     button:SetHitRectInsets(0, 0, 0, 0)
@@ -674,11 +675,18 @@ local function CreateButton(parent)
     junkIcon:Hide()
     button.junkIcon = junkIcon
 
-    -- Crafting quality icon (top-left corner, Retail only)
-    local craftingQualityIcon = button:CreateTexture(nil, "OVERLAY", nil, 3)
+    -- Crafting quality icon (top-left corner, Retail only).
+    -- Wrapped in its own frame at frame-level BORDER+1 so the quality icon
+    -- draws ABOVE the quality border (button.border is a frame at BORDER —
+    -- a texture on the button itself would always be hidden behind it).
+    local craftingQualityFrame = CreateFrame("Frame", nil, button)
+    craftingQualityFrame:SetAllPoints(button)
+    craftingQualityFrame:SetFrameLevel(button:GetFrameLevel() + Constants.FRAME_LEVELS.BORDER + 1)
+    local craftingQualityIcon = craftingQualityFrame:CreateTexture(nil, "OVERLAY", nil, 3)
     craftingQualityIcon:SetSize(34, 34)
     craftingQualityIcon:SetPoint("TOPLEFT", button, "TOPLEFT", -5, 5)
     craftingQualityIcon:Hide()
+    button.craftingQualityFrame = craftingQualityFrame
     button.craftingQualityIcon = craftingQualityIcon
 
     -- Tracked/favorite icon shadow (for darker stroke effect)
@@ -2445,6 +2453,7 @@ function ItemButton:SyncFrameLevels(owner)
             if button.questStarterIcon then button.questStarterIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
             if button.questIcon then button.questIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
             if button.userLockFrame then button.userLockFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 2) end
+            if button.craftingQualityFrame then button.craftingQualityFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 1) end
         end
     end
 end
