@@ -2435,7 +2435,6 @@ Events:Register("AUCTION_HOUSE_CLOSED", RefreshForInteractionWindow, BagFrame)
 
 -- Auto open/close bags on interaction windows.
 --
--- Smart behavior, modelled on Baganator:
 --   * If the addon opened the bags for an interaction, it closes them when the
 --     interaction ends.
 --   * If the user already had the bags open (or opens them mid-interaction with

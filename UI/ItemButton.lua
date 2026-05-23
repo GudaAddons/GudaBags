@@ -1839,12 +1839,16 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- Crafting quality icon (Retail profession items)
+        -- Crafting quality icon (Retail profession items).
+        -- itemData.craftingQualityAtlas is the exact bag-overlay atlas extracted
+        -- from the item link (see Data/ItemScanner.lua GetCraftingQualityAtlas) —
+        -- this guarantees the icon matches the tooltip, including War Within's
+        -- new "Professions-Icon-Quality-12-Tier{N}" family.
         if button.craftingQualityIcon then
-            if itemData.craftingQuality and itemData.craftingQuality > 0 then
+            if itemData.craftingQualityAtlas then
                 local cqSize = math.max(20, math.floor(size * 0.54))
                 button.craftingQualityIcon:SetSize(cqSize, cqSize)
-                button.craftingQualityIcon:SetAtlas("Professions-Icon-Quality-Tier" .. itemData.craftingQuality, false)
+                button.craftingQualityIcon:SetAtlas(itemData.craftingQualityAtlas, false)
                 button.craftingQualityIcon:Show()
             else
                 button.craftingQualityIcon:Hide()
