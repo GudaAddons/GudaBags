@@ -204,20 +204,35 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
     return isUsable, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration
 end
 
--- Get crafting quality tier (1-5) for Retail profession items, or nil
-local function GetCraftingQuality(itemLink)
+-- Get crafting quality tier (1-5) for Retail profession items, or nil.
+-- Prefer GetItemCraftedQualityByItemInfo: that's the value Blizzard's tooltip
+-- uses to draw the Professions-Icon-Quality-TierN icon — it reflects the
+-- actual crafted instance's tier encoded in the link's bonus IDs. The other
+-- API (GetItemReagentQualityByItemInfo) returns the item's role-as-reagent
+-- classification, which for crafted reagents (e.g. Arcanoweave Bolt #239198)
+-- collapses to the base tier and does NOT match the tooltip. Reagent is kept
+-- as a fallback for pure raw reagents that have no crafted tier.
+-- Get the exact bag-overlay atlas for an item's crafting-quality tier (Retail).
+--
+-- Item links on Retail embed Blizzard's quality icon as an atlas escape, e.g.
+--   |A:Professions-ChatIcon-Quality-Tier1:17:15::1|a       (Dragonflight family)
+--   |A:Professions-ChatIcon-Quality-12-Tier1:17:15::1|a    (War Within family)
+--
+-- The C_TradeSkillUI quality APIs return only a tier number (1..N) and lose
+-- the expansion family qualifier ("12-"), so building the atlas name from the
+-- tier alone produces the wrong icon for War Within items — e.g. Arcanoweave
+-- Bolt (#239198) renders as Dragonflight Tier1 copper instead of the silver-
+-- looking War Within Tier1 the tooltip shows.
+--
+-- Pulling the atlas directly out of the link and swapping ChatIcon → Icon
+-- (the larger bag-overlay variant Blizzard ships alongside each chat icon)
+-- guarantees the bag overlay always matches the tooltip, regardless of which
+-- quality family a future expansion adds.
+local function GetCraftingQualityAtlas(itemLink)
     if not itemLink or not ns.IsRetail then return nil end
-    if C_TradeSkillUI then
-        if C_TradeSkillUI.GetItemReagentQualityByItemInfo then
-            local quality = C_TradeSkillUI.GetItemReagentQualityByItemInfo(itemLink)
-            if quality then return quality end
-        end
-        if C_TradeSkillUI.GetItemCraftedQualityByItemInfo then
-            local quality = C_TradeSkillUI.GetItemCraftedQualityByItemInfo(itemLink)
-            if quality then return quality end
-        end
-    end
-    return nil
+    local chatAtlas = itemLink:match("|A:(Professions%-ChatIcon%-Quality%-[^:]+):")
+    if not chatAtlas then return nil end
+    return (chatAtlas:gsub("Professions%-ChatIcon%-Quality%-", "Professions-Icon-Quality-"))
 end
 
 -- Fast scan using cached tooltip data
@@ -260,7 +275,7 @@ function ItemScanner:ScanSlotFast(bagID, slot)
             isQuestStarter = cached.isQuestStarter,
             hasSpecialProperties = cached.hasSpecialProperties,
             hasDuration = cached.hasDuration,
-            craftingQuality = GetCraftingQuality(itemLink),
+            craftingQualityAtlas = GetCraftingQualityAtlas(itemLink),
         }
     end
 
@@ -326,7 +341,7 @@ function ItemScanner:ScanSlot(bagID, slot)
         isQuestStarter = isQuestStarter,
         hasSpecialProperties = hasSpecialProperties,
         hasDuration = hasDuration,
-        craftingQuality = GetCraftingQuality(itemLink),
+        craftingQualityAtlas = GetCraftingQualityAtlas(itemLink),
     }
 end
 

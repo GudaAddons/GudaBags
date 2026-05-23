@@ -302,6 +302,7 @@ local function ResetButton(pool, button)
     if button.equipSetIconShadow then button.equipSetIconShadow:Hide() end
     if button.itemLevelText then button.itemLevelText:Hide() end
     if button.chargesText then button.chargesText:Hide() end
+    if button.boeText then button.boeText:Hide() end
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.craftingQualityIcon then button.craftingQualityIcon:Hide() end
@@ -564,6 +565,7 @@ local function CreateButton(parent)
     if button.questStarterIcon then button.questStarterIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
     if button.questIcon then button.questIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
     if button.userLockFrame then button.userLockFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 2) end
+    if button.craftingQualityFrame then button.craftingQualityFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 1) end
 
     -- Reset hit rect to cover the full button (template might shrink it)
     button:SetHitRectInsets(0, 0, 0, 0)
@@ -673,11 +675,18 @@ local function CreateButton(parent)
     junkIcon:Hide()
     button.junkIcon = junkIcon
 
-    -- Crafting quality icon (top-left corner, Retail only)
-    local craftingQualityIcon = button:CreateTexture(nil, "OVERLAY", nil, 3)
+    -- Crafting quality icon (top-left corner, Retail only).
+    -- Wrapped in its own frame at frame-level BORDER+1 so the quality icon
+    -- draws ABOVE the quality border (button.border is a frame at BORDER —
+    -- a texture on the button itself would always be hidden behind it).
+    local craftingQualityFrame = CreateFrame("Frame", nil, button)
+    craftingQualityFrame:SetAllPoints(button)
+    craftingQualityFrame:SetFrameLevel(button:GetFrameLevel() + Constants.FRAME_LEVELS.BORDER + 1)
+    local craftingQualityIcon = craftingQualityFrame:CreateTexture(nil, "OVERLAY", nil, 3)
     craftingQualityIcon:SetSize(34, 34)
     craftingQualityIcon:SetPoint("TOPLEFT", button, "TOPLEFT", -5, 5)
     craftingQualityIcon:Hide()
+    button.craftingQualityFrame = craftingQualityFrame
     button.craftingQualityIcon = craftingQualityIcon
 
     -- Tracked/favorite icon shadow (for darker stroke effect)
@@ -770,6 +779,18 @@ local function CreateButton(parent)
     chargesText:SetTextColor(1, 0.82, 0)
     chargesText:Hide()
     button.chargesText = chargesText
+
+    -- BoE label (bottom-left corner, drawn above equipment-set and pin icons
+    -- which sit on the same corner — sublayer 6 puts it above those
+    -- sublayer 2-5 icons. OUTLINE keeps it readable when stacked on top of them.)
+    -- Color is set per-item in SetItem() based on item quality.
+    local boeText = button:CreateFontString(nil, "OVERLAY", nil, 6)
+    boeText:SetFont(Constants.FONTS.DEFAULT, 10, "OUTLINE")
+    boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
+    boeText:SetJustifyH("LEFT")
+    boeText:SetText("BoE")
+    boeText:Hide()
+    button.boeText = boeText
 
     -- Quest starter icon (top left corner) - exclamation mark for quest starter items
     -- Use a frame container to ensure it draws above the border
@@ -1490,6 +1511,7 @@ local function GetCachedSettings()
             markEquipmentSets = Database:GetSetting("markEquipmentSets"),
             showItemLevel = Database:GetSetting("showItemLevel"),
             showCharges = Database:GetSetting("showCharges"),
+            showBoeLabel = Database:GetSetting("showBoeLabel"),
         }
         cachedSettingsFrame = currentFrame
     end
@@ -1644,6 +1666,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.lockOverlay:Hide()
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
+        if button.boeText then button.boeText:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Mark this button as empty slot handler
@@ -1653,6 +1676,13 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         -- itemData now contains real bagID/slot of first empty slot
         button.wrapper:SetID(itemData.bagID)
         button:SetID(itemData.slot)
+
+        -- Refresh tooltip in place if user is hovering this pseudo-slot
+        -- (e.g. another bag-update changed the empty count).
+        if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+            local onEnter = button:GetScript("OnEnter")
+            if onEnter then onEnter(button) end
+        end
 
         return
     end
@@ -1677,6 +1707,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.lockOverlay:Hide()
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
+        if button.boeText then button.boeText:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Animated glow border
@@ -1687,6 +1718,12 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.isDropTargetButton = true
         button.wrapper:SetID(0)
         button:SetID(0)
+
+        -- Refresh tooltip in place if user is hovering this drop-target slot.
+        if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+            local onEnter = button:GetScript("OnEnter")
+            if onEnter then onEnter(button) end
+        end
 
         return
     end
@@ -1823,12 +1860,16 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- Crafting quality icon (Retail profession items)
+        -- Crafting quality icon (Retail profession items).
+        -- itemData.craftingQualityAtlas is the exact bag-overlay atlas extracted
+        -- from the item link (see Data/ItemScanner.lua GetCraftingQualityAtlas) —
+        -- this guarantees the icon matches the tooltip, including War Within's
+        -- new "Professions-Icon-Quality-12-Tier{N}" family.
         if button.craftingQualityIcon then
-            if itemData.craftingQuality and itemData.craftingQuality > 0 then
+            if itemData.craftingQualityAtlas then
                 local cqSize = math.max(20, math.floor(size * 0.54))
                 button.craftingQualityIcon:SetSize(cqSize, cqSize)
-                button.craftingQualityIcon:SetAtlas("Professions-Icon-Quality-Tier" .. itemData.craftingQuality, false)
+                button.craftingQualityIcon:SetAtlas(itemData.craftingQualityAtlas, false)
                 button.craftingQualityIcon:Show()
             else
                 button.craftingQualityIcon:Hide()
@@ -1929,6 +1970,34 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
+        -- BoE label (bottom-left corner). Only on unbound BoE weapons/armor;
+        -- TooltipScanner:IsBindOnEquip excludes soulbound, BoP, and non-gear.
+        -- The itemType pre-check skips the tooltip scan for the common case
+        -- (consumables, reagents, etc.) so this stays cheap.
+        if button.boeText then
+            local showBoe = settings.showBoeLabel
+                and not isReadOnly
+                and (itemData.itemType == "Weapon" or itemData.itemType == "Armor")
+                and (itemData.quality or 0) > 0
+                and itemData.bagID and itemData.slot
+            if showBoe then
+                local TooltipScanner = ns:GetModule("TooltipScanner")
+                if TooltipScanner and TooltipScanner:IsBindOnEquip(itemData.bagID, itemData.slot, itemData) then
+                    local c = Constants.QUALITY_COLORS[itemData.quality]
+                    if c then
+                        button.boeText:SetTextColor(c[1], c[2], c[3], 1)
+                    else
+                        button.boeText:SetTextColor(1, 1, 1, 1)
+                    end
+                    button.boeText:Show()
+                else
+                    button.boeText:Hide()
+                end
+            else
+                button.boeText:Hide()
+            end
+        end
+
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
 
@@ -1977,6 +2046,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.chargesText then
             button.chargesText:Hide()
         end
+        if button.boeText then
+            button.boeText:Hide()
+        end
         if button.userLockIcon then
             button.userLockIcon:Hide()
         end
@@ -1986,6 +2058,17 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.cooldown then
             CooldownFrame_Set(button.cooldown, 0, 0, false)
         end
+    end
+
+    -- If the tooltip is currently hovering over this button, the user just saw
+    -- the OLD item's tooltip. Re-run our OnEnter so they see the NEW item
+    -- without having to move the mouse off and back on. (Blizzard's stock
+    -- ContainerFrameItemButton_OnUpdate does this automatically, but our
+    -- custom OnUpdate only listens for shift-key changes.) Combat-gated to
+    -- match Blizzard's stock pattern.
+    if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+        local onEnter = button:GetScript("OnEnter")
+        if onEnter then onEnter(button) end
     end
 end
 
@@ -2126,6 +2209,9 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     end
     if button.chargesText then
         button.chargesText:Hide()
+    end
+    if button.boeText then
+        button.boeText:Hide()
     end
     if button.userLockIcon then
         button.userLockIcon:Hide()
@@ -2391,6 +2477,7 @@ function ItemButton:SyncFrameLevels(owner)
             if button.questStarterIcon then button.questStarterIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
             if button.questIcon then button.questIcon:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.QUEST_ICON) end
             if button.userLockFrame then button.userLockFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 2) end
+            if button.craftingQualityFrame then button.craftingQualityFrame:SetFrameLevel(btnLvl + Constants.FRAME_LEVELS.BORDER + 1) end
         end
     end
 end
@@ -2458,7 +2545,8 @@ if Events then
             or key == "grayoutJunk" or key == "equipmentBorders"
             or key == "otherBorders" or key == "markUnusableItems"
             or key == "markEquipmentSets"
-            or key == "showItemLevel" or key == "showCharges" then
+            or key == "showItemLevel" or key == "showCharges"
+            or key == "showBoeLabel" then
             ItemButton:InvalidateSettingsCache()
         end
     end, ItemButton)

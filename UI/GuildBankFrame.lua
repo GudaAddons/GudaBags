@@ -1321,10 +1321,12 @@ ns.OnGuildBankOpened = function()
     ns:Debug("OnGuildBankOpened callback triggered")
     LoadComponents()
 
-    -- Auto open bags on guild bank interaction (before showing guild bank so it stays on top)
+    -- Auto open bags on guild bank interaction (before showing guild bank so it stays on top).
+    -- Routes through BagFrame's smart-open helper so bagsAutoOpened tracking stays in sync
+    -- with mail/merchant/AH/etc. (see UI/BagFrame.lua SmartAutoOpen).
     local BagFrameModule = ns:GetModule("BagFrame")
-    if Database:GetSetting("autoOpenBags") and BagFrameModule then
-        BagFrameModule:Show()
+    if BagFrameModule then
+        BagFrameModule:OnAutoInteractionOpen()
     end
 
     -- Show our guild bank frame (Blizzard's frame is hidden by GuildBankScanner)
@@ -1366,10 +1368,12 @@ ns.OnGuildBankClosed = function()
     showingPurchasePrompt = false  -- Reset purchase prompt state
     GuildBankFrame:Hide()
 
-    -- Auto close bags on guild bank interaction end
+    -- Auto close bags on guild bank interaction end.
+    -- Routes through BagFrame's smart-close helper, which only closes the bags
+    -- if the addon auto-opened them (and respects autoCloseBags).
     local BagFrameModule = ns:GetModule("BagFrame")
-    if Database:GetSetting("autoCloseBags") and BagFrameModule then
-        BagFrameModule:Hide()
+    if BagFrameModule then
+        BagFrameModule:OnAutoInteractionClose()
     end
 
     -- Refresh bags to update stacking (re-stack when interaction window closes)

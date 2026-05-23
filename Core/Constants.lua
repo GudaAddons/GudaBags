@@ -312,6 +312,7 @@ Constants.DEFAULTS = {
     autoLockSetItems = true,  -- Prevent selling/deleting equipment set items
     showItemLevel = true,
     showCharges = true,
+    showBoeLabel = true,  -- Show "BoE" text on unbound bind-on-equip items, colored by item quality
     reverseStackSort = false,
     sortRightToLeft = false,
     smoothSort = false,  -- Spread sort moves across frames to avoid stuttering
