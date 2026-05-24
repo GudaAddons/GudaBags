@@ -338,6 +338,16 @@ Constants.DEFAULTS = {
     guildBankFrameY = nil,
 }
 
+-- Locale-aware font default: ARIALN/FRIZQT have no Cyrillic/CJK glyphs, so on
+-- those clients localized text would render as boxes. Fall back to the client's
+-- standard font (STANDARD_TEXT_FONT, set per-locale by Blizzard) instead.
+do
+    local nonLatin = { ruRU = true, koKR = true, zhCN = true, zhTW = true }
+    if nonLatin[GetLocale()] then
+        Constants.DEFAULTS.fontFamily = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+    end
+end
+
 Constants.ICON = {
     BORDER_THICKNESS = 2,
 }

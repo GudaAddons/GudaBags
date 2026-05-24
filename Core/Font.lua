@@ -21,9 +21,12 @@ local registry = setmetatable({}, { __mode = "k" })
 -- the selected family without each site needing an explicit Apply call.
 local sweptFrames = setmetatable({}, { __mode = "k" })
 
-local DEFAULT_PATH = "Fonts\\ARIALN.TTF"
+-- Ultimate fallback only used before the Database/Constants are available
+-- (effectively never for UI). STANDARD_TEXT_FONT is the client's locale font.
+local DEFAULT_PATH = STANDARD_TEXT_FONT or "Fonts\\ARIALN.TTF"
 
--- Resolve the currently selected font path.
+-- Resolve the currently selected font path. Database:GetSetting already falls
+-- back to Constants.DEFAULTS.fontFamily (locale-aware) when nothing is set.
 function Font:GetFont()
     Database = Database or ns:GetModule("Database")
     return (Database and Database:GetSetting("fontFamily")) or DEFAULT_PATH
