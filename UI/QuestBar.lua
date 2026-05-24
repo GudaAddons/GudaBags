@@ -8,6 +8,9 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Utils = ns:GetModule("Utils")
 
+-- Iterate backpack + 4 bag slots + reagent bag (Retail only — Constants.REAGENT_BAG is nil on Classic).
+local MAX_PLAYER_BAG = Constants.REAGENT_BAG or Constants.PLAYER_BAG_MAX
+
 -- Local state
 local frame = nil
 local mainButton = nil
@@ -75,7 +78,7 @@ local function ScanForUsableQuestItems()
 
     local cachedBags = BagScanner:GetCachedBags()
 
-    for bagID = 0, 4 do
+    for bagID = Constants.PLAYER_BAG_MIN, MAX_PLAYER_BAG do
         local bagData = cachedBags[bagID]
         if bagData and bagData.slots then
             for slot, itemData in pairs(bagData.slots) do
@@ -112,7 +115,7 @@ local function ScanForUsableQuestItems()
 end
 
 local function FindItemInBags(itemID)
-    for bagID = 0, 4 do
+    for bagID = Constants.PLAYER_BAG_MIN, MAX_PLAYER_BAG do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
@@ -126,7 +129,7 @@ end
 
 local function GetItemCount(itemID)
     local count = 0
-    for bagID = 0, 4 do
+    for bagID = Constants.PLAYER_BAG_MIN, MAX_PLAYER_BAG do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
