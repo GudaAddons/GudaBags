@@ -6,6 +6,7 @@ ns:RegisterModule("BankFrame", BankFrame)
 local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Font = ns:GetModule("Font")
 local BankScanner = ns:GetModule("BankScanner")
 local ItemButton = ns:GetModule("ItemButton")
 local SearchBar = ns:GetModule("SearchBar")
@@ -467,6 +468,7 @@ local function CreateBankFrame()
         f.bottomTabBar:Hide()
     end
 
+    Font:RegisterFrame(f)
     return f
 end
 
@@ -1622,6 +1624,9 @@ function BankFrame:Refresh()
     if isBankOpen and not isViewingCached then
         BankFooter:Update()
     end
+
+    -- Apply the selected font to any chrome/text created during this refresh.
+    Font:ApplyToRegions(frame)
 end
 
 function BankFrame:RefreshSingleView(bank, bagsToShow, settings, hasSearch, isReadOnly)
@@ -1882,11 +1887,11 @@ function BankFrame:RefreshSplitView(bank, bagsToShow, settings, hasSearch, isRea
         end
         header.text:SetText(section.displayInfo.name or "")
 
-        local fontFile, _, fontFlags = header.text:GetFont()
+        local _, _, fontFlags = header.text:GetFont()
         if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_SMALL, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
         else
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_LARGE, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
         end
 
         header.line:Show()
@@ -2087,11 +2092,11 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, hasSearch, isReadOn
         header.text:SetText(section.name)
 
         -- Adjust font size based on icon size
-        local fontFile, _, fontFlags = header.text:GetFont()
+        local _, _, fontFlags = header.text:GetFont()
         if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_SMALL, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
         else
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_LARGE, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
         end
 
         header.line:Show()
@@ -2245,11 +2250,11 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
         header.text:SetPoint("LEFT", header, "LEFT", 0, 0)
 
         -- Adjust font size based on icon size
-        local fontFile, _, fontFlags = header.text:GetFont()
+        local _, _, fontFlags = header.text:GetFont()
         if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_SMALL, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
         else
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_LARGE, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
         end
 
         -- Responsive text truncation based on available width

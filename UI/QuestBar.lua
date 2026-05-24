@@ -6,6 +6,7 @@ ns:RegisterModule("QuestBar", QuestBar)
 local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Font = ns:GetModule("Font")
 local Utils = ns:GetModule("Utils")
 
 -- Iterate backpack + 4 bag slots + reagent bag (Retail only — Constants.REAGENT_BAG is nil on Classic).
@@ -29,7 +30,6 @@ local infoRefreshScheduled = false
 local PADDING = 0
 local MAX_FLYOUT_ITEMS = 8
 local MAX_GRID_ITEMS = 40  -- Max items in grid layout (5 columns * 8 rows)
-local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF"
 
 -- Flyout visibility helpers
 local function ShowFlyoutFrame()
@@ -203,7 +203,7 @@ local function CreateItemButton(parent, name, isMain)
     -- Count text
     local count = button:CreateFontString(nil, "OVERLAY")
     local fontSize = Database:GetSetting("iconFontSize")
-    count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
+    Font:Apply(count, fontSize, "OUTLINE")
     count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
     count:SetJustifyH("RIGHT")
     button.count = count
@@ -869,16 +869,16 @@ end
 function QuestBar:UpdateFontSize()
     local fontSize = Database:GetSetting("iconFontSize")
     if mainButton and mainButton.count then
-        mainButton.count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
+        Font:Apply(mainButton.count, fontSize, "OUTLINE")
     end
     for _, button in ipairs(flyoutButtons) do
         if button.count then
-            button.count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
+            Font:Apply(button.count, fontSize, "OUTLINE")
         end
     end
     for _, button in ipairs(gridButtons) do
         if button.count then
-            button.count:SetFont(DEFAULT_FONT, fontSize, "OUTLINE")
+            Font:Apply(button.count, fontSize, "OUTLINE")
         end
     end
 end

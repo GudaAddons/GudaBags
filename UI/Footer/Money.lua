@@ -6,6 +6,7 @@ ns:RegisterModule("Footer.Money", Money)
 local L = ns.L
 local Utils = ns:GetModule("Utils")
 local Database = ns:GetModule("Database")
+local Font = ns:GetModule("Font")
 
 local moneyFrame = nil
 
@@ -300,8 +301,8 @@ function Money:Init(parent)
             -- Set absolute font size
             local text = coinButton:GetFontString()
             if text then
-                local fontName, _, fontFlags = text:GetFont()
-                text:SetFont(fontName, FONT_SIZE, fontFlags)
+                local _, _, fontFlags = text:GetFont()
+                Font:Apply(text, FONT_SIZE, fontFlags)
             end
         end
     end
@@ -336,8 +337,8 @@ function Money:SetFontSize(size)
         if coinButton then
             local text = coinButton:GetFontString()
             if text then
-                local fontName, _, fontFlags = text:GetFont()
-                text:SetFont(fontName, size, fontFlags)
+                local _, _, fontFlags = text:GetFont()
+                Font:Apply(text, size, fontFlags)
             end
         end
     end

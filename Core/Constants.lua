@@ -247,6 +247,7 @@ Constants.VIEW_TYPES = { "single", "category", "split" }
 Constants.DEFAULTS = {
     -- General
     theme = "guda",
+    fontFamily = "Fonts\\ARIALN.TTF",  -- Font family used across all addon text
     bagColumns = 10,
     bankColumns = 15,
     guildBankColumns = 15,
@@ -337,6 +338,16 @@ Constants.DEFAULTS = {
     guildBankFrameY = nil,
 }
 
+-- Locale-aware font default: ARIALN/FRIZQT have no Cyrillic/CJK glyphs, so on
+-- those clients localized text would render as boxes. Fall back to the client's
+-- standard font (STANDARD_TEXT_FONT, set per-locale by Blizzard) instead.
+do
+    local nonLatin = { ruRU = true, koKR = true, zhCN = true, zhTW = true }
+    if nonLatin[GetLocale()] then
+        Constants.DEFAULTS.fontFamily = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+    end
+end
+
 Constants.ICON = {
     BORDER_THICKNESS = 2,
 }
@@ -379,7 +390,7 @@ Constants.CATEGORY_UI = {
 
     -- Settings popup
     POPUP_WIDTH = 620,
-    POPUP_HEIGHT = 550,
+    POPUP_HEIGHT = 560,
     POPUP_PADDING = 16,
 
     -- Editor

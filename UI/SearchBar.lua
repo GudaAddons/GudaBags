@@ -7,6 +7,7 @@ local Constants = ns.Constants
 local L = ns.L
 local SearchParser = ns:GetModule("SearchParser")
 local Database = ns:GetModule("Database")
+local Font = ns:GetModule("Font")
 
 local instances = {}
 local searchOverlay = nil
@@ -242,6 +243,7 @@ end
 local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, activeColor)
     local btn = CreateFrame("Button", nil, chipStrip)
     local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    Font:Override(label)
     label:SetPoint("CENTER", 0, 0)
     label:SetText(L[chipDef.localeKey] or chipDef.key)
     btn.label = label
@@ -417,6 +419,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             item = CreateFrame("Button", nil, typesDropdownMenu)
             item:SetHeight(18)
             local itemLabel = item:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            Font:Override(itemLabel)
             itemLabel:SetPoint("LEFT", 6, 0)
             item.label = itemLabel
             local itemBg = item:CreateTexture(nil, "BACKGROUND")
@@ -496,6 +499,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             item = CreateFrame("Button", nil, typesDropdownMenu)
             item:SetHeight(18)
             local itemLabel = item:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            Font:Override(itemLabel)
             itemLabel:SetPoint("LEFT", 6, 0)
             item.label = itemLabel
             local itemBg = item:CreateTexture(nil, "BACKGROUND")
@@ -687,6 +691,7 @@ local function CreateChipStrip(searchBar, parent)
     typesDropdown.icon = dropIcon
     -- Label
     local dropLabel = typesDropdown:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    Font:Override(dropLabel)
     dropLabel:SetPoint("LEFT", dropIcon, "RIGHT", 3, 0)
     dropLabel:SetText((L["CHIP_TYPES_DROPDOWN"] or "Types") .. "")
     dropLabel:SetTextColor(0.55, 0.55, 0.55)
@@ -845,6 +850,7 @@ local function CreateEquipSetDropdown()
         row.icon = icon
 
         local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        Font:Override(nameText)
         nameText:SetPoint("LEFT", icon, "RIGHT", 4, 0)
         nameText:SetPoint("RIGHT", row, "RIGHT", -2, 0)
         nameText:SetJustifyH("LEFT")
@@ -981,6 +987,7 @@ local function CreateSearchBar(parent)
 
     -- Active set name label (shown after equip button when a set is selected)
     local activeSetText = equipSetButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    Font:Override(activeSetText)
     activeSetText:SetPoint("LEFT", equipSetButton, "RIGHT", 3, 0)
     activeSetText:SetTextColor(1, 0.82, 0)
     activeSetText:SetText("")
@@ -1086,10 +1093,12 @@ local function CreateSearchBar(parent)
     searchBox:SetPoint("RIGHT", transferButton, "LEFT", -4, 0)
     searchBox:SetHeight(18)
     searchBox:SetFontObject(GameFontHighlightSmall)
+    Font:Override(searchBox)
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
 
     local placeholder = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    Font:Override(placeholder)
     placeholder:SetPoint("LEFT", searchBox, "LEFT", 0, 0)
     placeholder:SetText(L["SEARCH_PLACEHOLDER"])
     searchBox.placeholder = placeholder

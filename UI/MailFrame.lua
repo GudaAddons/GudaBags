@@ -7,6 +7,7 @@ local Constants = ns.Constants
 local L = ns.L
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Font = ns:GetModule("Font")
 local Theme = ns:GetModule("Theme")
 local Utils = ns:GetModule("Utils")
 
@@ -488,6 +489,7 @@ function MailFrame:Show()
         frame = CreateMailFrame()
         RestoreFramePosition()
         UpdateFrameAppearance()
+        Font:RegisterFrame(frame)
     end
 
     frame:Show()
@@ -593,6 +595,9 @@ function MailFrame:Refresh()
     else
         MailFooter:HideBackButton()
     end
+
+    -- Apply the selected font to any rows/text created during this refresh.
+    Font:ApplyToRegions(frame)
 end
 
 function MailFrame:ViewCharacter(fullName, charData)
