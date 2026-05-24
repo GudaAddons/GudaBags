@@ -247,6 +247,7 @@ Constants.VIEW_TYPES = { "single", "category", "split" }
 Constants.DEFAULTS = {
     -- General
     theme = "guda",
+    fontFamily = "Fonts\\ARIALN.TTF",  -- Font family used across all addon text
     bagColumns = 10,
     bankColumns = 15,
     guildBankColumns = 15,

@@ -12,6 +12,7 @@ local Constants = ns.Constants
 local L = ns.L
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Font = ns:GetModule("Font")
 local ItemButton = ns:GetModule("ItemButton")
 local SearchBar = ns:GetModule("SearchBar")
 local LayoutEngine = ns:GetModule("BagFrame.LayoutEngine")
@@ -844,6 +845,7 @@ local function CreateGuildBankFrame()
     f.sideTabBar = sideTabBar
     f.sideTabs = {}
 
+    Font:RegisterFrame(f)
     return f
 end
 
@@ -1209,6 +1211,9 @@ function GuildBankFrame:Refresh()
     end
     GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
     GuildBankFooter:Update()
+
+    -- Apply the selected font to any chrome/text created during this refresh.
+    Font:ApplyToRegions(frame)
 end
 
 -------------------------------------------------

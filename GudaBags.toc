@@ -24,6 +24,7 @@ Core\Constants.lua
 Core\Utils.lua
 Core\Events.lua
 Core\Database.lua
+Core\Font.lua
 Core\ProfileManager.lua
 Core\Theme.lua
 Core\Masque.lua

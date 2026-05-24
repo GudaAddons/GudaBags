@@ -7,6 +7,7 @@ local Constants = ns.Constants
 local L = ns.L
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Font = ns:GetModule("Font")
 local BagScanner = ns:GetModule("BagScanner")
 local ItemButton = ns:GetModule("ItemButton")
 local Footer = ns:GetModule("Footer")
@@ -434,6 +435,7 @@ local function CreateBagFrame()
     -- Note: Responsive narrow mode is handled in Refresh() which pre-calculates
     -- expected frame width and applies narrow mode before sizing
 
+    Font:RegisterFrame(f)
     return f
 end
 
@@ -600,6 +602,9 @@ function BagFrame:Refresh()
 
     -- Save current view type for detecting view switches
     lastLayoutSettings = { viewType = viewType }
+
+    -- Apply the selected font to any chrome/text created during this refresh.
+    Font:ApplyToRegions(frame)
 end
 
 function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isViewingCached)
@@ -694,11 +699,11 @@ function BagFrame:RefreshSplitView(bags, bagsToShow, settings, hasSearch, isView
         end
         header.text:SetText(section.displayInfo.name or "")
 
-        local fontFile, _, fontFlags = header.text:GetFont()
+        local _, _, fontFlags = header.text:GetFont()
         if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_SMALL, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
         else
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_LARGE, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
         end
 
         header.line:Show()
@@ -854,11 +859,11 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
         header.text:SetPoint("LEFT", header, "LEFT", 0, 0)
 
         -- Adjust font size based on icon size
-        local fontFile, _, fontFlags = header.text:GetFont()
+        local _, _, fontFlags = header.text:GetFont()
         if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_SMALL, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
         else
-            header.text:SetFont(fontFile, Constants.CATEGORY_FONT_LARGE, fontFlags)
+            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
         end
 
         -- Responsive text truncation based on available width

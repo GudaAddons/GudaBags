@@ -5,6 +5,7 @@ ns:RegisterModule("ItemButton", ItemButton)
 
 local Constants = ns.Constants
 local Database = ns:GetModule("Database")
+local Font = ns:GetModule("Font")
 local Tooltip = ns:GetModule("Tooltip")
 local Utils = ns:GetModule("Utils")
 
@@ -321,16 +322,16 @@ end
 local function ApplyFontSize(button, fontSize)
     fontSize = fontSize or Database:GetSetting("iconFontSize")
     if button.Count then
-        button.Count:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
+        Font:Apply(button.Count, fontSize, "OUTLINE")
         button.Count:ClearAllPoints()
         button.Count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
         button.Count:SetJustifyH("RIGHT")
     end
     if button.itemLevelText then
-        button.itemLevelText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
+        Font:Apply(button.itemLevelText, fontSize, "OUTLINE")
     end
     if button.chargesText then
-        button.chargesText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
+        Font:Apply(button.chargesText, fontSize, "OUTLINE")
     end
 end
 
@@ -781,7 +782,7 @@ local function CreateButton(parent)
     -- Item level text (top-right corner). Top-left is reserved for SimpleItemLevel
     -- when that addon is loaded (it places its iLvl there by default).
     local itemLevelText = button:CreateFontString(nil, "OVERLAY", nil)
-    itemLevelText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE")
+    Font:Apply(itemLevelText, 12, "OUTLINE")
     itemLevelText:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
     itemLevelText:SetJustifyH("RIGHT")
     itemLevelText:Hide()
@@ -789,7 +790,7 @@ local function CreateButton(parent)
 
     -- Charges text (bottom-right corner, e.g. "x5" for Wizard Oil)
     local chargesText = button:CreateFontString(nil, "OVERLAY", nil)
-    chargesText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE")
+    Font:Apply(chargesText, 12, "OUTLINE")
     chargesText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
     chargesText:SetJustifyH("RIGHT")
     chargesText:SetTextColor(1, 0.82, 0)
@@ -801,7 +802,7 @@ local function CreateButton(parent)
     -- sublayer 2-5 icons. OUTLINE keeps it readable when stacked on top of them.)
     -- Color is set per-item in SetItem() based on item quality.
     local boeText = button:CreateFontString(nil, "OVERLAY", nil, 6)
-    boeText:SetFont("Fonts\\ARIALN.TTF", 10, "OUTLINE")
+    Font:Apply(boeText, 10, "OUTLINE")
     boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
     boeText:SetJustifyH("LEFT")
     boeText:SetText("BoE")
