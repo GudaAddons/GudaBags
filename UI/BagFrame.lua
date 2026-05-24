@@ -1613,8 +1613,12 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 -- Slot has an item now
                 local newItemData = currentSlot.itemData
                 local newItemID = newItemData.itemID
+                -- Same itemID can still be a different instance (ilvl/bonus swap);
+                -- compare the displayed link so a same-name/different-ilvl swap
+                -- isn't treated as "unchanged".
+                local linkChanged = button.itemData and newItemData.link ~= button.itemData.link
 
-                if oldItemID == newItemID then
+                if oldItemID == newItemID and not linkChanged then
                     -- Same item - just check count
                     local oldCount = cachedItemCount[slotKey]
                     if oldCount ~= newItemData.count then
@@ -1732,8 +1736,12 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 local newItemData = bagData and bagData.slots and bagData.slots[slot]
                 local oldItemID = cachedItemData[slotKey]
                 local newItemID = newItemData and newItemData.itemID or nil
+                -- Same itemID can still be a different instance (ilvl/bonus swap);
+                -- compare the displayed link too so an equip-swap of same-name,
+                -- different-ilvl items repaints instead of being skipped.
+                local linkChanged = newItemData and button.itemData and newItemData.link ~= button.itemData.link
 
-                if oldItemID ~= newItemID then
+                if oldItemID ~= newItemID or linkChanged then
                     if newItemData then
                         ItemButton:SetItem(button, newItemData, iconSize, false)
                         cachedItemData[slotKey] = newItemID
@@ -1778,8 +1786,13 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     local newItemData = bagData and bagData.slots and bagData.slots[slot]
                     local oldItemID = cachedItemData[slotKey]
                     local newItemID = newItemData and newItemData.itemID or nil
+                    -- Same itemID can still be a different instance (ilvl/bonus
+                    -- swap); compare the displayed link too so an equip-swap of
+                    -- same-name, different-ilvl items repaints instead of being
+                    -- skipped as "unchanged".
+                    local linkChanged = newItemData and button.itemData and newItemData.link ~= button.itemData.link
 
-                    if oldItemID ~= newItemID then
+                    if oldItemID ~= newItemID or linkChanged then
                         -- Item actually changed - update button
                         if newItemData then
                             ItemButton:SetItem(button, newItemData, iconSize, false)
@@ -2249,12 +2262,86 @@ Events:Register("UNIT_SPELLCAST_SUCCEEDED", function(event, unit)
     end)
 end, BagFrame)
 
+-- Lock self-heal watcher.
+--
+-- On retail, equipping/swapping an item briefly locks its bag slot, but the
+-- *unlock* often does NOT emit ITEM_LOCK_CHANGED for that slot (verified: the
+-- slot unlocks ~0.25-0.5s later with no event). Because GudaBags drives the
+-- lock visual from events (its custom OnUpdate doesn't poll isLocked like
+-- Blizzard's stock button), the slot stays desaturated until the next full
+-- refresh (bag toggle). When a slot locks, briefly poll it until it unlocks,
+-- then reconcile the visual against the live API.
+local lockWatchActive = {}
+local function ReconcileSlot(bagID, slotID)
+    if not (frame and frame:IsShown() and not viewingCharacter) then return end
+    local BagScanner = ns:GetModule("BagScanner")
+    if BagScanner then
+        BagScanner:ScanDirtyBags({ [bagID] = true })
+        if ns.OnBagsUpdated then ns.OnBagsUpdated({ [bagID] = true }) end
+    end
+    -- IncrementalUpdate skips SetItem when the itemID is unchanged, so repaint
+    -- the lock visual explicitly for the same-item case.
+    ItemButton:UpdateLockForItem(bagID, slotID)
+end
+
+local function StartLockWatch(bagID, slotID)
+    -- Sorting/restacking lock many slots rapidly and have their own completion
+    -- handling; don't spawn watchers for those.
+    local SortEngine = ns:GetModule("SortEngine")
+    if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then return end
+
+    local key = bagID .. ":" .. slotID
+    if lockWatchActive[key] then return end
+    lockWatchActive[key] = true
+
+    local ticks = 0
+    local stableTicks = 0
+    local startInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+    local lastItem = startInfo and startInfo.itemID
+    local lastLocked = startInfo and startInfo.isLocked or false
+    local lastLink = startInfo and startInfo.hyperlink
+
+    C_Timer.NewTicker(0.2, function(self)
+        ticks = ticks + 1
+        local info = C_Container.GetContainerItemInfo(bagID, slotID)
+        local item = info and info.itemID
+        local locked = info and info.isLocked or false
+        local link = info and info.hyperlink
+
+        -- Treat a link change as a change too: a same-itemID/different-ilvl
+        -- equip-swap keeps the itemID but changes the link.
+        local changed = (item ~= lastItem) or (locked ~= lastLocked) or (link ~= lastLink)
+        if changed then
+            lastItem, lastLocked, lastLink = item, locked, link
+            stableTicks = 0
+            -- Reconcile the UI to whatever the API now reports (covers both the
+            -- silent unlock and a late content swap that fired no BAG_UPDATE).
+            ReconcileSlot(bagID, slotID)
+        else
+            stableTicks = stableTicks + 1
+        end
+
+        -- Stop once the slot has been unlocked and unchanged for ~0.6s, or after
+        -- a generous timeout (slow servers can take seconds to settle a swap).
+        if (not locked and stableTicks >= 3) or ticks >= 75 then
+            lockWatchActive[key] = nil
+            self:Cancel()
+        end
+    end)
+end
+
 -- Update item lock state (when picking up/putting down items)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only
     if viewingCharacter then return end
     if frame and frame:IsShown() and bagID and slotID then
         ItemButton:UpdateLockForItem(bagID, slotID)
+        -- Only watch when this is a lock (not an unlock); the unlock is what we
+        -- may never be told about. No point watching while bags are closed.
+        local info = C_Container.GetContainerItemInfo(bagID, slotID)
+        if info and info.isLocked then
+            StartLockWatch(bagID, slotID)
+        end
     end
 
     -- Detect drag start for showing the flyout drop bar (all views) and the

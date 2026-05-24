@@ -113,11 +113,18 @@ function BagScanner:ScanDirtyBags(bagIDs)
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                     local cachedItem = existingBag.slots[slot]
 
-                    -- Check if slot changed by comparing itemID
+                    -- Check if slot changed by comparing itemID AND link.
+                    -- Two items can share an itemID but differ in item level /
+                    -- bonus IDs (e.g. swapping two "Warboots" of different ilvl);
+                    -- the itemID is identical, so we must also compare the link
+                    -- (which encodes ilvl/bonusIDs) or the swap is invisible here
+                    -- and the slot keeps showing the old item until a full rescan.
                     local currentItemID = itemInfo and itemInfo.itemID
                     local cachedItemID = cachedItem and cachedItem.itemID
+                    local currentLink = itemInfo and itemInfo.hyperlink
+                    local cachedLink = cachedItem and cachedItem.link
 
-                    if currentItemID ~= cachedItemID then
+                    if currentItemID ~= cachedItemID or currentLink ~= cachedLink then
                         -- Slot changed - update known item counts. Recent
                         -- emission is handled by the post-loop diff so that
                         -- items merely moving between slots (sort, restack,
