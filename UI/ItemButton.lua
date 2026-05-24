@@ -321,7 +321,8 @@ end
 local function ApplyFontSize(button, fontSize)
     fontSize = fontSize or Database:GetSetting("iconFontSize")
     if button.Count then
-        button.Count:SetFont(Constants.FONTS.DEFAULT, fontSize, "OUTLINE")
+        -- ARIALN to stay consistent with the iLvl / SimpleItemLevel font family.
+        button.Count:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
         button.Count:ClearAllPoints()
         button.Count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
         button.Count:SetJustifyH("RIGHT")
@@ -331,7 +332,8 @@ local function ApplyFontSize(button, fontSize)
         button.itemLevelText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
     end
     if button.chargesText then
-        button.chargesText:SetFont(Constants.FONTS.DEFAULT, fontSize, "OUTLINE")
+        -- ARIALN to stay consistent with the iLvl / count / SimpleItemLevel font family.
+        button.chargesText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
     end
 end
 
@@ -791,9 +793,10 @@ local function CreateButton(parent)
     itemLevelText:Hide()
     button.itemLevelText = itemLevelText
 
-    -- Charges text (bottom-right corner, e.g. "x5" for Wizard Oil)
+    -- Charges text (bottom-right corner, e.g. "x5" for Wizard Oil).
+    -- ARIALN to match the iLvl / count / SimpleItemLevel font family.
     local chargesText = button:CreateFontString(nil, "OVERLAY", nil)
-    chargesText:SetFont(Constants.FONTS.DEFAULT, 12, "OUTLINE")
+    chargesText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE")
     chargesText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
     chargesText:SetJustifyH("RIGHT")
     chargesText:SetTextColor(1, 0.82, 0)
@@ -805,7 +808,7 @@ local function CreateButton(parent)
     -- sublayer 2-5 icons. OUTLINE keeps it readable when stacked on top of them.)
     -- Color is set per-item in SetItem() based on item quality.
     local boeText = button:CreateFontString(nil, "OVERLAY", nil, 6)
-    boeText:SetFont(Constants.FONTS.DEFAULT, 10, "OUTLINE")
+    boeText:SetFont("Fonts\\ARIALN.TTF", 10, "OUTLINE")
     boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
     boeText:SetJustifyH("LEFT")
     boeText:SetText("BoE")
