@@ -321,18 +321,15 @@ end
 local function ApplyFontSize(button, fontSize)
     fontSize = fontSize or Database:GetSetting("iconFontSize")
     if button.Count then
-        -- ARIALN to stay consistent with the iLvl / SimpleItemLevel font family.
         button.Count:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
         button.Count:ClearAllPoints()
         button.Count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
         button.Count:SetJustifyH("RIGHT")
     end
     if button.itemLevelText then
-        -- ARIALN to stay consistent with SimpleItemLevel's font family (see CreateButton).
         button.itemLevelText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
     end
     if button.chargesText then
-        -- ARIALN to stay consistent with the iLvl / count / SimpleItemLevel font family.
         button.chargesText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
     end
 end
@@ -783,9 +780,6 @@ local function CreateButton(parent)
 
     -- Item level text (top-right corner). Top-left is reserved for SimpleItemLevel
     -- when that addon is loaded (it places its iLvl there by default).
-    -- Uses ARIALN (the font family Blizzard's NumberFontNormal / SimpleItemLevel use)
-    -- so the iLvl numbers look visually consistent with SimpleItemLevel.
-    -- Size follows the user's iconFontSize setting; OUTLINE kept for readability.
     local itemLevelText = button:CreateFontString(nil, "OVERLAY", nil)
     itemLevelText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE")
     itemLevelText:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
@@ -793,8 +787,7 @@ local function CreateButton(parent)
     itemLevelText:Hide()
     button.itemLevelText = itemLevelText
 
-    -- Charges text (bottom-right corner, e.g. "x5" for Wizard Oil).
-    -- ARIALN to match the iLvl / count / SimpleItemLevel font family.
+    -- Charges text (bottom-right corner, e.g. "x5" for Wizard Oil)
     local chargesText = button:CreateFontString(nil, "OVERLAY", nil)
     chargesText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE")
     chargesText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 1)
