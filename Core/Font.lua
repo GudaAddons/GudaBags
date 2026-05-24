@@ -91,6 +91,71 @@ function Font:ReapplyAll()
     end
 end
 
+-------------------------------------------------
+-- Tooltip styling (scoped to GudaBags-owned tooltips)
+-- The header/footer button hints use the global GameTooltip. We only restyle
+-- it while it belongs to one of our frames, and revert on hide so the rest of
+-- the game's tooltips (and full item tooltips) are left untouched.
+-------------------------------------------------
+local tooltipDidStyle = false
+local styledLines = {}
+
+local function IsGudaOwned(frame)
+    local guard = 0
+    while frame and guard < 60 do
+        if sweptFrames[frame] then return true end
+        local parent = frame.GetParent and frame:GetParent()
+        if parent == frame then break end
+        frame = parent
+        guard = guard + 1
+    end
+    return false
+end
+
+function Font:InitTooltipStyling()
+    if self._tooltipHooked or not GameTooltip then return end
+    self._tooltipHooked = true
+
+    GameTooltip:HookScript("OnShow", function(tt)
+        -- Never touch full item tooltips or tooltips that aren't ours.
+        if tt.GetItem and select(2, tt:GetItem()) then return end
+        if not IsGudaOwned(tt.GetOwner and tt:GetOwner()) then return end
+
+        local name = tt:GetName()
+        if not name then return end
+        local path = self:GetFont()
+        wipe(styledLines)
+        for i = 1, tt:NumLines() do
+            for _, side in ipairs({ "Left", "Right" }) do
+                local fs = _G[name .. "Text" .. side .. i]
+                if fs and fs:IsShown() then
+                    fs.__gudaFontObj = fs:GetFontObject() or false
+                    local _, size, flags = fs:GetFont()
+                    if size then
+                        fs:SetFont(path, size, flags)
+                        styledLines[#styledLines + 1] = fs
+                    end
+                end
+            end
+        end
+        tooltipDidStyle = #styledLines > 0
+    end)
+
+    GameTooltip:HookScript("OnHide", function()
+        if not tooltipDidStyle then return end
+        tooltipDidStyle = false
+        for _, fs in ipairs(styledLines) do
+            -- Restore Blizzard's font object so the line follows the default
+            -- font again on the next (non-GudaBags) tooltip.
+            if fs.__gudaFontObj then
+                fs:SetFontObject(fs.__gudaFontObj)
+            end
+            fs.__gudaFontObj = nil
+        end
+        wipe(styledLines)
+    end)
+end
+
 local Events = ns:GetModule("Events")
 if Events then
     Events:Register("SETTING_CHANGED", function(_, key)
@@ -99,3 +164,5 @@ if Events then
         end
     end, Font)
 end
+
+Font:InitTooltipStyling()
