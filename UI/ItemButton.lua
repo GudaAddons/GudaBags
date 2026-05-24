@@ -303,6 +303,7 @@ local function ResetButton(pool, button)
     if button.itemLevelText then button.itemLevelText:Hide() end
     if button.chargesText then button.chargesText:Hide() end
     if button.boeText then button.boeText:Hide() end
+    if button.upgradeArrow then button.upgradeArrow:Hide() end
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.craftingQualityIcon then button.craftingQualityIcon:Hide() end
@@ -326,7 +327,8 @@ local function ApplyFontSize(button, fontSize)
         button.Count:SetJustifyH("RIGHT")
     end
     if button.itemLevelText then
-        button.itemLevelText:SetFont(Constants.FONTS.DEFAULT, fontSize, "OUTLINE")
+        -- ARIALN to stay consistent with SimpleItemLevel's font family (see CreateButton).
+        button.itemLevelText:SetFont("Fonts\\ARIALN.TTF", fontSize, "OUTLINE")
     end
     if button.chargesText then
         button.chargesText:SetFont(Constants.FONTS.DEFAULT, fontSize, "OUTLINE")
@@ -689,22 +691,36 @@ local function CreateButton(parent)
     button.craftingQualityFrame = craftingQualityFrame
     button.craftingQualityIcon = craftingQualityIcon
 
-    -- Tracked/favorite icon shadow (for darker stroke effect)
+    -- Tracked/favorite icon shadow (for darker stroke effect, drawn behind the icon)
     local trackedIconShadow = button:CreateTexture(nil, "OVERLAY", nil, 2)
     trackedIconShadow:SetSize(14, 14)
-    trackedIconShadow:SetPoint("TOPRIGHT", button, "TOPRIGHT", 0, 0)
+    trackedIconShadow:SetPoint("CENTER", button, "CENTER", 0, 0)
     trackedIconShadow:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\fav.png")
     trackedIconShadow:SetVertexColor(0, 0, 0, 1)
     trackedIconShadow:Hide()
     button.trackedIconShadow = trackedIconShadow
 
-    -- Tracked/favorite icon (top right corner)
+    -- Tracked/favorite icon (center of slot, freed from top-right so the
+    -- item-level text can take that corner — leaves TOPLEFT free for SimpleItemLevel).
     local trackedIcon = button:CreateTexture(nil, "OVERLAY", nil, 3)
     trackedIcon:SetSize(12, 12)
-    trackedIcon:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
+    trackedIcon:SetPoint("CENTER", button, "CENTER", 0, 0)
     trackedIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\fav.png")
     trackedIcon:Hide()
     button.trackedIcon = trackedIcon
+
+    -- SimpleItemLevel upgrade arrow (top-left). Rendered by us using
+    -- SimpleItemLevel.API.ItemIsUpgrade so the feature shows on GudaBags' buttons
+    -- without waiting for SimpleItemLevel to be patched upstream. Same atlas
+    -- (poi-door-arrow-up) SimpleItemLevel uses, anchored where SimpleItemLevel
+    -- would have placed it (TOPLEFT, freed by moving our iLvl to TOPRIGHT).
+    -- Stays hidden when SimpleItemLevel is not installed (gate in SetItem).
+    local upgradeArrow = button:CreateTexture(nil, "OVERLAY", nil, 4)
+    upgradeArrow:SetSize(12, 12)
+    upgradeArrow:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+    upgradeArrow:SetAtlas("poi-door-arrow-up")
+    upgradeArrow:Hide()
+    button.upgradeArrow = upgradeArrow
 
     -- Equipment set icon shadow (bottom-left corner)
     local equipSetIconShadow = button:CreateTexture(nil, "OVERLAY", nil, 2)
@@ -763,11 +779,15 @@ local function CreateButton(parent)
     button.userLockIcon = userLockIcon
     button.userLockFrame = userLockFrame
 
-    -- Item level text (top-left corner)
+    -- Item level text (top-right corner). Top-left is reserved for SimpleItemLevel
+    -- when that addon is loaded (it places its iLvl there by default).
+    -- Uses ARIALN (the font family Blizzard's NumberFontNormal / SimpleItemLevel use)
+    -- so the iLvl numbers look visually consistent with SimpleItemLevel.
+    -- Size follows the user's iconFontSize setting; OUTLINE kept for readability.
     local itemLevelText = button:CreateFontString(nil, "OVERLAY", nil)
-    itemLevelText:SetFont(Constants.FONTS.DEFAULT, 12, "OUTLINE")
-    itemLevelText:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
-    itemLevelText:SetJustifyH("LEFT")
+    itemLevelText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE")
+    itemLevelText:SetPoint("TOPRIGHT", button, "TOPRIGHT", -2, -2)
+    itemLevelText:SetJustifyH("RIGHT")
     itemLevelText:Hide()
     button.itemLevelText = itemLevelText
 
@@ -1667,6 +1687,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
         if button.boeText then button.boeText:Hide() end
+        if button.upgradeArrow then button.upgradeArrow:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Mark this button as empty slot handler
@@ -1708,6 +1729,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
         if button.boeText then button.boeText:Hide() end
+        if button.upgradeArrow then button.upgradeArrow:Hide() end
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Animated glow border
@@ -1942,11 +1964,19 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- Item level display (Weapon classID=2, Armor classID=4)
+        -- Item level display (Weapon classID=2, Armor classID=4).
+        -- Text color matches the quality border so iLvl is visually grouped with
+        -- the other quality indicators (border, BoE label) on the same icon.
         if button.itemLevelText then
             local isEquip = itemData.classID and (itemData.classID == 2 or itemData.classID == 4)
             if settings.showItemLevel and isEquip and itemData.itemLevel and itemData.itemLevel > 0 and (itemData.quality or 0) > 0 then
                 button.itemLevelText:SetText(itemData.itemLevel)
+                local c = Constants.QUALITY_COLORS[itemData.quality]
+                if c then
+                    button.itemLevelText:SetTextColor(c[1], c[2], c[3], 1)
+                else
+                    button.itemLevelText:SetTextColor(1, 1, 1, 1)
+                end
                 button.itemLevelText:Show()
             else
                 button.itemLevelText:Hide()
@@ -1995,6 +2025,23 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
                 end
             else
                 button.boeText:Hide()
+            end
+        end
+
+        -- SimpleItemLevel upgrade arrow (Retail; requires SimpleItemLevel addon).
+        -- Gated on _G.SimpleItemLevel so it's invisible without that addon installed.
+        -- Uses classID (Weapon=2, Armor=4) since itemData.itemType is localized.
+        if button.upgradeArrow then
+            local sil = _G.SimpleItemLevel
+            local isEquip = itemData.classID and (itemData.classID == 2 or itemData.classID == 4)
+            if sil and sil.API and sil.API.ItemIsUpgrade
+                and not isReadOnly
+                and itemData.link
+                and isEquip
+                and sil.API.ItemIsUpgrade(itemData.link) then
+                button.upgradeArrow:Show()
+            else
+                button.upgradeArrow:Hide()
             end
         end
 
@@ -2049,6 +2096,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.boeText then
             button.boeText:Hide()
         end
+        if button.upgradeArrow then
+            button.upgradeArrow:Hide()
+        end
         if button.userLockIcon then
             button.userLockIcon:Hide()
         end
@@ -2069,6 +2119,17 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     if GameTooltip:IsOwned(button) and not InCombatLockdown() then
         local onEnter = button:GetScript("OnEnter")
         if onEnter then onEnter(button) end
+    end
+
+    -- Fire the public hook so third-party addons (e.g. SimpleItemLevel) can
+    -- decorate this button. Only for real items in a real bag/slot — skip
+    -- pseudo-items, cached/read-only views, and guild-bank synthetic IDs.
+    if not isReadOnly
+        and itemData and itemData.bagID and itemData.slot
+        and not itemData.isGuildBank
+        and not itemData.isEmptySlots
+        and not itemData.isDropTarget then
+        ns:FireItemButtonUpdate(button, itemData.bagID, itemData.slot)
     end
 end
 
@@ -2212,6 +2273,9 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     end
     if button.boeText then
         button.boeText:Hide()
+    end
+    if button.upgradeArrow then
+        button.upgradeArrow:Hide()
     end
     if button.userLockIcon then
         button.userLockIcon:Hide()
