@@ -1696,7 +1696,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- Refresh tooltip in place if user is hovering this pseudo-slot
         -- (e.g. another bag-update changed the empty count).
-        if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+        -- Skip while an item is on the cursor (see note at the normal-item path).
+        if GameTooltip:IsOwned(button) and not InCombatLockdown() and not GetCursorInfo() then
             local onEnter = button:GetScript("OnEnter")
             if onEnter then onEnter(button) end
         end
@@ -1738,7 +1739,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button:SetID(0)
 
         -- Refresh tooltip in place if user is hovering this drop-target slot.
-        if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+        -- Skip while an item is on the cursor (see note at the normal-item path).
+        if GameTooltip:IsOwned(button) and not InCombatLockdown() and not GetCursorInfo() then
             local onEnter = button:GetScript("OnEnter")
             if onEnter then onEnter(button) end
         end
@@ -2112,7 +2114,16 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     -- ContainerFrameItemButton_OnUpdate does this automatically, but our
     -- custom OnUpdate only listens for shift-key changes.) Combat-gated to
     -- match Blizzard's stock pattern.
-    if GameTooltip:IsOwned(button) and not InCombatLockdown() then
+    --
+    -- Skip the replay while an item is on the cursor: our OnEnter calls
+    -- Blizzard's ContainerFrameItemButton_OnEnter -> CursorUpdate, which
+    -- desaturates a slot when the held cursor item can't drop there. During a
+    -- right-click equip-swap WoW briefly parks the swapped item on the cursor
+    -- (see UI/BagFrame.lua), so replaying OnEnter then would leave the slot
+    -- greyed until the next mouse-over. Our custom OnUpdate never re-saturates
+    -- it. Replaying only with an empty cursor is safe and still refreshes the
+    -- tooltip.
+    if GameTooltip:IsOwned(button) and not InCombatLockdown() and not GetCursorInfo() then
         local onEnter = button:GetScript("OnEnter")
         if onEnter then onEnter(button) end
     end
