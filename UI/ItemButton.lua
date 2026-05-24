@@ -1828,7 +1828,24 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             HideInnerShadow()
         end
 
-        if itemData.locked then
+        -- The scanner snapshots `locked` at scan time, which during an equip-swap
+        -- can capture the item while it is transiently locked. When the snapshot
+        -- claims locked, verify against the live API for real container items so a
+        -- stale lock doesn't leave the slot greyed. Guild-bank and cached/read-only
+        -- views keep the snapshot value (the live container API doesn't apply).
+        local isLocked = itemData.locked
+        if isLocked and not isReadOnly and not itemData.isGuildBank
+            and itemData.bagID and itemData.slot then
+            local liveInfo = C_Container.GetContainerItemInfo(itemData.bagID, itemData.slot)
+            if liveInfo then
+                isLocked = liveInfo.isLocked or false
+                -- Write back so the (shared) scanner snapshot stops reporting a
+                -- stale lock and future refreshes skip this live re-check.
+                itemData.locked = isLocked
+            end
+        end
+
+        if isLocked then
             button.lockOverlay:Show()
             SetItemButtonDesaturated(button, true)
         else
