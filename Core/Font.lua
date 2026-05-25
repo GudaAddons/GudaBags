@@ -147,9 +147,14 @@ function Font:InitTooltipStyling()
             for _, side in ipairs({ "Left", "Right" }) do
                 local fs = _G[name .. "Text" .. side .. i]
                 if fs and fs:IsShown() then
-                    fs.__gudaFontObj = fs:GetFontObject() or false
-                    local _, size, flags = fs:GetFont()
+                    local curPath, size, flags = fs:GetFont()
                     if size then
+                        -- Capture the original font two ways so the revert can
+                        -- never fail: the font object (may be nil if a prior raw
+                        -- SetFont detached it) AND the raw font, which GetFont
+                        -- always returns even when the object is detached.
+                        fs.__gudaFontObj = fs:GetFontObject()
+                        fs.__gudaPrevFont = { curPath, size, flags }
                         fs:SetFont(path, size, flags)
                         styledLines[#styledLines + 1] = fs
                     end
@@ -163,12 +168,16 @@ function Font:InitTooltipStyling()
         if not tooltipDidStyle then return end
         tooltipDidStyle = false
         for _, fs in ipairs(styledLines) do
-            -- Restore Blizzard's font object so the line follows the default
-            -- font again on the next (non-GudaBags) tooltip.
+            -- Always revert so the GudaBags font never lingers on the shared
+            -- GameTooltip lines. Prefer the font object (re-links to the dynamic
+            -- default); fall back to the raw font when no object was present.
             if fs.__gudaFontObj then
                 fs:SetFontObject(fs.__gudaFontObj)
+            elseif fs.__gudaPrevFont then
+                fs:SetFont(fs.__gudaPrevFont[1], fs.__gudaPrevFont[2], fs.__gudaPrevFont[3])
             end
             fs.__gudaFontObj = nil
+            fs.__gudaPrevFont = nil
         end
         wipe(styledLines)
     end)
