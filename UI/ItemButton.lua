@@ -11,52 +11,31 @@ local Utils = ns:GetModule("Utils")
 
 -------------------------------------------------
 -- Upgrade arrow (Pawn / SimpleItemLevel compatibility)
--- We draw the arrow on our own buttons using whichever advisor addon is
--- present. Pawn takes priority; SimpleItemLevel is the fallback.
+-- Drawn on our own buttons using whichever advisor addon is present. Pawn
+-- takes priority; SimpleItemLevel is the fallback. Pawn's verdict is cached,
+-- budgeted, and invalidated by the Compatibility.Pawn module.
 -------------------------------------------------
 
--- Pawn can answer "not ready yet" (nil) before its scales/item cache load.
--- When that happens we re-render any open GudaBags window shortly after so the
--- arrows appear once Pawn is ready. Debounced to a single pending pass.
-local pawnRecheckScheduled = false
-local function SchedulePawnRecheck()
-    if pawnRecheckScheduled or not C_Timer then return end
-    pawnRecheckScheduled = true
-    C_Timer.After(0.4, function()
-        pawnRecheckScheduled = false
-        for _, name in ipairs({ "BagFrame", "BankFrame", "GuildBankFrame" }) do
-            local m = ns:GetModule(name)
-            if m and m.IsShown and m:IsShown() and m.Refresh then m:Refresh() end
-        end
-    end)
-end
-
 -- Pawn shows the green arrow on bags by reusing Blizzard's built-in bag
--- UpgradeIcon, which is the "bags-greenarrow" atlas -- so we use that to match
--- Pawn exactly. On clients without that atlas, fall back to Pawn's own arrow
--- texture (still green/Pawn-branded).
+-- UpgradeIcon ("bags-greenarrow" atlas) -- so we use that to match Pawn. On
+-- clients without that atlas, fall back to Pawn's own arrow texture.
 local PAWN_ARROW_ATLAS = (C_Texture and C_Texture.GetAtlasInfo
     and C_Texture.GetAtlasInfo("bags-greenarrow")) and "bags-greenarrow" or nil
 local PAWN_ARROW_TEXTURE = "Interface\\AddOns\\Pawn\\Textures\\UpgradeArrow"
 
+local PawnCompat  -- resolved lazily to avoid load-order coupling
+
 -- Which addon says this item is an upgrade? Returns "pawn", "sil", or nil.
 -- Pawn takes priority. classID 2 = Weapon, 4 = Armor (itemType is localized).
 local function GetUpgradeArrowSource(itemData, isReadOnly)
-    if isReadOnly or not itemData.link then return nil end
+    if isReadOnly or not itemData or not itemData.link then return nil end
     if not (itemData.classID == 2 or itemData.classID == 4) then return nil end
 
-    -- Pawn exposes global functions (not a _G.Pawn.API table).
-    -- PawnShouldItemLinkHaveUpgradeArrow(link, checkLevel) returns true/false,
-    -- or nil when Pawn's data/compute budget isn't ready yet -> recheck later.
-    if _G.PawnShouldItemLinkHaveUpgradeArrow then
-        -- Pawn prints a chat error if queried before it finishes initializing.
-        if _G.PawnIsReady and not PawnIsReady() then
-            SchedulePawnRecheck()
-            return nil
-        end
-        local res = PawnShouldItemLinkHaveUpgradeArrow(itemData.link, true)
-        if res == nil then SchedulePawnRecheck() end
-        return res == true and "pawn" or nil
+    PawnCompat = PawnCompat or ns:GetModule("Compatibility.Pawn")
+    if PawnCompat and PawnCompat:IsAvailable() then
+        -- nil ("not sure yet") is handled inside the module, which refreshes
+        -- the arrows once it resolves -- so treat anything but true as no arrow.
+        return PawnCompat:GetUpgradeStatus(itemData.link) == true and "pawn" or nil
     end
 
     local sil = _G.SimpleItemLevel
@@ -64,6 +43,27 @@ local function GetUpgradeArrowSource(itemData, isReadOnly)
         return sil.API.ItemIsUpgrade(itemData.link) == true and "sil" or nil
     end
     return nil
+end
+
+-- Apply or clear the upgrade arrow on a button based on its current item.
+-- Reads button.itemData / button.isReadOnly (both set in SetItem), so it can
+-- also be called standalone by RefreshUpgradeArrows.
+local function ApplyUpgradeArrow(button)
+    if not button.upgradeArrow then return end
+    local source = GetUpgradeArrowSource(button.itemData, button.isReadOnly)
+    if source == "pawn" then
+        if PAWN_ARROW_ATLAS then
+            button.upgradeArrow:SetAtlas(PAWN_ARROW_ATLAS)
+        else
+            button.upgradeArrow:SetTexture(PAWN_ARROW_TEXTURE)
+        end
+        button.upgradeArrow:Show()
+    elseif source == "sil" then
+        button.upgradeArrow:SetAtlas("poi-door-arrow-up")
+        button.upgradeArrow:Show()
+    else
+        button.upgradeArrow:Hide()
+    end
 end
 
 -- No-op: UIErrorsFrame hooking was removed to prevent taint propagation
@@ -2102,25 +2102,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
 
         -- Upgrade arrow: Pawn (preferred) or SimpleItemLevel, when installed.
-        -- Invisible without either addon. See GetUpgradeArrowSource above. The
-        -- arrow wears each source's own look: Pawn's green arrow for Pawn, the
-        -- gold poi-door-arrow-up atlas for SimpleItemLevel.
-        if button.upgradeArrow then
-            local source = GetUpgradeArrowSource(itemData, isReadOnly)
-            if source == "pawn" then
-                if PAWN_ARROW_ATLAS then
-                    button.upgradeArrow:SetAtlas(PAWN_ARROW_ATLAS)
-                else
-                    button.upgradeArrow:SetTexture(PAWN_ARROW_TEXTURE)
-                end
-                button.upgradeArrow:Show()
-            elseif source == "sil" then
-                button.upgradeArrow:SetAtlas("poi-door-arrow-up")
-                button.upgradeArrow:Show()
-            else
-                button.upgradeArrow:Hide()
-            end
-        end
+        -- Invisible without either addon. See ApplyUpgradeArrow above.
+        ApplyUpgradeArrow(button)
 
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
@@ -2662,6 +2645,18 @@ function ItemButton:UpdateLockForItem(bagID, slotID)
                 if button.userLockIconStroke then button.userLockIconStroke:Hide() end
             end
             return  -- Found the button, done
+        end
+    end
+end
+
+-- Re-evaluate just the upgrade arrow on every active button. Called by the
+-- Pawn compat module when its data resolves or is invalidated (spec/scale/gear
+-- change) -- far cheaper than a full bag refresh and avoids flicker.
+function ItemButton:RefreshUpgradeArrows()
+    if not buttonPool then return end
+    for button in buttonPool:EnumerateActive() do
+        if button.upgradeArrow and button.itemData then
+            ApplyUpgradeArrow(button)
         end
     end
 end

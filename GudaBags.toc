@@ -34,6 +34,7 @@ Core\SlashCommands.lua
 # Compatibility Layer
 Compatibility\API.lua
 Compatibility\Features.lua
+Compatibility\Pawn.lua
 
 # Category System
 DB\DefaultCategories.lua
