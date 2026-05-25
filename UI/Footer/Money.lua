@@ -42,18 +42,43 @@ end
 
 local TOOLTIP_FONT_SIZE = 11
 
+-- GameTooltip reuses the same font-string objects for every tooltip. A raw
+-- SetFont here detaches each line's font object, so we record the originals and
+-- reattach them when the money tooltip is dismissed (RestoreTooltipFonts).
+-- Otherwise the size-11 override would bleed onto the next item/unit tooltip.
+local savedMoneyFonts = {}
+
 local function SetTooltipSmallFont()
+    wipe(savedMoneyFonts)
     local fontName, _, fontFlags = GameFontNormal:GetFont()
     for i = 1, GameTooltip:NumLines() do
-        local leftText = _G["GameTooltipTextLeft" .. i]
-        local rightText = _G["GameTooltipTextRight" .. i]
-        if leftText then
-            leftText:SetFont(fontName, TOOLTIP_FONT_SIZE, fontFlags)
-        end
-        if rightText then
-            rightText:SetFont(fontName, TOOLTIP_FONT_SIZE, fontFlags)
+        for _, side in ipairs({ "Left", "Right" }) do
+            local fs = _G["GameTooltipText" .. side .. i]
+            if fs then
+                local curPath, curSize, curFlags = fs:GetFont()
+                savedMoneyFonts[#savedMoneyFonts + 1] = {
+                    fs = fs,
+                    obj = fs:GetFontObject(),
+                    path = curPath, size = curSize, flags = curFlags,
+                }
+                fs:SetFont(fontName, TOOLTIP_FONT_SIZE, fontFlags)
+            end
         end
     end
+end
+
+-- Reattach the original font objects (or raw font) to the lines we overrode so
+-- subsequent (non-GudaBags) tooltips render at their default size/font.
+local function RestoreTooltipFonts()
+    for i = 1, #savedMoneyFonts do
+        local saved = savedMoneyFonts[i]
+        if saved.obj then
+            saved.fs:SetFontObject(saved.obj)
+        elseif saved.size then
+            saved.fs:SetFont(saved.path, saved.size, saved.flags)
+        end
+    end
+    wipe(savedMoneyFonts)
 end
 
 -- Filter out gold-blacklisted characters from a character list
@@ -266,6 +291,7 @@ function Money:Init(parent)
 
     moneyFrame:SetScript("OnLeave", function()
         GameTooltip:Hide()
+        RestoreTooltipFonts()
     end)
 
     moneyFrame:SetScript("OnMouseUp", function(self, button)
@@ -285,6 +311,7 @@ function Money:Init(parent)
             end)
             coinButton:SetScript("OnLeave", function()
                 GameTooltip:Hide()
+                RestoreTooltipFonts()
             end)
             coinButton:SetScript("OnClick", function(self, button)
                 if button == "RightButton" then
