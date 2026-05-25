@@ -9,6 +9,63 @@ local Font = ns:GetModule("Font")
 local Tooltip = ns:GetModule("Tooltip")
 local Utils = ns:GetModule("Utils")
 
+-------------------------------------------------
+-- Upgrade arrow (Pawn / SimpleItemLevel compatibility)
+-- Drawn on our own buttons using whichever advisor addon is present. Pawn
+-- takes priority; SimpleItemLevel is the fallback. Pawn's verdict is cached,
+-- budgeted, and invalidated by the Compatibility.Pawn module.
+-------------------------------------------------
+
+-- Pawn shows the green arrow on bags by reusing Blizzard's built-in bag
+-- UpgradeIcon ("bags-greenarrow" atlas) -- so we use that to match Pawn. On
+-- clients without that atlas, fall back to Pawn's own arrow texture.
+local PAWN_ARROW_ATLAS = (C_Texture and C_Texture.GetAtlasInfo
+    and C_Texture.GetAtlasInfo("bags-greenarrow")) and "bags-greenarrow" or nil
+local PAWN_ARROW_TEXTURE = "Interface\\AddOns\\Pawn\\Textures\\UpgradeArrow"
+
+local PawnCompat  -- resolved lazily to avoid load-order coupling
+
+-- Which addon says this item is an upgrade? Returns "pawn", "sil", or nil.
+-- Pawn takes priority. classID 2 = Weapon, 4 = Armor (itemType is localized).
+local function GetUpgradeArrowSource(itemData, isReadOnly)
+    if isReadOnly or not itemData or not itemData.link then return nil end
+    if not (itemData.classID == 2 or itemData.classID == 4) then return nil end
+
+    PawnCompat = PawnCompat or ns:GetModule("Compatibility.Pawn")
+    if PawnCompat and PawnCompat:IsAvailable() then
+        -- nil ("not sure yet") is handled inside the module, which refreshes
+        -- the arrows once it resolves -- so treat anything but true as no arrow.
+        return PawnCompat:GetUpgradeStatus(itemData.link) == true and "pawn" or nil
+    end
+
+    local sil = _G.SimpleItemLevel
+    if sil and sil.API and sil.API.ItemIsUpgrade then
+        return sil.API.ItemIsUpgrade(itemData.link) == true and "sil" or nil
+    end
+    return nil
+end
+
+-- Apply or clear the upgrade arrow on a button based on its current item.
+-- Reads button.itemData / button.isReadOnly (both set in SetItem), so it can
+-- also be called standalone by RefreshUpgradeArrows.
+local function ApplyUpgradeArrow(button)
+    if not button.upgradeArrow then return end
+    local source = GetUpgradeArrowSource(button.itemData, button.isReadOnly)
+    if source == "pawn" then
+        if PAWN_ARROW_ATLAS then
+            button.upgradeArrow:SetAtlas(PAWN_ARROW_ATLAS)
+        else
+            button.upgradeArrow:SetTexture(PAWN_ARROW_TEXTURE)
+        end
+        button.upgradeArrow:Show()
+    elseif source == "sil" then
+        button.upgradeArrow:SetAtlas("poi-door-arrow-up")
+        button.upgradeArrow:Show()
+    else
+        button.upgradeArrow:Hide()
+    end
+end
+
 -- No-op: UIErrorsFrame hooking was removed to prevent taint propagation
 -- that would break Blizzard's secure unit frame code (maxHealth comparisons, etc.)
 local function SuppressItemErrors()
@@ -709,12 +766,12 @@ local function CreateButton(parent)
     trackedIcon:Hide()
     button.trackedIcon = trackedIcon
 
-    -- SimpleItemLevel upgrade arrow (top-left). Rendered by us using
-    -- SimpleItemLevel.API.ItemIsUpgrade so the feature shows on GudaBags' buttons
-    -- without waiting for SimpleItemLevel to be patched upstream. Same atlas
-    -- (poi-door-arrow-up) SimpleItemLevel uses, anchored where SimpleItemLevel
-    -- would have placed it (TOPLEFT, freed by moving our iLvl to TOPRIGHT).
-    -- Stays hidden when SimpleItemLevel is not installed (gate in SetItem).
+    -- Upgrade arrow (top-left). Rendered by us using whichever advisor addon is
+    -- present -- Pawn first, then SimpleItemLevel (see GetUpgradeArrowSource).
+    -- The texture is swapped per source in SetItem (Pawn's green arrow vs the
+    -- gold poi-door-arrow-up atlas); the atlas below is just the default.
+    -- Anchored at TOPLEFT (freed by moving our iLvl to TOPRIGHT).
+    -- Stays hidden when neither addon is installed (gate in SetItem).
     local upgradeArrow = button:CreateTexture(nil, "OVERLAY", nil, 4)
     upgradeArrow:SetSize(12, 12)
     upgradeArrow:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
@@ -2044,22 +2101,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- SimpleItemLevel upgrade arrow (Retail; requires SimpleItemLevel addon).
-        -- Gated on _G.SimpleItemLevel so it's invisible without that addon installed.
-        -- Uses classID (Weapon=2, Armor=4) since itemData.itemType is localized.
-        if button.upgradeArrow then
-            local sil = _G.SimpleItemLevel
-            local isEquip = itemData.classID and (itemData.classID == 2 or itemData.classID == 4)
-            if sil and sil.API and sil.API.ItemIsUpgrade
-                and not isReadOnly
-                and itemData.link
-                and isEquip
-                and sil.API.ItemIsUpgrade(itemData.link) then
-                button.upgradeArrow:Show()
-            else
-                button.upgradeArrow:Hide()
-            end
-        end
+        -- Upgrade arrow: Pawn (preferred) or SimpleItemLevel, when installed.
+        -- Invisible without either addon. See ApplyUpgradeArrow above.
+        ApplyUpgradeArrow(button)
 
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
@@ -2601,6 +2645,18 @@ function ItemButton:UpdateLockForItem(bagID, slotID)
                 if button.userLockIconStroke then button.userLockIconStroke:Hide() end
             end
             return  -- Found the button, done
+        end
+    end
+end
+
+-- Re-evaluate just the upgrade arrow on every active button. Called by the
+-- Pawn compat module when its data resolves or is invalidated (spec/scale/gear
+-- change) -- far cheaper than a full bag refresh and avoids flicker.
+function ItemButton:RefreshUpgradeArrows()
+    if not buttonPool then return end
+    for button in buttonPool:EnumerateActive() do
+        if button.upgradeArrow and button.itemData then
+            ApplyUpgradeArrow(button)
         end
     end
 end

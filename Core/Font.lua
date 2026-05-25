@@ -115,13 +115,28 @@ local function IsGudaOwned(frame)
     return false
 end
 
+-- True if the tooltip is showing an item (so we leave it on the default font).
+-- TooltipUtil.GetDisplayedItem is the modern/retail path (GameTooltip:GetItem
+-- was deprecated and returns nil there); GetItem is the Classic fallback.
+local function TooltipShowsItem(tt)
+    if TooltipUtil and TooltipUtil.GetDisplayedItem then
+        local _, link = TooltipUtil.GetDisplayedItem(tt)
+        if link then return true end
+    end
+    if tt.GetItem then
+        local _, link = tt:GetItem()
+        if link then return true end
+    end
+    return false
+end
+
 function Font:InitTooltipStyling()
     if self._tooltipHooked or not GameTooltip then return end
     self._tooltipHooked = true
 
     GameTooltip:HookScript("OnShow", function(tt)
         -- Never touch full item tooltips or tooltips that aren't ours.
-        if tt.GetItem and select(2, tt:GetItem()) then return end
+        if TooltipShowsItem(tt) then return end
         if not IsGudaOwned(tt.GetOwner and tt:GetOwner()) then return end
 
         local name = tt:GetName()
