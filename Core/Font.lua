@@ -25,11 +25,19 @@ local sweptFrames = setmetatable({}, { __mode = "k" })
 -- (effectively never for UI). STANDARD_TEXT_FONT is the client's locale font.
 local DEFAULT_PATH = STANDARD_TEXT_FONT or "Fonts\\ARIALN.TTF"
 
+-- Cached resolved font path. The path only changes when the "fontFamily"
+-- setting changes, which routes through ReapplyAll (where the cache is
+-- cleared). Memoizing it keeps the per-string Apply path free of a
+-- Database:GetSetting lookup on every SetFont.
+local cachedFontPath
+
 -- Resolve the currently selected font path. Database:GetSetting already falls
 -- back to Constants.DEFAULTS.fontFamily (locale-aware) when nothing is set.
 function Font:GetFont()
+    if cachedFontPath then return cachedFontPath end
     Database = Database or ns:GetModule("Database")
-    return (Database and Database:GetSetting("fontFamily")) or DEFAULT_PATH
+    cachedFontPath = (Database and Database:GetSetting("fontFamily")) or DEFAULT_PATH
+    return cachedFontPath
 end
 
 -- Apply the selected font with an explicit size/flags. Use for numeric/text
@@ -42,8 +50,23 @@ function Font:Apply(fontString, size, flags)
         size = curSize or 12
         flags = flags or curFlags
     end
-    registry[fontString] = { size = size, flags = flags }
-    fontString:SetFont(self:GetFont(), size, flags)
+    local path = self:GetFont()
+    -- Reuse the registry entry (no per-call allocation) and skip SetFont when
+    -- the string already has exactly this path/size/flags. The repeated full
+    -- sweeps (UpdateFontSize on every appearance update, ReapplyAll, per-item
+    -- re-application) thus become cheap comparisons instead of text reflows.
+    -- Safe because only GudaBags sets these strings' fonts, so the stored
+    -- entry faithfully reflects their current state.
+    local entry = registry[fontString]
+    if entry then
+        if entry.path == path and entry.size == size and entry.flags == flags then
+            return
+        end
+        entry.path, entry.size, entry.flags = path, size, flags
+    else
+        registry[fontString] = { path = path, size = size, flags = flags }
+    end
+    fontString:SetFont(path, size, flags)
 end
 
 -- Swap only the family on a string that already has its size/flags set
@@ -83,9 +106,11 @@ end
 -- Re-set the family on every registered string at its remembered size/flags,
 -- then re-sweep registered frames to catch any text created since.
 function Font:ReapplyAll()
+    cachedFontPath = nil  -- force GetFont to re-resolve the newly selected family
     local path = self:GetFont()
     for fs, info in pairs(registry) do
         if fs.SetFont then
+            info.path = path  -- keep the Apply no-op check coherent with the new family
             fs:SetFont(path, info.size, info.flags)
         end
     end
