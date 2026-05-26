@@ -160,9 +160,15 @@ function Font:InitTooltipStyling()
     self._tooltipHooked = true
 
     GameTooltip:HookScript("OnShow", function(tt)
-        -- Never touch full item tooltips or tooltips that aren't ours.
+        local owner = tt.GetOwner and tt:GetOwner()
+        -- Never touch item tooltips. GudaBags item buttons own the tooltip and
+        -- always set .itemData; this catches them even when the item link can't
+        -- resolve yet (first hover / uncached / guild-bank away from the bank)
+        -- and a name-only SetText fallback is shown, which TooltipShowsItem below
+        -- would miss. Unit/target and other game tooltips aren't Guda-owned.
+        if owner and owner.itemData then return end
         if TooltipShowsItem(tt) then return end
-        if not IsGudaOwned(tt.GetOwner and tt:GetOwner()) then return end
+        if not IsGudaOwned(owner) then return end
 
         local name = tt:GetName()
         if not name then return end
@@ -174,12 +180,17 @@ function Font:InitTooltipStyling()
                 if fs and fs:IsShown() then
                     local curPath, size, flags = fs:GetFont()
                     if size then
-                        -- Capture the original font two ways so the revert can
-                        -- never fail: the font object (may be nil if a prior raw
-                        -- SetFont detached it) AND the raw font, which GetFont
-                        -- always returns even when the object is detached.
-                        fs.__gudaFontObj = fs:GetFontObject()
-                        fs.__gudaPrevFont = { curPath, size, flags }
+                        -- Capture the ORIGINAL font once. If a prior styling was
+                        -- not yet reverted (OnShow can fire again before OnHide),
+                        -- curPath/size already hold the Guda font — re-capturing
+                        -- would bake it in as the "original" and leak permanently
+                        -- onto every later (item/unit) tooltip that reuses these
+                        -- shared lines. Capture the font object too (nil once a raw
+                        -- SetFont detached it) so the revert can re-link the default.
+                        if fs.__gudaPrevFont == nil then
+                            fs.__gudaFontObj = fs:GetFontObject()
+                            fs.__gudaPrevFont = { curPath, size, flags }
+                        end
                         fs:SetFont(path, size, flags)
                         styledLines[#styledLines + 1] = fs
                     end
