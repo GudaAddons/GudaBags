@@ -119,105 +119,11 @@ function Font:ReapplyAll()
     end
 end
 
--------------------------------------------------
--- Tooltip styling (scoped to GudaBags-owned tooltips)
--- The header/footer button hints use the global GameTooltip. We only restyle
--- it while it belongs to one of our frames, and revert on hide so the rest of
--- the game's tooltips (and full item tooltips) are left untouched.
--------------------------------------------------
-local tooltipDidStyle = false
-local styledLines = {}
-
-local function IsGudaOwned(frame)
-    local guard = 0
-    while frame and guard < 60 do
-        if sweptFrames[frame] then return true end
-        local parent = frame.GetParent and frame:GetParent()
-        if parent == frame then break end
-        frame = parent
-        guard = guard + 1
-    end
-    return false
-end
-
--- True if the tooltip is showing an item (so we leave it on the default font).
--- TooltipUtil.GetDisplayedItem is the modern/retail path (GameTooltip:GetItem
--- was deprecated and returns nil there); GetItem is the Classic fallback.
-local function TooltipShowsItem(tt)
-    if TooltipUtil and TooltipUtil.GetDisplayedItem then
-        local _, link = TooltipUtil.GetDisplayedItem(tt)
-        if link then return true end
-    end
-    if tt.GetItem then
-        local _, link = tt:GetItem()
-        if link then return true end
-    end
-    return false
-end
-
-function Font:InitTooltipStyling()
-    if self._tooltipHooked or not GameTooltip then return end
-    self._tooltipHooked = true
-
-    GameTooltip:HookScript("OnShow", function(tt)
-        local owner = tt.GetOwner and tt:GetOwner()
-        -- Never touch item tooltips. GudaBags item buttons own the tooltip and
-        -- always set .itemData; this catches them even when the item link can't
-        -- resolve yet (first hover / uncached / guild-bank away from the bank)
-        -- and a name-only SetText fallback is shown, which TooltipShowsItem below
-        -- would miss. Unit/target and other game tooltips aren't Guda-owned.
-        if owner and owner.itemData then return end
-        if TooltipShowsItem(tt) then return end
-        if not IsGudaOwned(owner) then return end
-
-        local name = tt:GetName()
-        if not name then return end
-        local path = self:GetFont()
-        wipe(styledLines)
-        for i = 1, tt:NumLines() do
-            for _, side in ipairs({ "Left", "Right" }) do
-                local fs = _G[name .. "Text" .. side .. i]
-                if fs and fs:IsShown() then
-                    local curPath, size, flags = fs:GetFont()
-                    if size then
-                        -- Capture the ORIGINAL font once. If a prior styling was
-                        -- not yet reverted (OnShow can fire again before OnHide),
-                        -- curPath/size already hold the Guda font — re-capturing
-                        -- would bake it in as the "original" and leak permanently
-                        -- onto every later (item/unit) tooltip that reuses these
-                        -- shared lines. Capture the font object too (nil once a raw
-                        -- SetFont detached it) so the revert can re-link the default.
-                        if fs.__gudaPrevFont == nil then
-                            fs.__gudaFontObj = fs:GetFontObject()
-                            fs.__gudaPrevFont = { curPath, size, flags }
-                        end
-                        fs:SetFont(path, size, flags)
-                        styledLines[#styledLines + 1] = fs
-                    end
-                end
-            end
-        end
-        tooltipDidStyle = #styledLines > 0
-    end)
-
-    GameTooltip:HookScript("OnHide", function()
-        if not tooltipDidStyle then return end
-        tooltipDidStyle = false
-        for _, fs in ipairs(styledLines) do
-            -- Always revert so the GudaBags font never lingers on the shared
-            -- GameTooltip lines. Prefer the font object (re-links to the dynamic
-            -- default); fall back to the raw font when no object was present.
-            if fs.__gudaFontObj then
-                fs:SetFontObject(fs.__gudaFontObj)
-            elseif fs.__gudaPrevFont then
-                fs:SetFont(fs.__gudaPrevFont[1], fs.__gudaPrevFont[2], fs.__gudaPrevFont[3])
-            end
-            fs.__gudaFontObj = nil
-            fs.__gudaPrevFont = nil
-        end
-        wipe(styledLines)
-    end)
-end
+-- NOTE: GudaBags deliberately does NOT restyle the shared GameTooltip. The font
+-- below applies only to GudaBags' own frames (registered via RegisterFrame /
+-- swept by ApplyToRegions). Item tooltips and unit (NPC/character) tooltips reuse
+-- the shared GameTooltip, so touching its fonts here inevitably leaked the
+-- selected font onto them; the Font setting must leave them on the game default.
 
 local Events = ns:GetModule("Events")
 if Events then
@@ -227,5 +133,3 @@ if Events then
         end
     end, Font)
 end
-
-Font:InitTooltipStyling()
