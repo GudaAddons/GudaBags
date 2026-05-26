@@ -35,6 +35,17 @@ local cachedItemData = {}
 local cachedItemCount = {}
 local layoutCached = false
 
+-- Progressive ("All Tabs" can be ~588 buttons) rendering. Refresh places the
+-- first chunk synchronously for an instant paint, then this driver places the
+-- rest across frames under a per-frame time budget so no single frame stutters.
+local RENDER_BUDGET_MS = 8       -- per-frame budget for placing buttons
+local renderState                -- nil when idle; table while a render runs
+local renderDriver = CreateFrame("Frame")  -- one-time, drives chunked render
+renderDriver:Hide()
+-- Forward declaration: the frame's OnHide handler (defined earlier in the file)
+-- calls CancelRender, which is assigned below.
+local CancelRender
+
 
 -- Hidden frame to reparent Blizzard guild bank UI (used by some versions)
 local hiddenParent = CreateFrame("Frame")
@@ -670,6 +681,10 @@ local function CreateGuildBankFrame()
     f:SetScript("OnHide", function()
         ns:Debug("GudaGuildBankFrame OnHide triggered")
 
+        -- Stop any in-flight progressive render so it can't acquire/place
+        -- buttons after they were released on close.
+        CancelRender()
+
         local scanner = ns:GetModule("GuildBankScanner")
         local wasOpen = scanner and scanner:IsGuildBankOpen() or false
         ns:Debug("  wasOpen:", wasOpen)
@@ -872,19 +887,197 @@ function GuildBankFrame:CountTabs(guildBank)
     return count
 end
 
+-- Release every guild-bank item button + header and forget per-slot tracking.
+-- Used by the purchase-prompt / empty branches and on close, where there is no
+-- progressive render to reuse buttons in place.
+local function ReleaseAllGuildBankItems()
+    if frame and frame.container then
+        ItemButton:ReleaseAll(frame.container)
+    end
+    ReleaseAllCategoryHeaders()  -- also resets categoryHeaders = {}
+    buttonsBySlot = {}
+    itemButtons = {}
+    cachedItemData = {}
+    cachedItemCount = {}
+end
+
+-- Place a single header or item slot. Mutates st.currentY / st.currentCol the
+-- same way the original inline Refresh loop did. Buttons/headers are reused in
+-- place across refreshes (by slot key / by index) so a re-render updates content
+-- without a visible blank; leftovers are released in FinishRender.
+local function RenderOneSlot(slotInfo, st)
+    if slotInfo.isHeader then
+        -- Start new row if needed
+        if st.currentCol > 0 then
+            st.currentY = st.currentY - st.iconSize - st.spacing
+            st.currentCol = 0
+        end
+
+        -- Reuse the header at this position if one already exists, else acquire.
+        st.usedHeaders = st.usedHeaders + 1
+        local header = categoryHeaders[st.usedHeaders]
+        if not header then
+            header = AcquireCategoryHeader(frame.container)
+            categoryHeaders[st.usedHeaders] = header
+        end
+        header.text:SetText(slotInfo.tabName or "Tab")
+        if slotInfo.tabIcon then
+            header.icon:SetTexture(slotInfo.tabIcon)
+            header.icon:Show()
+        else
+            header.icon:Hide()
+        end
+        header:ClearAllPoints()
+        header:SetPoint("TOPLEFT", frame.container, "TOPLEFT", 0, st.currentY)
+        header:SetWidth(st.contentWidth)
+        header:Show()
+
+        st.currentY = st.currentY - st.headerHeight
+    else
+        -- Regular slot
+        local x = st.currentCol * (st.iconSize + st.spacing)
+        local y = st.currentY
+
+        local slotKey = slotInfo.tabIndex .. ":" .. slotInfo.slot
+        -- Reuse the existing button for this slot (no hide/re-show flicker) or
+        -- acquire a fresh one. Unmark from the stale set so it survives cleanup.
+        local button = buttonsBySlot[slotKey]
+        if button then
+            st.stale[slotKey] = nil
+        else
+            button = ItemButton:Acquire(frame.container)
+            buttonsBySlot[slotKey] = button
+        end
+
+        if slotInfo.itemData then
+            -- Adapt item data for ItemButton (needs bagID and slot)
+            local adaptedData = {}
+            for k, v in pairs(slotInfo.itemData) do
+                adaptedData[k] = v
+            end
+            adaptedData.bagID = slotInfo.tabIndex
+            adaptedData.slot = slotInfo.slot
+            adaptedData.isGuildBank = true
+
+            ItemButton:SetItem(button, adaptedData, st.iconSize, st.isReadOnly)
+
+            if st.hasSearch then
+                ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, slotInfo.itemData))
+            else
+                ItemButton:ClearSearchState(button)
+            end
+
+            cachedItemData[slotKey] = slotInfo.itemData.itemID
+            cachedItemCount[slotKey] = slotInfo.itemData.count
+        else
+            -- Empty slot - pass isGuildBank flag for depositing
+            ItemButton:SetEmpty(button, slotInfo.tabIndex, slotInfo.slot, st.iconSize, st.isReadOnly, true)
+            if st.hasSearch then
+                ItemButton:SetSearchState(button, false)
+            else
+                ItemButton:ClearSearchState(button)
+            end
+            cachedItemData[slotKey] = nil
+            cachedItemCount[slotKey] = nil
+        end
+
+        button.wrapper:ClearAllPoints()
+        button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", x, y)
+
+        table.insert(itemButtons, button)
+
+        -- Advance position
+        st.currentCol = st.currentCol + 1
+        if st.currentCol >= st.columns then
+            st.currentCol = 0
+            st.currentY = st.currentY - st.iconSize - st.spacing
+        end
+    end
+end
+
+-- Finalize once every slot is placed: release leftovers, then footer + font.
+local function FinishRender(st)
+    layoutCached = true
+
+    -- Release buttons for slots that no longer exist (reused ones were unmarked).
+    if st.stale then
+        for key in pairs(st.stale) do
+            local button = buttonsBySlot[key]
+            if button then
+                ItemButton:Release(button)
+                buttonsBySlot[key] = nil
+            end
+        end
+    end
+
+    -- Release headers beyond the count this render used (reused in place by index).
+    for i = #categoryHeaders, st.usedHeaders + 1, -1 do
+        CategoryHeaderPool:Release(categoryHeaders[i])
+        categoryHeaders[i] = nil
+    end
+
+    -- Update footer
+    local totalSlots = 0
+    local freeSlots = 0
+    for _, tabData in pairs(st.guildBank) do
+        totalSlots = totalSlots + (tabData.numSlots or 0)
+        freeSlots = freeSlots + (tabData.freeSlots or 0)
+    end
+    GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
+    GuildBankFooter:Update()
+
+    -- Apply the selected font to any chrome/text created during this refresh.
+    Font:ApplyToRegions(frame)
+
+    renderState = nil
+    renderDriver:Hide()
+end
+
+-- Stop an in-flight render (tab switch, data update, or frame close).
+CancelRender = function()
+    renderState = nil
+    renderDriver:Hide()
+end
+
+-- Place buttons from the cursor until the frame budget is spent, then yield.
+local function ProcessRenderChunk()
+    local st = renderState
+    if not st then renderDriver:Hide(); return end
+
+    -- Guild bank is never reachable in combat, but if combat somehow began,
+    -- finish synchronously rather than spread secure ops across frames.
+    local drainAll = InCombatLockdown()
+
+    local startTime = debugprofilestop()
+    local slots = st.allSlots
+    local n = #slots
+    local i = st.cursor
+    while i <= n do
+        RenderOneSlot(slots[i], st)
+        i = i + 1
+        if not drainAll and (debugprofilestop() - startTime) > RENDER_BUDGET_MS then
+            break
+        end
+    end
+    st.cursor = i
+
+    if i > n then
+        FinishRender(st)
+    end
+end
+renderDriver:SetScript("OnUpdate", ProcessRenderChunk)
+
 function GuildBankFrame:Refresh()
     if not frame then return end
 
     ns:Debug("GuildBankFrame:Refresh called")
 
-    ItemButton:ReleaseAll(frame.container)
-    ReleaseAllCategoryHeaders()
-    itemButtons = {}
+    CancelRender()
 
-    -- Clear layout cache
-    buttonsBySlot = {}
-    cachedItemData = {}
-    cachedItemCount = {}
+    -- Do NOT release/clear buttons here. The progressive renderer reuses the
+    -- existing buttons in place (keyed by slot) so a re-render updates content
+    -- without a visible blank, and releases only leftovers when it finishes.
+    -- The purchase-prompt / empty branches below release explicitly instead.
     layoutCached = false
 
     local isGuildBankOpen = GuildBankScanner and GuildBankScanner:IsGuildBankOpen() or false
@@ -898,6 +1091,7 @@ function GuildBankFrame:Refresh()
 
     if isGuildBankOpen and (numTabs == 0 or showingPurchasePrompt) then
         ns:Debug("  Showing purchase prompt")
+        ReleaseAllGuildBankItems()
         frame.container:Hide()
         frame.emptyMessage:Hide()
 
@@ -975,6 +1169,7 @@ function GuildBankFrame:Refresh()
 
     if not hasData then
         ns:Debug("  No data, showing empty message")
+        ReleaseAllGuildBankItems()
         frame.container:Hide()
         frame.emptyMessage:Show()
         self:HideSideTabs()
@@ -1116,104 +1311,42 @@ function GuildBankFrame:Refresh()
         end)
     end
 
-    -- Render items
-    local currentY = 0
-    local currentCol = 0
-    local isReadOnly = not isGuildBankOpen
-
-    for _, slotInfo in ipairs(allSlots) do
-        if slotInfo.isHeader then
-            -- Start new row if needed
-            if currentCol > 0 then
-                currentY = currentY - iconSize - spacing
-                currentCol = 0
-            end
-
-            -- Create header
-            local header = AcquireCategoryHeader(frame.container)
-            header.text:SetText(slotInfo.tabName or "Tab")
-            if slotInfo.tabIcon then
-                header.icon:SetTexture(slotInfo.tabIcon)
-                header.icon:Show()
-            else
-                header.icon:Hide()
-            end
-            header:ClearAllPoints()
-            header:SetPoint("TOPLEFT", frame.container, "TOPLEFT", 0, currentY)
-            header:SetWidth(contentWidth)
-            header:Show()
-            table.insert(categoryHeaders, header)
-
-            currentY = currentY - headerHeight
-        else
-            -- Regular slot
-            local x = currentCol * (iconSize + spacing)
-            local y = currentY
-
-            local button = ItemButton:Acquire(frame.container)
-            local slotKey = slotInfo.tabIndex .. ":" .. slotInfo.slot
-
-            if slotInfo.itemData then
-                -- Adapt item data for ItemButton (needs bagID and slot)
-                local adaptedData = {}
-                for k, v in pairs(slotInfo.itemData) do
-                    adaptedData[k] = v
-                end
-                adaptedData.bagID = slotInfo.tabIndex
-                adaptedData.slot = slotInfo.slot
-                adaptedData.isGuildBank = true
-
-                ItemButton:SetItem(button, adaptedData, iconSize, isReadOnly)
-
-                if hasSearch then
-                    ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, slotInfo.itemData))
-                else
-                    ItemButton:ClearSearchState(button)
-                end
-
-                cachedItemData[slotKey] = slotInfo.itemData.itemID
-                cachedItemCount[slotKey] = slotInfo.itemData.count
-            else
-                -- Empty slot - pass isGuildBank flag for depositing
-                ItemButton:SetEmpty(button, slotInfo.tabIndex, slotInfo.slot, iconSize, isReadOnly, true)
-                if hasSearch then
-                    ItemButton:SetSearchState(button, false)
-                else
-                    ItemButton:ClearSearchState(button)
-                end
-                cachedItemData[slotKey] = nil
-                cachedItemCount[slotKey] = nil
-            end
-
-            button.wrapper:ClearAllPoints()
-            button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", x, y)
-
-            buttonsBySlot[slotKey] = button
-            table.insert(itemButtons, button)
-
-            -- Advance position
-            currentCol = currentCol + 1
-            if currentCol >= columns then
-                currentCol = 0
-                currentY = currentY - iconSize - spacing
-            end
-        end
+    -- Render items progressively: place the first chunk now (instant paint),
+    -- then let renderDriver place the rest across frames within RENDER_BUDGET_MS.
+    -- Frame size/scroll range above are derived from slot counts, so scrolling
+    -- works fully even while later rows are still filling in.
+    --
+    -- Buttons are reused in place: every slot key currently present starts in
+    -- the "stale" set; the renderer unmarks the ones it reuses and FinishRender
+    -- releases whatever remains (slots that disappeared). This means a re-render
+    -- (e.g. the second open refresh once server data arrives) updates buttons
+    -- in place instead of hiding then re-showing them.
+    local stale = {}
+    for key in pairs(buttonsBySlot) do
+        stale[key] = true
     end
+    itemButtons = {}
+    cachedItemData = {}
+    cachedItemCount = {}
 
-    layoutCached = true
-
-    -- Update footer
-    local totalSlots = 0
-    local freeSlots = 0
-    for _, tabData in pairs(guildBank) do
-        totalSlots = totalSlots + (tabData.numSlots or 0)
-        freeSlots = freeSlots + (tabData.freeSlots or 0)
-    end
-    GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
-    GuildBankFooter:Update()
-
-    -- Apply the selected font to any chrome/text created during this refresh.
-    Font:ApplyToRegions(frame)
+    renderState = {
+        allSlots = allSlots,
+        cursor = 1,
+        currentY = 0,
+        currentCol = 0,
+        usedHeaders = 0,
+        stale = stale,
+        iconSize = iconSize,
+        spacing = spacing,
+        columns = columns,
+        contentWidth = contentWidth,
+        headerHeight = headerHeight,
+        hasSearch = hasSearch,
+        isReadOnly = not isGuildBankOpen,
+        guildBank = guildBank,
+    }
+    ProcessRenderChunk()
+    if renderState then renderDriver:Show() end
 end
 
 -------------------------------------------------
@@ -1272,18 +1405,15 @@ end
 
 function GuildBankFrame:Hide()
     if frame then
+        CancelRender()
+
         -- Clear search/chip filters on close
         SearchBar:ClearAllFilters(frame)
 
         frame:Hide()
         -- Reset transient search toggle so next open starts collapsed
         self:ResetSearchToggle()
-        ItemButton:ReleaseAll(frame.container)
-        ReleaseAllCategoryHeaders()
-        buttonsBySlot = {}
-        cachedItemData = {}
-        cachedItemCount = {}
-        itemButtons = {}
+        ReleaseAllGuildBankItems()
         layoutCached = false
     end
 end

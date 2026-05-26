@@ -25,11 +25,19 @@ local sweptFrames = setmetatable({}, { __mode = "k" })
 -- (effectively never for UI). STANDARD_TEXT_FONT is the client's locale font.
 local DEFAULT_PATH = STANDARD_TEXT_FONT or "Fonts\\ARIALN.TTF"
 
+-- Cached resolved font path. The path only changes when the "fontFamily"
+-- setting changes, which routes through ReapplyAll (where the cache is
+-- cleared). Memoizing it keeps the per-string Apply path free of a
+-- Database:GetSetting lookup on every SetFont.
+local cachedFontPath
+
 -- Resolve the currently selected font path. Database:GetSetting already falls
 -- back to Constants.DEFAULTS.fontFamily (locale-aware) when nothing is set.
 function Font:GetFont()
+    if cachedFontPath then return cachedFontPath end
     Database = Database or ns:GetModule("Database")
-    return (Database and Database:GetSetting("fontFamily")) or DEFAULT_PATH
+    cachedFontPath = (Database and Database:GetSetting("fontFamily")) or DEFAULT_PATH
+    return cachedFontPath
 end
 
 -- Apply the selected font with an explicit size/flags. Use for numeric/text
@@ -42,8 +50,23 @@ function Font:Apply(fontString, size, flags)
         size = curSize or 12
         flags = flags or curFlags
     end
-    registry[fontString] = { size = size, flags = flags }
-    fontString:SetFont(self:GetFont(), size, flags)
+    local path = self:GetFont()
+    -- Reuse the registry entry (no per-call allocation) and skip SetFont when
+    -- the string already has exactly this path/size/flags. The repeated full
+    -- sweeps (UpdateFontSize on every appearance update, ReapplyAll, per-item
+    -- re-application) thus become cheap comparisons instead of text reflows.
+    -- Safe because only GudaBags sets these strings' fonts, so the stored
+    -- entry faithfully reflects their current state.
+    local entry = registry[fontString]
+    if entry then
+        if entry.path == path and entry.size == size and entry.flags == flags then
+            return
+        end
+        entry.path, entry.size, entry.flags = path, size, flags
+    else
+        registry[fontString] = { path = path, size = size, flags = flags }
+    end
+    fontString:SetFont(path, size, flags)
 end
 
 -- Swap only the family on a string that already has its size/flags set
@@ -83,9 +106,11 @@ end
 -- Re-set the family on every registered string at its remembered size/flags,
 -- then re-sweep registered frames to catch any text created since.
 function Font:ReapplyAll()
+    cachedFontPath = nil  -- force GetFont to re-resolve the newly selected family
     local path = self:GetFont()
     for fs, info in pairs(registry) do
         if fs.SetFont then
+            info.path = path  -- keep the Apply no-op check coherent with the new family
             fs:SetFont(path, info.size, info.flags)
         end
     end
@@ -94,94 +119,11 @@ function Font:ReapplyAll()
     end
 end
 
--------------------------------------------------
--- Tooltip styling (scoped to GudaBags-owned tooltips)
--- The header/footer button hints use the global GameTooltip. We only restyle
--- it while it belongs to one of our frames, and revert on hide so the rest of
--- the game's tooltips (and full item tooltips) are left untouched.
--------------------------------------------------
-local tooltipDidStyle = false
-local styledLines = {}
-
-local function IsGudaOwned(frame)
-    local guard = 0
-    while frame and guard < 60 do
-        if sweptFrames[frame] then return true end
-        local parent = frame.GetParent and frame:GetParent()
-        if parent == frame then break end
-        frame = parent
-        guard = guard + 1
-    end
-    return false
-end
-
--- True if the tooltip is showing an item (so we leave it on the default font).
--- TooltipUtil.GetDisplayedItem is the modern/retail path (GameTooltip:GetItem
--- was deprecated and returns nil there); GetItem is the Classic fallback.
-local function TooltipShowsItem(tt)
-    if TooltipUtil and TooltipUtil.GetDisplayedItem then
-        local _, link = TooltipUtil.GetDisplayedItem(tt)
-        if link then return true end
-    end
-    if tt.GetItem then
-        local _, link = tt:GetItem()
-        if link then return true end
-    end
-    return false
-end
-
-function Font:InitTooltipStyling()
-    if self._tooltipHooked or not GameTooltip then return end
-    self._tooltipHooked = true
-
-    GameTooltip:HookScript("OnShow", function(tt)
-        -- Never touch full item tooltips or tooltips that aren't ours.
-        if TooltipShowsItem(tt) then return end
-        if not IsGudaOwned(tt.GetOwner and tt:GetOwner()) then return end
-
-        local name = tt:GetName()
-        if not name then return end
-        local path = self:GetFont()
-        wipe(styledLines)
-        for i = 1, tt:NumLines() do
-            for _, side in ipairs({ "Left", "Right" }) do
-                local fs = _G[name .. "Text" .. side .. i]
-                if fs and fs:IsShown() then
-                    local curPath, size, flags = fs:GetFont()
-                    if size then
-                        -- Capture the original font two ways so the revert can
-                        -- never fail: the font object (may be nil if a prior raw
-                        -- SetFont detached it) AND the raw font, which GetFont
-                        -- always returns even when the object is detached.
-                        fs.__gudaFontObj = fs:GetFontObject()
-                        fs.__gudaPrevFont = { curPath, size, flags }
-                        fs:SetFont(path, size, flags)
-                        styledLines[#styledLines + 1] = fs
-                    end
-                end
-            end
-        end
-        tooltipDidStyle = #styledLines > 0
-    end)
-
-    GameTooltip:HookScript("OnHide", function()
-        if not tooltipDidStyle then return end
-        tooltipDidStyle = false
-        for _, fs in ipairs(styledLines) do
-            -- Always revert so the GudaBags font never lingers on the shared
-            -- GameTooltip lines. Prefer the font object (re-links to the dynamic
-            -- default); fall back to the raw font when no object was present.
-            if fs.__gudaFontObj then
-                fs:SetFontObject(fs.__gudaFontObj)
-            elseif fs.__gudaPrevFont then
-                fs:SetFont(fs.__gudaPrevFont[1], fs.__gudaPrevFont[2], fs.__gudaPrevFont[3])
-            end
-            fs.__gudaFontObj = nil
-            fs.__gudaPrevFont = nil
-        end
-        wipe(styledLines)
-    end)
-end
+-- NOTE: GudaBags deliberately does NOT restyle the shared GameTooltip. The font
+-- below applies only to GudaBags' own frames (registered via RegisterFrame /
+-- swept by ApplyToRegions). Item tooltips and unit (NPC/character) tooltips reuse
+-- the shared GameTooltip, so touching its fonts here inevitably leaked the
+-- selected font onto them; the Font setting must leave them on the game default.
 
 local Events = ns:GetModule("Events")
 if Events then
@@ -191,5 +133,3 @@ if Events then
         end
     end, Font)
 end
-
-Font:InitTooltipStyling()
