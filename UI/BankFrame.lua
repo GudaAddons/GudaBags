@@ -3307,6 +3307,82 @@ if not ns.IsRetail then
     end, BankFrame)
 end
 
+-- GET_ITEM_INFO_RECEIVED fires once per itemID as async item data finishes
+-- loading. Bank items often arrive after BANKFRAME_OPENED returns; their initial
+-- tooltip scan is incomplete and red-coloured "Requires …"/loading text wrongly
+-- marks them as unusable. Repaint affected buttons once data lands so the false
+-- red overlay clears without the user having to close+reopen the bank.
+local pendingItemRefresh = {}
+local itemRefreshTimer
+local itemRefreshDeferred = false
+
+local function ApplyItemInfoRefresh()
+    itemRefreshTimer = nil
+    if not (frame and frame:IsShown()) or viewingCharacter then
+        wipe(pendingItemRefresh)
+        return
+    end
+    if InCombatLockdown() then
+        itemRefreshDeferred = true
+        return
+    end
+    itemRefreshDeferred = false
+
+    local ItemScanner = ns:GetModule("ItemScanner")
+    if not ItemScanner then
+        wipe(pendingItemRefresh)
+        return
+    end
+
+    local iconSize = Database:GetSetting("iconSize")
+    local hasSearch = SearchBar:HasActiveFilters(frame)
+    local bank = BankScanner:GetCachedBank() or {}
+    local isReadOnly = viewingCharacter ~= nil or not BankScanner:IsBankOpen()
+    local repainted = 0
+    for _, button in ipairs(itemButtons) do
+        local oldData = button.itemData
+        if oldData and oldData.itemID and pendingItemRefresh[oldData.itemID]
+            and oldData.bagID and oldData.slot then
+            local newData = ItemScanner:ScanSlot(oldData.bagID, oldData.slot)
+            if newData and newData.itemID == oldData.itemID then
+                local bagData = bank[oldData.bagID]
+                if bagData and bagData.slots then
+                    bagData.slots[oldData.slot] = newData
+                end
+                ItemButton:SetItem(button, newData, iconSize, isReadOnly)
+                if hasSearch then
+                    ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newData))
+                else
+                    ItemButton:ClearSearchState(button)
+                end
+                repainted = repainted + 1
+            end
+        end
+    end
+    wipe(pendingItemRefresh)
+    if repainted > 0 then
+        ns:Debug("BankFrame: GET_ITEM_INFO_RECEIVED repainted", repainted, "buttons")
+    end
+end
+
+local function ScheduleItemRefresh()
+    if itemRefreshTimer then return end
+    itemRefreshTimer = C_Timer.NewTimer(0.15, ApplyItemInfoRefresh)
+end
+
+Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
+    if not success or not itemID then return end
+    if not (frame and frame:IsShown()) or viewingCharacter then return end
+    pendingItemRefresh[itemID] = true
+    ScheduleItemRefresh()
+end, BankFrame)
+
+Events:Register("PLAYER_REGEN_ENABLED", function()
+    if itemRefreshDeferred and next(pendingItemRefresh) then
+        ScheduleItemRefresh()
+    end
+end, "BankFrame.ItemInfoRefresh")
+
 -- Update item lock state (when picking up/putting down items)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only

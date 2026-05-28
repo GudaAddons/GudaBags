@@ -90,6 +90,18 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
         return cached.isUsable, cached.isQuestItem, cached.isQuestStarter, cached.hasSpecialProperties, cached.hasDuration
     end
 
+    -- Item data not yet round-tripped from the server: the tooltip would be
+    -- incomplete and red-coloured "Requires …" / loading text would falsely
+    -- mark the item unusable. Defer the scan and don't cache. The bag/bank
+    -- frames re-scan affected slots when GET_ITEM_INFO_RECEIVED arrives.
+    if itemID and C_Item and C_Item.IsItemDataCachedByID
+        and not C_Item.IsItemDataCachedByID(itemID) then
+        if C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(itemID)
+        end
+        return true, false, false, false, false
+    end
+
     local isUsable = true
     local isQuestItem = false
     local isQuestStarter = false
@@ -427,5 +439,18 @@ if Events then
     -- Equipment changes can affect stats and thus usability
     Events:Register("PLAYER_EQUIPMENT_CHANGED", function()
         ItemScanner:ClearTooltipCache()
+    end, ItemScanner)
+
+    -- Drop the entries we may have populated while item data was still loading
+    -- (the tooltip would have been incomplete; isUsable could be wrong).
+    Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
+        if not success or not itemID then return end
+        local needle = "item:" .. itemID .. ":"
+        for key in pairs(tooltipCache) do
+            if type(key) == "string" and key:find(needle, 1, true) then
+                tooltipCache[key] = nil
+            end
+        end
+        tooltipCache[tostring(itemID)] = nil
     end, ItemScanner)
 end

@@ -2335,6 +2335,85 @@ local function StartLockWatch(bagID, slotID)
     end)
 end
 
+-- GET_ITEM_INFO_RECEIVED fires once per itemID as async item data finishes
+-- loading. When an item arrives, its tooltip scan (isUsable, isQuestItem,
+-- hasSpecialProperties) becomes reliable; repaint any open buttons that show
+-- it so the false-positive red overlay clears.
+local pendingItemRefresh = {}
+local itemRefreshTimer
+local itemRefreshDeferred = false
+
+local function ApplyItemInfoRefresh()
+    itemRefreshTimer = nil
+    if not (frame and frame:IsShown()) or viewingCharacter then
+        wipe(pendingItemRefresh)
+        return
+    end
+    if InCombatLockdown() then
+        -- PLAYER_REGEN_ENABLED already triggers a Refresh of open bags
+        -- (see RegisterCombatEndCallback). Let it pick this up.
+        itemRefreshDeferred = true
+        return
+    end
+    itemRefreshDeferred = false
+
+    local ItemScanner = ns:GetModule("ItemScanner")
+    if not ItemScanner then
+        wipe(pendingItemRefresh)
+        return
+    end
+
+    local iconSize = Database:GetSetting("iconSize")
+    local hasSearch = SearchBar:HasActiveFilters(frame)
+    local bags = BagScanner:GetCachedBags() or {}
+    local repainted = 0
+    for _, button in ipairs(itemButtons) do
+        local oldData = button.itemData
+        if oldData and oldData.itemID and pendingItemRefresh[oldData.itemID]
+            and oldData.bagID and oldData.slot then
+            local newData = ItemScanner:ScanSlot(oldData.bagID, oldData.slot)
+            if newData and newData.itemID == oldData.itemID then
+                local bagData = bags[oldData.bagID]
+                if bagData and bagData.slots then
+                    bagData.slots[oldData.slot] = newData
+                end
+                ItemButton:SetItem(button, newData, iconSize, false)
+                if hasSearch then
+                    ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newData))
+                else
+                    ItemButton:ClearSearchState(button)
+                end
+                repainted = repainted + 1
+            end
+        end
+    end
+    wipe(pendingItemRefresh)
+    if repainted > 0 then
+        ns:Debug("BagFrame: GET_ITEM_INFO_RECEIVED repainted", repainted, "buttons")
+    end
+end
+
+local function ScheduleItemRefresh()
+    if itemRefreshTimer then return end
+    itemRefreshTimer = C_Timer.NewTimer(0.15, ApplyItemInfoRefresh)
+end
+
+Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
+    if not success or not itemID then return end
+    if not (frame and frame:IsShown()) or viewingCharacter then return end
+    pendingItemRefresh[itemID] = true
+    ScheduleItemRefresh()
+end, BagFrame)
+
+-- Drain any deferred-during-combat refresh once combat ends. (PLAYER_REGEN_ENABLED
+-- already does a broader Refresh, but only if pendingAction is set; piggyback so
+-- the targeted repaint still runs when bags were already open during combat.)
+Events:Register("PLAYER_REGEN_ENABLED", function()
+    if itemRefreshDeferred and next(pendingItemRefresh) then
+        ScheduleItemRefresh()
+    end
+end, "BagFrame.ItemInfoRefresh")
+
 -- Update item lock state (when picking up/putting down items)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only

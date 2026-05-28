@@ -65,6 +65,15 @@ function Pawn:GetUpgradeStatus(itemLink)
     local cached = upgradeCache[itemLink]
     if cached ~= nil then return cached end
 
+    -- Item data hasn't round-tripped from the server yet. Don't burn our budget
+    -- (or Pawn's tooltip-scan budget) on a query that can't resolve; defer until
+    -- the next drain tick, by which time GET_ITEM_INFO_RECEIVED may have landed.
+    if C_Item and C_Item.IsItemDataCachedByID
+        and not C_Item.IsItemDataCachedByID(itemLink) then
+        Defer(itemLink)
+        return nil
+    end
+
     -- Querying before Pawn finishes initializing prints a Pawn chat error.
     if _G.PawnIsReady and not PawnIsReady() then
         Defer(itemLink)
