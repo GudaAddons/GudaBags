@@ -42,6 +42,18 @@ local layoutCached = false
 -- combat start, since they share the ItemButton pool.
 local guildBankHeld = false
 
+-- View signature (selectedTab:numTabs) of the last completed render. On reopen, if the
+-- retained layout still matches this signature we skip the full Refresh and just
+-- reconcile changed slots (IncrementalUpdate) — the same fast-reopen the bank uses.
+-- numTabs guards against a tab being purchased while away (which IncrementalUpdate,
+-- working slot-by-slot on the existing layout, can't add).
+local guildBankLastRenderSig = nil
+local function ComputeGuildBankRenderSig()
+    local selectedTab = (GuildBankScanner and GuildBankScanner:GetSelectedTab()) or 0
+    local numTabs = (GuildBankScanner and GuildBankScanner:GetNumTabs()) or 0
+    return tostring(selectedTab) .. ":" .. tostring(numTabs)
+end
+
 -- Progressive ("All Tabs" can be ~588 buttons) rendering. Refresh places the
 -- first chunk synchronously for an instant paint, then this driver places the
 -- rest across frames under a per-frame time budget so no single frame stutters.
@@ -697,9 +709,18 @@ local function CreateGuildBankFrame()
     f:SetScript("OnHide", function()
         ns:Debug("GudaGuildBankFrame OnHide triggered")
 
-        -- Stop any in-flight progressive render so it can't acquire/place
-        -- buttons after they were released on close.
-        CancelRender()
+        -- Persist-across-close lives here (not only in GuildBankFrame:Hide) so it engages
+        -- for EVERY close path. On Anniversary the GUILDBANKFRAME_CLOSED event is
+        -- unreliable, so relying on ns.OnGuildBankClosed -> Hide left guildBankHeld unset
+        -- on many closes — every reopen then did a full re-render instead of fast-reopen.
+        guildBankHeld = true
+
+        -- Deliberately do NOT CancelRender here. We keep (don't release) the buttons on
+        -- close, so an in-flight progressive render is safe to finish in the background
+        -- while the frame is hidden. Letting it complete sets layoutCached = true, which
+        -- the fast reopen requires; cancelling it left the layout permanently uncached.
+        -- (A reopen that lands mid-render just falls back to a full Refresh, which
+        -- cancels and restarts cleanly.)
 
         local scanner = ns:GetModule("GuildBankScanner")
         local wasOpen = scanner and scanner:IsGuildBankOpen() or false
@@ -1303,7 +1324,18 @@ function GuildBankFrame:Refresh()
     local needsScroll = actualContentHeight > scrollAreaHeight + 5
 
     local scrollbarWidth = needsScroll and 20 or 0
+    -- Pin the top edge across the resize. The frame is CENTER-anchored, so changing its
+    -- height would otherwise grow/shrink symmetrically and move the top — very visible
+    -- switching All Tabs <-> a single tab (big height change). Capture the current
+    -- top-left and re-anchor by TOPLEFT so the frame only grows downward; the top stays
+    -- put (matches the bank, whose per-tab height barely changes so it never looks off).
+    local prevTop = frame:GetTop()
+    local prevLeft = frame:GetLeft()
     frame:SetSize(frameWidth + scrollbarWidth, actualFrameHeight)
+    if prevTop and prevLeft then
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", prevLeft, prevTop)
+    end
 
     frame.scrollFrame:ClearAllPoints()
     frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -topOffset)
@@ -1321,6 +1353,10 @@ function GuildBankFrame:Refresh()
         if scrollUpButton then scrollUpButton:Show() end
         if scrollDownButton then scrollDownButton:Show() end
         frame.scrollFrame:EnableMouseWheel(true)
+        -- Start at the top on every (re)render, e.g. a tab switch. Without this the
+        -- scrollFrame keeps the previous tab's offset (clamped to the new content), so
+        -- the new tab appears scrolled/centered instead of aligned to the top.
+        frame.scrollFrame:SetVerticalScroll(0)
     else
         if scrollBar then scrollBar:Hide() end
         if scrollUpButton then scrollUpButton:Hide() end
@@ -1372,6 +1408,9 @@ function GuildBankFrame:Refresh()
         isReadOnly = not isGuildBankOpen,
         guildBank = guildBank,
     }
+    -- Record the view this render produced so a later reopen can tell whether the
+    -- retained layout still matches (→ fast IncrementalUpdate instead of full Refresh).
+    guildBankLastRenderSig = ComputeGuildBankRenderSig()
     -- Render the visible viewport synchronously so nothing on-screen pops in, then
     -- defer the off-screen remainder to the driver (it fills in invisibly across
     -- frames). In combat, finish in one pass rather than spreading secure ops across
@@ -1509,11 +1548,42 @@ function GuildBankFrame:Toggle()
     end
 end
 
+-- True when a reopen can reuse the retained layout and just reconcile changed slots
+-- (fast path) instead of doing a full Refresh. Mirrors BankFrame:CanFastReopen.
+function GuildBankFrame:CanFastReopen()
+    -- Deliberately NOT gated on guildBankHeld. Buttons are freed only by ReleaseHeld
+    -- (bank/mail open, combat start), which ALSO clears layoutCached — so layoutCached
+    -- already means "buttons retained and laid out". On Anniversary the guild-bank close
+    -- detection is flaky, leaving guildBankHeld unreliable; trusting the layout/signature
+    -- state instead is both correct and robust. frame-not-shown marks this as a reopen.
+    if not layoutCached then ns:ProfileBump("gbfast.no_layout"); return false end
+    if renderState then ns:ProfileBump("gbfast.rendering"); return false end
+    if showingPurchasePrompt then ns:ProfileBump("gbfast.purchase"); return false end
+    if not (frame and not frame:IsShown()) then ns:ProfileBump("gbfast.shown"); return false end
+    if guildBankLastRenderSig == nil then ns:ProfileBump("gbfast.nosig"); return false end
+    if guildBankLastRenderSig ~= ComputeGuildBankRenderSig() then
+        ns:ProfileBump("gbfast.sigmismatch")
+        ns:Debug("GB CanFastReopen sig mismatch: had=" .. tostring(guildBankLastRenderSig) .. " now=" .. tostring(ComputeGuildBankRenderSig()))
+        return false
+    end
+    ns:ProfileBump("gbfast.ok")
+    return true
+end
+
 function GuildBankFrame:Show()
     LoadComponents()
 
-    -- We're showing now; the retained buttons become the live view (Refresh reuses them).
-    guildBankHeld = false
+    -- Idempotent open: Anniversary fires the open path twice (both GUILDBANKFRAME_OPENED
+    -- and the Blizzard-frame OnShow hook route through HandleGuildBankOpened -> here). The
+    -- first call already showed and reconciled the view; a second call while already shown
+    -- must NOT tear it down and full-render again — just refresh data cheaply.
+    if frame and frame:IsShown() then
+        if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
+            GuildBankScanner:ScanAllTabs()
+        end
+        self:IncrementalUpdate(nil)
+        return
+    end
 
     -- Free the bank's retained buttons (it doesn't coexist with the guild bank, so
     -- this returns its share of the shared ItemButton pool; no-op if open / not holding).
@@ -1541,10 +1611,25 @@ function GuildBankFrame:Show()
             GuildBankScanner:LoadFromDatabase(guildName)
         end
     end
-    self:Refresh()
-    UpdateFrameAppearance(true)  -- Refresh above already styled buttons
-    GuildBankHeader:UpdateTitle()
-    frame:Show()
+
+    -- Fast reopen (mirrors BankFrame): if the retained layout still matches the current
+    -- view, just show it and reconcile changed slots instead of re-SetItem-ing every
+    -- slot. Decide AFTER the scan so a newly purchased tab is reflected in the signature
+    -- (the scan can't invalidate anything — OnGuildBankUpdated no-ops on a hidden frame).
+    local canFast = self:CanFastReopen()
+    guildBankHeld = false
+    if canFast then
+        ns:ProfileBump("GuildBank.fastreopen")
+        frame:Show()
+        UpdateFrameAppearance(true)
+        GuildBankHeader:UpdateTitle()
+        self:IncrementalUpdate(nil)  -- requires frame shown; near-no-op when unchanged
+    else
+        self:Refresh()
+        UpdateFrameAppearance(true)  -- Refresh above already styled buttons
+        GuildBankHeader:UpdateTitle()
+        frame:Show()
+    end
 end
 
 -- Tear down the retained (held-while-hidden) buttons: release them to the shared
@@ -1561,7 +1646,10 @@ end
 
 function GuildBankFrame:Hide()
     if frame then
-        CancelRender()
+        -- Note: no CancelRender here. We keep the buttons on close and let any in-flight
+        -- progressive render finish in the background so layoutCached stays valid for a
+        -- fast reopen (see the frame's OnHide handler). frame:Hide() below also fires
+        -- OnHide, which sets guildBankHeld for every close path.
 
         -- Clear search/chip filters on close
         SearchBar:ClearAllFilters(frame)
