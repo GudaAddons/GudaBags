@@ -2880,6 +2880,14 @@ Events:OnPlayerLogin(function()
     end
     ItemButton:PreWarm(frame.container, 200)
 
+    -- After login settles, grow the button pool in the background to cover a large
+    -- bank's All-Tabs view (bags ~190 + bank ~550). Secure-frame creation is the bulk
+    -- of the first big open's freeze; doing it across idle frames here makes the first
+    -- bank open cheap. Aborts itself if a frame opens first; pauses during combat.
+    C_Timer.After(3, function()
+        if frame then ItemButton:BackgroundGrowPool(frame.container, 750) end
+    end)
+
     -- Override default bag functions to use GudaBags
     ToggleBackpack = function()
         BagFrame:Toggle()

@@ -363,8 +363,11 @@ function RetailBankScanner:ScanBank(bankType)
 end
 
 function RetailBankScanner:ScanAllBank()
+    ns:ProfileStart("Bank.ScanAllBank")
     -- Scan current bank type
-    return self:ScanBank(currentBankType)
+    local result = self:ScanBank(currentBankType)
+    ns:ProfileStop("Bank.ScanAllBank")
+    return result
 end
 
 function RetailBankScanner:ScanDirtyBags(bagIDs)
