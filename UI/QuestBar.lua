@@ -30,10 +30,15 @@ local infoRefreshScheduled = false
 local PADDING = 0
 local MAX_FLYOUT_ITEMS = 8
 local MAX_GRID_ITEMS = 40  -- Max items in grid layout (5 columns * 8 rows)
+local FLYOUT_HIDE_DELAY = 0.4  -- seconds of continuous non-hover before hiding the flyout
+
+-- Debounce accumulator for flyout hide (driven by the flyout's OnUpdate)
+local flyoutHideAccum = 0
 
 -- Flyout visibility helpers
 local function ShowFlyoutFrame()
     if not flyout then return end
+    flyoutHideAccum = 0
     flyout:Show()
 end
 
@@ -383,27 +388,33 @@ local function CreateFlyout(parent)
         flyoutButtons[i] = button
     end
 
-    -- Hide flyout when mouse leaves
-    f:SetScript("OnLeave", function(self)
-        -- Check if mouse is over main button, flyout, or parent frame (grid buttons)
-        local parent = self:GetParent()
-        if not mainButton:IsMouseOver() and not self:IsMouseOver() and not parent:IsMouseOver() then
-            HideFlyoutFrame()
-        end
-    end)
+    -- Hiding is owned by the debounced OnUpdate below — do NOT hide instantly here.
+    -- An immediate OnLeave hide is the main source of flicker when the cursor crosses
+    -- the gap/dead-zone between the bar and a flyout item.
 
-    f:SetScript("OnUpdate", function(self)
-        -- Hide if mouse is not over main button, flyout, or parent frame (grid buttons)
+    f:SetScript("OnUpdate", function(self, elapsed)
+        if not self:IsShown() then return end
+        -- Mouse is "over" if it's on the main button, the flyout, the parent frame
+        -- (grid buttons), or any visible flyout button.
         local parent = self:GetParent()
-        if self:IsShown() and not mainButton:IsMouseOver() and not self:IsMouseOver() and not parent:IsMouseOver() then
-            local dominated = false
+        local over = mainButton:IsMouseOver() or self:IsMouseOver() or parent:IsMouseOver()
+        if not over then
             for _, btn in ipairs(flyoutButtons) do
                 if btn:IsShown() and btn:IsMouseOver() then
-                    dominated = true
+                    over = true
                     break
                 end
             end
-            if not dominated then
+        end
+
+        if over then
+            flyoutHideAccum = 0
+        else
+            -- Debounce: only hide after FLYOUT_HIDE_DELAY of continuous non-hover,
+            -- so brief excursions across the gap between items don't close the flyout.
+            flyoutHideAccum = flyoutHideAccum + elapsed
+            if flyoutHideAccum >= FLYOUT_HIDE_DELAY then
+                flyoutHideAccum = 0
                 HideFlyoutFrame()
             end
         end
@@ -443,7 +454,7 @@ local function CreateQuestBarFrame()
 
     -- Create flyout (to the right of the main bar, bottom-aligned)
     flyout = CreateFlyout(f)
-    flyout:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 1, 0)
+    flyout:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
 
     f:Hide()
     return f
