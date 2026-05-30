@@ -1111,7 +1111,6 @@ renderDriver:SetScript("OnUpdate", ProcessRenderChunk)
 
 function GuildBankFrame:Refresh()
     if not frame then return end
-    ns:ProfileBump("GuildBankRefresh.calls")
 
     ns:Debug("GuildBankFrame:Refresh called")
 
@@ -1432,7 +1431,6 @@ function GuildBankFrame:Refresh()
     if st.cursor > n then
         FinishRender(st)
     else
-        ns:ProfileBump("GuildBank.progressive")  -- deferred the off-screen remainder
         renderDriver:Show()
     end
 end
@@ -1556,18 +1554,12 @@ function GuildBankFrame:CanFastReopen()
     -- already means "buttons retained and laid out". On Anniversary the guild-bank close
     -- detection is flaky, leaving guildBankHeld unreliable; trusting the layout/signature
     -- state instead is both correct and robust. frame-not-shown marks this as a reopen.
-    if not layoutCached then ns:ProfileBump("gbfast.no_layout"); return false end
-    if renderState then ns:ProfileBump("gbfast.rendering"); return false end
-    if showingPurchasePrompt then ns:ProfileBump("gbfast.purchase"); return false end
-    if not (frame and not frame:IsShown()) then ns:ProfileBump("gbfast.shown"); return false end
-    if guildBankLastRenderSig == nil then ns:ProfileBump("gbfast.nosig"); return false end
-    if guildBankLastRenderSig ~= ComputeGuildBankRenderSig() then
-        ns:ProfileBump("gbfast.sigmismatch")
-        ns:Debug("GB CanFastReopen sig mismatch: had=" .. tostring(guildBankLastRenderSig) .. " now=" .. tostring(ComputeGuildBankRenderSig()))
-        return false
-    end
-    ns:ProfileBump("gbfast.ok")
-    return true
+    return layoutCached
+        and not renderState
+        and not showingPurchasePrompt
+        and frame and not frame:IsShown()
+        and guildBankLastRenderSig ~= nil
+        and guildBankLastRenderSig == ComputeGuildBankRenderSig()
 end
 
 function GuildBankFrame:Show()
@@ -1619,7 +1611,6 @@ function GuildBankFrame:Show()
     local canFast = self:CanFastReopen()
     guildBankHeld = false
     if canFast then
-        ns:ProfileBump("GuildBank.fastreopen")
         frame:Show()
         UpdateFrameAppearance(true)
         GuildBankHeader:UpdateTitle()

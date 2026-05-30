@@ -1657,12 +1657,6 @@ bankRenderDriver:SetScript("OnUpdate", ProcessBankRenderChunk)
 
 function BankFrame:Refresh()
     if not frame then return end
-    ns:ProfileBump("BankRefresh.calls")
-    -- Diagnostic: record which call site invoked Refresh (debug-gated).
-    if ns.profileMode then
-        local src = debugstack(2, 1, 0) or ""
-        ns:ProfileBump("rcaller:" .. (src:match("([%w_]+%.lua:%d+)") or "?"))
-    end
 
     -- Stop any in-flight progressive render before rebuilding.
     CancelBankRender()
@@ -2722,19 +2716,13 @@ end
 -- True when the frame is hidden but still holds a valid layout matching the
 -- current intended view, so reopen can incrementally update instead of rebuild.
 function BankFrame:CanFastReopen()
-    if not bankHeld then ns:ProfileBump("bankfast.no_held"); return false end
-    if not layoutCached then ns:ProfileBump("bankfast.no_layout"); return false end
-    if bankDirtyWhileHidden then ns:ProfileBump("bankfast.dirty"); return false end
-    if viewingCharacter then ns:ProfileBump("bankfast.viewchar"); return false end
-    if not (frame and not frame:IsShown()) then ns:ProfileBump("bankfast.shown"); return false end
-    if lastRenderSig == nil then ns:ProfileBump("bankfast.nosig"); return false end
-    if lastRenderSig ~= ComputeBankRenderSig() then
-        ns:ProfileBump("bankfast.sigmismatch")
-        ns:Debug("CanFastReopen sig mismatch: had=" .. tostring(lastRenderSig) .. " now=" .. tostring(ComputeBankRenderSig()))
-        return false
-    end
-    ns:ProfileBump("bankfast.ok")
-    return true
+    return bankHeld
+        and layoutCached
+        and not bankDirtyWhileHidden
+        and not viewingCharacter
+        and frame and not frame:IsShown()
+        and lastRenderSig ~= nil
+        and lastRenderSig == ComputeBankRenderSig()
 end
 
 function BankFrame:Toggle()
@@ -3303,13 +3291,10 @@ ns.OnBankUpdated = function(dirtyBags)
             -- A progressive render is mid-flight (layoutCached is intentionally false
             -- until it finishes). Don't restart it on every event — that doubled the
             -- per-tab-switch render cost. Mark dirty; FinishBankRender re-refreshes once.
-            ns:ProfileBump("bankupd.deferred")
             bankRenderNeedsRerender = true
         elseif layoutCached then
-            ns:ProfileBump("bankupd.incremental")
             BankFrame:IncrementalUpdate(dirtyBags)
         else
-            ns:ProfileBump("bankupd.refresh")
             BankFrame:Refresh()
         end
     end
@@ -3501,7 +3486,6 @@ local function OnSettingChanged(event, key, value)
     if appearanceSettings[key] then
         UpdateFrameAppearance()
     elseif resizeSettings[key] then
-        ns:ProfileBump("rfrom.setting")
         UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         BankFrame:Refresh()
     elseif key == "hoverBagline" then
@@ -3513,10 +3497,8 @@ local function OnSettingChanged(event, key, value)
         ItemButton:ReleaseAll(frame.container)
         buttonsByItemKey = {}
         pseudoItemButtons = {}
-        ns:ProfileBump("rfrom.setting")
         BankFrame:Refresh()
     else
-        ns:ProfileBump("rfrom.setting")
         BankFrame:Refresh()
     end
 end
@@ -3656,7 +3638,6 @@ Events:Register("SETTING_CHANGED", OnSettingChanged, BankFrame)
 -- Force full refresh by releasing all buttons since category assignments changed
 Events:Register("CATEGORIES_UPDATED", function()
     if frame and frame:IsShown() then
-        ns:ProfileBump("rfrom.categories")
         -- Release all buttons to force full refresh (category assignments changed)
         ItemButton:ReleaseAll(frame.container)
         buttonsByItemKey = {}
@@ -3799,7 +3780,6 @@ end, BankFrame)
 ns.OnRetailBankTabChanged = function(tabIndex)
     if frame and frame:IsShown() then
         ns:ProfileStart("Bank.tabswitch")
-        ns:ProfileBump("rfrom.tabchanged")
         -- Update side tab selection visuals
         BankFrame:UpdateSideTabSelection()
         -- Refresh the display with the new tab filter
@@ -3811,7 +3791,6 @@ end
 -- Callback for when bank tabs are purchased/changed
 ns.OnRetailBankTabsUpdated = function()
     if frame and frame:IsShown() then
-        ns:ProfileBump("rfrom.tabsupdated")
         BankFrame:HidePurchasePrompt()
         local bankType = BankFooter:GetCurrentBankType() or "character"
         BankFrame:ShowSideTabs(nil, bankType)
