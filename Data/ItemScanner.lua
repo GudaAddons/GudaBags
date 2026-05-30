@@ -87,6 +87,7 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
     local cacheKey = GetCacheKey(itemLink, itemID)
     local cached = GetCachedTooltipResult(cacheKey)
     if cached then
+        ns:ProfileBump("tooltip.hit")
         return cached.isUsable, cached.isQuestItem, cached.isQuestStarter, cached.hasSpecialProperties, cached.hasDuration
     end
 
@@ -128,6 +129,17 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
     if not isQuestIgnored and itemType == "Quest" and (not itemQuality or itemQuality < 2) then
         isQuestItem = true
     end
+
+    -- A/B suspect toggle: skip the (potentially expensive) tooltip render+parse
+    -- entirely so the profiler can attribute its cost. Returns the pre-scan flags
+    -- (quest-type/custom-quest detection above still applies); result is NOT cached
+    -- so re-enabling restores full detection on the next scan.
+    if ns.suspectDisabled and ns.suspectDisabled.tooltipscan then
+        return isUsable, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration
+    end
+
+    ns:ProfileBump("tooltip.miss")
+    ns:ProfileStart("tooltip.scan")
 
     -- Single tooltip scan for all checks
     scanningTooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
@@ -203,6 +215,8 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
             end
         end
     end
+
+    ns:ProfileStop("tooltip.scan")
 
     -- Cache the result
     SetCachedTooltipResult(cacheKey, {

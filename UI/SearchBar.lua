@@ -1124,6 +1124,10 @@ local function CreateSearchBar(parent)
 
     searchBox:SetScript("OnTextChanged", function(self)
         local text = self:GetText()
+        -- Only notify (→ a full bag/bank Refresh) when the text actually changed.
+        -- A programmatic SetText to the same value (e.g. during a bank tab switch)
+        -- still fires OnTextChanged and was triggering a redundant second Refresh.
+        local searchChanged = text ~= searchBar.searchText
         local hasEquipSet = searchBar.filterState.equipSet ~= nil
         if text == "" and not hasEquipSet then
             placeholder:Show()
@@ -1145,7 +1149,7 @@ local function CreateSearchBar(parent)
 
         UpdateTransferButton(searchBar)
 
-        if searchBar.onSearchChanged then
+        if searchChanged and searchBar.onSearchChanged then
             searchBar.onSearchChanged(text)
         end
     end)

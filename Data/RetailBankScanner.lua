@@ -363,8 +363,11 @@ function RetailBankScanner:ScanBank(bankType)
 end
 
 function RetailBankScanner:ScanAllBank()
+    ns:ProfileStart("Bank.ScanAllBank")
     -- Scan current bank type
-    return self:ScanBank(currentBankType)
+    local result = self:ScanBank(currentBankType)
+    ns:ProfileStop("Bank.ScanAllBank")
+    return result
 end
 
 function RetailBankScanner:ScanDirtyBags(bagIDs)
@@ -745,15 +748,32 @@ Events:OnBankOpened(function()
     end
 end, RetailBankScanner)
 
-Events:OnBankClosed(function()
+local function HandleBankClosed(reason)
     isBankOpen = false
     dirtyBags = {}
-    ns:Debug("Retail bank closed")
+    ns:Debug("Retail bank closed", reason or "")
 
     if ns.OnBankClosed then
         ns.OnBankClosed()
     end
+end
+
+Events:OnBankClosed(function()
+    HandleBankClosed("BANKFRAME_CLOSED")
 end, RetailBankScanner)
+
+-- Modern Retail closes the bank through the interaction manager when the player
+-- walks away from the banker; in that path BANKFRAME_CLOSED does not reliably
+-- fire, so the GudaBags bank stayed open. Listen for the interaction-hide event
+-- (filtered to the Banker interaction) and run the same close logic. This is
+-- idempotent with BANKFRAME_CLOSED — ns.OnBankClosed only hides if still shown.
+if Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.Banker then
+    Events:Register("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", function(event, interactionType)
+        if interactionType == Enum.PlayerInteractionType.Banker then
+            HandleBankClosed("interaction-hide")
+        end
+    end, RetailBankScanner)
+end
 
 Events:Register("BAG_UPDATE", function(event, bagID)
     if not bagID then return end

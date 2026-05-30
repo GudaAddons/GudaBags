@@ -28,6 +28,7 @@ local PawnCompat  -- resolved lazily to avoid load-order coupling
 -- Which addon says this item is an upgrade? Returns "pawn", "sil", or nil.
 -- Pawn takes priority. classID 2 = Weapon, 4 = Armor (itemType is localized).
 local function GetUpgradeArrowSource(itemData, isReadOnly)
+    if ns.suspectDisabled and ns.suspectDisabled.upgrade then return nil end
     if isReadOnly or not itemData or not itemData.link then return nil end
     if not (itemData.classID == 2 or itemData.classID == 4) then return nil end
 
@@ -465,6 +466,9 @@ local function IsJunkItem(itemData)
 end
 
 local function CreateButton(parent)
+    -- Count newly-created secure buttons. A high count during a bank open means the
+    -- pool was too small (PreWarm) and the freeze is secure-frame creation, not render.
+    ns:ProfileBump("CreateButton.count")
     buttonIndex = buttonIndex + 1
     local name = "GudaBagsItemButton" .. buttonIndex
 
@@ -1504,8 +1508,9 @@ function ItemButton:Release(button)
     end
     if not isActive then return end
 
-    -- Minimal cleanup - visual reset happens in SetItem (lazy cleanup)
-    button.currentSize = nil
+    -- Keep button.currentSize intact: a pooled button reused at the same icon size
+    -- can then skip the redundant SetSize/Masque re-register in EnsureButtonSize.
+    -- (EnsureButtonSize still resizes correctly when the size actually differs.)
 
     -- Release to pool (ResetButton callback handles hide/clear/anchors)
     buttonPool:Release(button)
@@ -1556,6 +1561,51 @@ function ItemButton:PreWarm(parent, count)
     -- Release all back to pool so they're available for use
     buttonPool:ReleaseAll()
 
+end
+
+-- Background pool growth: secure-frame creation is the bulk of the first big open
+-- (e.g. a warband bank's All-Tabs view needs ~550 buttons but PreWarm only makes
+-- ~200, so ~350 are created on the spot — a visible freeze). This grows the pool to
+-- `target` in small batches across idle frames AFTER login, so by the time the bank
+-- opens the buttons already exist. Out of combat only (secure frames can't be created
+-- in combat); it pauses during combat and resumes after. Holds the batch acquired
+-- until `target` is reached, then releases all back to the pool as free buttons.
+local bgGrowTicker = nil
+function ItemButton:BackgroundGrowPool(parent, target, perTick, interval)
+    if bgGrowTicker then return end  -- already running / done
+    if not buttonPool then
+        buttonPool = CreateObjectPool(function() return CreateButton(parent) end, ResetButton)
+    end
+    target = target or 750
+    perTick = perTick or 15
+    local held = {}
+    local function finish(ticker)
+        for _, b in ipairs(held) do buttonPool:Release(b) end
+        held = {}
+        ticker:Cancel()
+        bgGrowTicker = nil
+    end
+    bgGrowTicker = C_Timer.NewTicker(interval or 0.05, function(ticker)
+        -- Don't create secure frames in combat; resume on the next tick after combat.
+        if InCombatLockdown() then return end
+        -- If a real consumer (bag/bank/guild bank) acquired buttons, it's already
+        -- growing the pool itself — release our batch and stop so we don't compete.
+        if buttonPool.GetNumActive and buttonPool:GetNumActive() > #held then
+            finish(ticker)
+            return
+        end
+        for _ = 1, perTick do
+            if #held >= target then
+                finish(ticker)
+                return
+            end
+            local b = buttonPool:Acquire()  -- reuses free first, then creates new
+            b.wrapper:SetParent(parent)
+            b:SetShown(false)
+            b.wrapper:SetShown(false)
+            held[#held + 1] = b
+        end
+    end)
 end
 
 -- Check if a cooldown is just the GCD (matches global cooldown start/duration)
@@ -1639,6 +1689,7 @@ end
 -- Register button with Masque after sizing is complete, then reapply icon anchoring
 -- Masque overrides icon anchors as part of skinning, so we must re-anchor after registration
 local function ApplyMasqueAfterSizing(button)
+    if ns.suspectDisabled and ns.suspectDisabled.masque then return end
     if button._masqueApplied then return end
     local MasqueModule = ns:GetModule("Masque")
     if not MasqueModule or not MasqueModule:IsActive() or not button.owner then return end
@@ -1679,6 +1730,7 @@ local function EnsureButtonSize(button, size)
 end
 
 function ItemButton:SetItem(button, itemData, size, isReadOnly)
+    ns:ProfileBump("SetItem.calls")
     -- Hide Blizzard template's built-in textures (they may re-show from events)
     if button.IconBorder then button.IconBorder:Hide() end
     if button.IconOverlay then button.IconOverlay:Hide() end
@@ -1695,6 +1747,11 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     -- Reset visual state from previous item (lazy cleanup)
     -- These elements might not be explicitly set below
     button:SetAlpha(1)
+    -- Clear pseudo-slot flags: a recycled Empty/DropTarget pseudo button reused for
+    -- a real item must not keep them (recycle skips ResetButton). The pseudo branches
+    -- below re-set isEmptySlotButton when applicable.
+    button.isEmptySlotButton = nil
+    button.isDropTargetButton = nil
     if button.trackedIcon then button.trackedIcon:Hide() end
     if button.trackedIconShadow then button.trackedIconShadow:Hide() end
     if button.equipSetIcon then button.equipSetIcon:Hide() end
@@ -1712,10 +1769,12 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     local settings = GetCachedSettings()
     size = size or settings.iconSize
 
+    ns:ProfileStart("setitem.masque")
     EnsureButtonSize(button, size)
 
     -- Register with Masque after sizing (deferred from Acquire to avoid icon anchor issues)
     ApplyMasqueAfterSizing(button)
+    ns:ProfileStop("setitem.masque")
 
     button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, settings.bgAlpha)
 
@@ -1849,10 +1908,25 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             showBorder = settings.otherBorders
         end
 
-        -- Helper to show inner shadow with color
+        -- Helper to show inner shadow with color. The 4 gradient textures only
+        -- depend on the color, so cache the last-applied color on the button and skip
+        -- the 4 SetGradient calls when it's unchanged AND the glow is still shown.
+        -- The IsShown() check makes this robust against the other code paths that hide
+        -- innerShadow directly (ResetButton/SetEmpty/pseudo) without touching them.
         local function ShowInnerShadow(color)
+            if ns.suspectDisabled and ns.suspectDisabled.glow then
+                if button.innerShadow then
+                    for _, tex in pairs(button.innerShadow) do tex:Hide() end
+                end
+                return
+            end
             if button.innerShadow then
                 local r, g, b = color[1], color[2], color[3]
+                if button._glowR == r and button._glowG == g and button._glowB == b
+                    and button.innerShadow.top:IsShown() then
+                    return  -- already showing this exact glow — nothing to rebuild
+                end
+                button._glowR, button._glowG, button._glowB = r, g, b
                 button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
                 button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
                 button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
@@ -1866,6 +1940,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
+        ns:ProfileStart("setitem.glow")
         if showQuestIndicator then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
@@ -1885,6 +1960,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             button.border:Hide()
             HideInnerShadow()
         end
+        ns:ProfileStop("setitem.glow")
 
         -- The scanner snapshots `locked` at scan time, which during an equip-swap
         -- can capture the item while it is transiently locked. When the snapshot
@@ -1912,6 +1988,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
 
         -- Update cooldown (skip GCD to avoid spinning every item on wand/ability use)
+        ns:ProfileStart("si.cooldown")
         local isOnCooldown = false
         if button.cooldown and not isReadOnly then
             local start, duration, enable = C_Container.GetContainerItemCooldown(itemData.bagID, itemData.slot)
@@ -1924,6 +2001,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         elseif button.cooldown then
             CooldownFrame_Set(button.cooldown, 0, 0, false)
         end
+        ns:ProfileStop("si.cooldown")
 
         if settings.markUnusableItems and itemData.isUsable == false and not isOnCooldown then
             button.unusableOverlay:Show()
@@ -2057,6 +2135,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
 
         -- Charges display (Wizard Oil, Sharpening Stones, etc.)
+        ns:ProfileStart("si.charges")
         if button.chargesText then
             local charges = nil
             if settings.showCharges and not isReadOnly then
@@ -2072,11 +2151,13 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
                 button.chargesText:Hide()
             end
         end
+        ns:ProfileStop("si.charges")
 
         -- BoE label (bottom-left corner). Only on unbound BoE weapons/armor;
         -- TooltipScanner:IsBindOnEquip excludes soulbound, BoP, and non-gear.
         -- The itemType pre-check skips the tooltip scan for the common case
         -- (consumables, reagents, etc.) so this stays cheap.
+        ns:ProfileStart("si.boe")
         if button.boeText then
             local showBoe = settings.showBoeLabel
                 and not isReadOnly
@@ -2100,10 +2181,13 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
                 button.boeText:Hide()
             end
         end
+        ns:ProfileStop("si.boe")
 
         -- Upgrade arrow: Pawn (preferred) or SimpleItemLevel, when installed.
         -- Invisible without either addon. See ApplyUpgradeArrow above.
+        ns:ProfileStart("si.upgrade")
         ApplyUpgradeArrow(button)
+        ns:ProfileStop("si.upgrade")
 
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
@@ -2257,6 +2341,7 @@ function ItemButton:UpdateUserLockIcon(button)
 end
 
 function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
+    ns:ProfileBump("SetEmpty.calls")
     -- Hide Blizzard template's built-in textures (they may re-show from events)
     if button.IconBorder then button.IconBorder:Hide() end
     if button.IconOverlay then button.IconOverlay:Hide() end

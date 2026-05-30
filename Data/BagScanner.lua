@@ -24,6 +24,7 @@ local updateFrame = CreateFrame("Frame")
 updateFrame:Hide()
 
 function BagScanner:ScanAllBags()
+    ns:ProfileStart("ScanAllBags")
     local allBags = {}
 
     for _, bagID in ipairs(Constants.BAG_IDS) do
@@ -55,6 +56,7 @@ function BagScanner:ScanAllBags()
         end
     end
 
+    ns:ProfileStop("ScanAllBags")
     return allBags
 end
 
@@ -323,6 +325,9 @@ local function ProcessBatchedUpdates()
     pendingUpdate = false
     updateFrame:Hide()
 
+    ns:ProfileBump("event.batch")
+    ns:ProfileStart("event.batchwork")
+
     -- Scan only the dirty bags
     BagScanner:ScanDirtyBags(bagsToScan)
 
@@ -333,6 +338,8 @@ local function ProcessBatchedUpdates()
     if ns.OnBagsUpdated then
         ns.OnBagsUpdated(bagsToScan)
     end
+
+    ns:ProfileStop("event.batchwork")
 end
 
 updateFrame:SetScript("OnUpdate", ProcessBatchedUpdates)
@@ -354,6 +361,7 @@ local function OnBagUpdate(event, bagID)
         return
     end
 
+    ns:ProfileBump("event.BAG_UPDATE")
     ns:Debug("BagScanner: BAG_UPDATE for bag", bagID, "pending:", pendingUpdate)
     dirtyBags[bagID] = true
 
