@@ -317,6 +317,7 @@ local function ResetButton(pool, button)
     local masqueActive = MasqueModule and MasqueModule:IsActive()
     if masqueActive then MasqueModule:RemoveButton(button) end
 
+    button._pooledActive = false  -- O(1) active flag (see ItemButton:Release)
     button:SetShown(false)  -- Use SetShown to avoid taint during combat
     button.wrapper:SetShown(false)
     button.wrapper:ClearAllPoints()
@@ -1481,6 +1482,7 @@ function ItemButton:Acquire(parent)
     end
 
     local button = buttonPool:Acquire()
+    button._pooledActive = true  -- O(1) active flag (see ItemButton:Release)
     button.wrapper:SetParent(parent)
     button.wrapper:SetShown(true)  -- Use SetShown to avoid taint during combat
     button:SetShown(true)
@@ -1498,15 +1500,11 @@ end
 function ItemButton:Release(button)
     if not buttonPool then return end
 
-    -- Check if button is active before releasing (avoid double-release error)
-    local isActive = false
-    for activeButton in buttonPool:EnumerateActive() do
-        if activeButton == button then
-            isActive = true
-            break
-        end
-    end
-    if not isActive then return end
+    -- Guard against double-release. This used to linearly scan EnumerateActive()
+    -- on every call: O(active) per release, so releasing N buttons was O(N*active)
+    -- — quadratic, and the pool is shared across bags/bank/guild bank/mail (can be
+    -- ~600 active). An O(1) flag (set in Acquire, cleared in ResetButton) replaces it.
+    if not button or not button._pooledActive then return end
 
     -- Keep button.currentSize intact: a pooled button reused at the same icon size
     -- can then skip the redundant SetSize/Masque re-register in EnsureButtonSize.

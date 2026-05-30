@@ -12,6 +12,11 @@ local Font = ns:GetModule("Font")
 local instances = {}
 local searchOverlay = nil
 
+-- Debounce for the search-text notify. Each keystroke triggers a full bag/bank/guild
+-- bank Refresh (~tens of ms), so firing per character makes fast typing lag. Coalesce
+-- into one refresh shortly after the user stops typing. Clearing is exempt (immediate).
+local SEARCH_DEBOUNCE = 0.2
+
 -- Cached globals
 local strfind = string.find
 local strlower = string.lower
@@ -1150,7 +1155,26 @@ local function CreateSearchBar(parent)
         UpdateTransferButton(searchBar)
 
         if searchChanged and searchBar.onSearchChanged then
-            searchBar.onSearchChanged(text)
+            -- Cancel any pending notify; the latest keystroke supersedes it.
+            if searchBar.searchDebounceTimer then
+                searchBar.searchDebounceTimer:Cancel()
+                searchBar.searchDebounceTimer = nil
+            end
+            if text == "" then
+                -- Clearing: refresh immediately, and leave no timer that could fire
+                -- after the frame closes (close clears the search via SetText "").
+                searchBar.onSearchChanged(text)
+            else
+                -- Typing: debounce so fast typing coalesces into a single Refresh.
+                -- Guard on parent:IsShown() so a delayed fire can't refresh a frame that
+                -- was closed during the debounce window.
+                searchBar.searchDebounceTimer = C_Timer.NewTimer(SEARCH_DEBOUNCE, function()
+                    searchBar.searchDebounceTimer = nil
+                    if searchBar.onSearchChanged and parent and parent:IsShown() then
+                        searchBar.onSearchChanged(searchBar.searchText or "")
+                    end
+                end)
+            end
         end
     end)
 

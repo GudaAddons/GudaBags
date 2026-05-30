@@ -35,6 +35,25 @@ local cachedItemData = {}
 local cachedItemCount = {}
 local layoutCached = false
 
+-- Persist-across-close: keep the ~588 buttons when the guild bank closes (walk away)
+-- instead of releasing them, so closing is instant and reopening reuses them (the
+-- Refresh already reuses buttons in place, so reopen just re-fills them — no teardown
+-- or re-acquire). Released when another pool consumer (bags/bank/mail) opens or on
+-- combat start, since they share the ItemButton pool.
+local guildBankHeld = false
+
+-- View signature (selectedTab:numTabs) of the last completed render. On reopen, if the
+-- retained layout still matches this signature we skip the full Refresh and just
+-- reconcile changed slots (IncrementalUpdate) — the same fast-reopen the bank uses.
+-- numTabs guards against a tab being purchased while away (which IncrementalUpdate,
+-- working slot-by-slot on the existing layout, can't add).
+local guildBankLastRenderSig = nil
+local function ComputeGuildBankRenderSig()
+    local selectedTab = (GuildBankScanner and GuildBankScanner:GetSelectedTab()) or 0
+    local numTabs = (GuildBankScanner and GuildBankScanner:GetNumTabs()) or 0
+    return tostring(selectedTab) .. ":" .. tostring(numTabs)
+end
+
 -- Progressive ("All Tabs" can be ~588 buttons) rendering. Refresh places the
 -- first chunk synchronously for an instant paint, then this driver places the
 -- rest across frames under a per-frame time budget so no single frame stutters.
@@ -104,7 +123,11 @@ end
 -- Frame Appearance
 -------------------------------------------------
 
-local function UpdateFrameAppearance()
+-- skipButtonRestyle: skip the per-button ApplyThemeTextures loop (it iterates every
+-- active button). Redundant on opens/refreshes — Acquire/SetItem already theme each
+-- button — so callers that follow with Refresh pass true. Only the appearance
+-- SETTING_CHANGED path (which doesn't rebuild) needs the restyle.
+local function UpdateFrameAppearance(skipButtonRestyle)
     if not frame then return end
 
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
@@ -113,8 +136,10 @@ local function UpdateFrameAppearance()
     -- Apply theme background (ButtonFrameTemplate for Blizzard, backdrop for Guda)
     Theme:ApplyFrameBackground(frame, bgAlpha, showBorders)
 
-    local ItemButton = ns:GetModule("ItemButton")
-    if ItemButton then ItemButton:ApplyThemeTextures() end
+    if not skipButtonRestyle then
+        local ItemButton = ns:GetModule("ItemButton")
+        if ItemButton then ItemButton:ApplyThemeTextures() end
+    end
 
     GuildBankHeader:SetBackdropAlpha(bgAlpha)
 
@@ -162,7 +187,7 @@ end
 ns:GetModule("SearchBarToggle"):Apply(GuildBankFrame, {
     getFrame = function() return frame end,
     onChanged = function()
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         GuildBankFrame:Refresh()
     end,
 })
@@ -338,8 +363,11 @@ local function CreateSideTab(parent, index, isAllTab)
             else
                 GuildBankScanner:SetSelectedTab(self.tabIndex)
             end
+            -- SetSelectedTab fires ns.OnGuildBankTabChanged, which already updates the
+            -- tab visuals and refreshes — no direct Refresh here (it would be a second
+            -- full render). UpdateSideTabSelection covers the no-op edge case (clicking
+            -- "All" while already on All, where SetSelectedTab isn't called).
             GuildBankFrame:UpdateSideTabSelection()
-            GuildBankFrame:Refresh()
         end
     end)
 
@@ -681,9 +709,18 @@ local function CreateGuildBankFrame()
     f:SetScript("OnHide", function()
         ns:Debug("GudaGuildBankFrame OnHide triggered")
 
-        -- Stop any in-flight progressive render so it can't acquire/place
-        -- buttons after they were released on close.
-        CancelRender()
+        -- Persist-across-close lives here (not only in GuildBankFrame:Hide) so it engages
+        -- for EVERY close path. On Anniversary the GUILDBANKFRAME_CLOSED event is
+        -- unreliable, so relying on ns.OnGuildBankClosed -> Hide left guildBankHeld unset
+        -- on many closes — every reopen then did a full re-render instead of fast-reopen.
+        guildBankHeld = true
+
+        -- Deliberately do NOT CancelRender here. We keep (don't release) the buttons on
+        -- close, so an in-flight progressive render is safe to finish in the background
+        -- while the frame is hidden. Letting it complete sets layoutCached = true, which
+        -- the fast reopen requires; cancelling it left the layout permanently uncached.
+        -- (A reopen that lands mid-render just falls back to a full Refresh, which
+        -- cancels and restarts cleanly.)
 
         local scanner = ns:GetModule("GuildBankScanner")
         local wasOpen = scanner and scanner:IsGuildBankOpen() or false
@@ -1026,8 +1063,13 @@ local function FinishRender(st)
     GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
     GuildBankFooter:Update()
 
-    -- Apply the selected font to any chrome/text created during this refresh.
-    Font:ApplyToRegions(frame)
+    -- Font: nothing to sweep here. The frame's static chrome is registered once via
+    -- Font:RegisterFrame at creation, and every region created during a render
+    -- self-applies the font and registers itself: item buttons (Font:Apply on
+    -- create/SetItem) and category headers (Font:Override on create). A font-family
+    -- change re-sweeps the whole frame via ReapplyAll. Re-walking all ~600 buttons
+    -- every render (the old Font:ApplyToRegions(frame) here) cost ~100-150ms per
+    -- render for nothing.
 
     renderState = nil
     renderDriver:Hide()
@@ -1183,7 +1225,9 @@ function GuildBankFrame:Refresh()
     frame.container:Show()
 
     -- Show side tabs
+    ns:ProfileStart("gb.sidetabs")
     self:ShowSideTabs()
+    ns:ProfileStop("gb.sidetabs")
 
     local iconSize = Database:GetSetting("iconSize")
     local spacing = Database:GetSetting("iconSpacing")
@@ -1192,6 +1236,7 @@ function GuildBankFrame:Refresh()
     local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 0
 
     -- Collect all slots from guild bank
+    ns:ProfileStart("gb.gather")
     local allSlots = {}
     local showTabSections = selectedTab == 0 and GuildBankScanner and GuildBankScanner:GetNumTabs() > 1
 
@@ -1231,6 +1276,8 @@ function GuildBankFrame:Refresh()
             end
         end
     end
+
+    ns:ProfileStop("gb.gather")
 
     -- Calculate content dimensions
     local numSlots = 0
@@ -1276,7 +1323,18 @@ function GuildBankFrame:Refresh()
     local needsScroll = actualContentHeight > scrollAreaHeight + 5
 
     local scrollbarWidth = needsScroll and 20 or 0
+    -- Pin the top edge across the resize. The frame is CENTER-anchored, so changing its
+    -- height would otherwise grow/shrink symmetrically and move the top — very visible
+    -- switching All Tabs <-> a single tab (big height change). Capture the current
+    -- top-left and re-anchor by TOPLEFT so the frame only grows downward; the top stays
+    -- put (matches the bank, whose per-tab height barely changes so it never looks off).
+    local prevTop = frame:GetTop()
+    local prevLeft = frame:GetLeft()
     frame:SetSize(frameWidth + scrollbarWidth, actualFrameHeight)
+    if prevTop and prevLeft then
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", prevLeft, prevTop)
+    end
 
     frame.scrollFrame:ClearAllPoints()
     frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -topOffset)
@@ -1294,6 +1352,10 @@ function GuildBankFrame:Refresh()
         if scrollUpButton then scrollUpButton:Show() end
         if scrollDownButton then scrollDownButton:Show() end
         frame.scrollFrame:EnableMouseWheel(true)
+        -- Start at the top on every (re)render, e.g. a tab switch. Without this the
+        -- scrollFrame keeps the previous tab's offset (clamped to the new content), so
+        -- the new tab appears scrolled/centered instead of aligned to the top.
+        frame.scrollFrame:SetVerticalScroll(0)
     else
         if scrollBar then scrollBar:Hide() end
         if scrollUpButton then scrollUpButton:Hide() end
@@ -1345,8 +1407,112 @@ function GuildBankFrame:Refresh()
         isReadOnly = not isGuildBankOpen,
         guildBank = guildBank,
     }
-    ProcessRenderChunk()
-    if renderState then renderDriver:Show() end
+    -- Record the view this render produced so a later reopen can tell whether the
+    -- retained layout still matches (→ fast IncrementalUpdate instead of full Refresh).
+    guildBankLastRenderSig = ComputeGuildBankRenderSig()
+    -- Render the visible viewport synchronously so nothing on-screen pops in, then
+    -- defer the off-screen remainder to the driver (it fills in invisibly across
+    -- frames). In combat, finish in one pass rather than spreading secure ops across
+    -- combat frames. (currentY is the position of the next op; once it drops past the
+    -- viewport, everything after is off-screen.)
+    local st = renderState
+    local n = #allSlots
+    local drainAll = InCombatLockdown()
+    local visibleCutoff = -(scrollAreaHeight + iconSize + spacing)
+    ns:ProfileStart("GuildBankRender.sync")
+    while st.cursor <= n do
+        RenderOneSlot(allSlots[st.cursor], st)
+        st.cursor = st.cursor + 1
+        if not drainAll and st.currentY < visibleCutoff then
+            break
+        end
+    end
+    ns:ProfileStop("GuildBankRender.sync")
+    if st.cursor > n then
+        FinishRender(st)
+    else
+        renderDriver:Show()
+    end
+end
+
+-- Update only the slots that actually changed in the given tabs, instead of
+-- re-rendering the whole guild bank. The layout never changes on a deposit/withdraw
+-- (a tab always has the same slot count), so this is safe. Falls back to a full
+-- Refresh when there is no cached layout, a progressive render is in flight, or the
+-- purchase/empty view is showing.
+function GuildBankFrame:IncrementalUpdate(dirtyTabs)
+    if not frame or not frame:IsShown() then return end
+    if not layoutCached or renderState or showingPurchasePrompt then
+        self:Refresh()
+        return
+    end
+    local guildBank = GuildBankScanner and GuildBankScanner:GetCachedGuildBank()
+    if not guildBank then return end
+
+    ns:ProfileStart("GuildBank.incremental")
+
+    local iconSize = Database:GetSetting("iconSize")
+    local hasSearch = SearchBar:HasActiveFilters(frame)
+    local isReadOnly = not (GuildBankScanner and GuildBankScanner:IsGuildBankOpen())
+
+    -- No specific tabs given -> check them all.
+    local tabsToCheck = dirtyTabs
+    if not tabsToCheck or not next(tabsToCheck) then
+        tabsToCheck = {}
+        for tabIndex in pairs(guildBank) do tabsToCheck[tabIndex] = true end
+    end
+
+    for tabIndex in pairs(tabsToCheck) do
+        local tabData = guildBank[tabIndex]
+        local numSlots = (tabData and tabData.numSlots) or Constants.GUILD_BANK_SLOTS_PER_TAB
+        for slot = 1, numSlots do
+            local slotKey = tabIndex .. ":" .. slot
+            local button = buttonsBySlot[slotKey]
+            -- Only update slots that are currently rendered (their tab is visible).
+            if button then
+                local newItemData = tabData and tabData.slots and tabData.slots[slot]
+                local newItemID = newItemData and newItemData.itemID or nil
+                local newCount = newItemData and newItemData.count or nil
+                if cachedItemData[slotKey] ~= newItemID or cachedItemCount[slotKey] ~= newCount then
+                    if newItemData then
+                        local adapted = {}
+                        for k, v in pairs(newItemData) do adapted[k] = v end
+                        adapted.bagID = tabIndex
+                        adapted.slot = slot
+                        adapted.isGuildBank = true
+                        ItemButton:SetItem(button, adapted, iconSize, isReadOnly)
+                        if hasSearch then
+                            ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, newItemData))
+                        else
+                            ItemButton:ClearSearchState(button)
+                        end
+                        cachedItemData[slotKey] = newItemID
+                        cachedItemCount[slotKey] = newCount
+                    else
+                        ItemButton:SetEmpty(button, tabIndex, slot, iconSize, isReadOnly, true)
+                        if hasSearch then
+                            ItemButton:SetSearchState(button, false)
+                        else
+                            ItemButton:ClearSearchState(button)
+                        end
+                        cachedItemData[slotKey] = nil
+                        cachedItemCount[slotKey] = nil
+                    end
+                end
+            end
+        end
+    end
+
+    -- Keep the footer's used/free slot count accurate (the full render does this in
+    -- FinishRender).
+    local totalSlots, freeSlots = 0, 0
+    for _, tabData in pairs(guildBank) do
+        totalSlots = totalSlots + (tabData.numSlots or 0)
+        freeSlots = freeSlots + (tabData.freeSlots or 0)
+    end
+    GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
+    GuildBankFooter:Update()
+    ns:ProfileStop("GuildBank.incremental")
 end
 
 -------------------------------------------------
@@ -1374,21 +1540,50 @@ function GuildBankFrame:Toggle()
             end
         end
         self:Refresh()
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh above already styled buttons
         GuildBankHeader:UpdateTitle()
         frame:Show()
     end
 end
 
+-- True when a reopen can reuse the retained layout and just reconcile changed slots
+-- (fast path) instead of doing a full Refresh. Mirrors BankFrame:CanFastReopen.
+function GuildBankFrame:CanFastReopen()
+    -- Deliberately NOT gated on guildBankHeld. Buttons are freed only by ReleaseHeld
+    -- (bank/mail open, combat start), which ALSO clears layoutCached — so layoutCached
+    -- already means "buttons retained and laid out". On Anniversary the guild-bank close
+    -- detection is flaky, leaving guildBankHeld unreliable; trusting the layout/signature
+    -- state instead is both correct and robust. frame-not-shown marks this as a reopen.
+    return layoutCached
+        and not renderState
+        and not showingPurchasePrompt
+        and frame and not frame:IsShown()
+        and guildBankLastRenderSig ~= nil
+        and guildBankLastRenderSig == ComputeGuildBankRenderSig()
+end
+
 function GuildBankFrame:Show()
     LoadComponents()
 
-    -- Free any bag/bank buttons retained while those frames are hidden — the guild
-    -- bank shares the ItemButton pool and needs many (no-op if they're open / not holding).
-    local BagFrameModule = ns:GetModule("BagFrame")
-    if BagFrameModule and BagFrameModule.ReleaseHeld then
-        BagFrameModule:ReleaseHeld()
+    -- Idempotent open: Anniversary fires the open path twice (both GUILDBANKFRAME_OPENED
+    -- and the Blizzard-frame OnShow hook route through HandleGuildBankOpened -> here). The
+    -- first call already showed and reconciled the view; a second call while already shown
+    -- must NOT tear it down and full-render again — just refresh data cheaply.
+    if frame and frame:IsShown() then
+        if GuildBankScanner and GuildBankScanner:IsGuildBankOpen() then
+            GuildBankScanner:ScanAllTabs()
+        end
+        self:IncrementalUpdate(nil)
+        return
     end
+
+    -- Free the bank's retained buttons (it doesn't coexist with the guild bank, so
+    -- this returns its share of the shared ItemButton pool; no-op if open / not holding).
+    --
+    -- Do NOT release the bags' held buttons: the bags auto-open *together* with the
+    -- guild bank, so tearing down their persisted layout would force a full cold
+    -- re-render right as they reopen. Leaving them held lets the bag auto-open take
+    -- its fast-reopen path. In-combat pool pressure is handled by PLAYER_REGEN_DISABLED.
     local BankFrameModule = ns:GetModule("BankFrame")
     if BankFrameModule and BankFrameModule.ReleaseHeld then
         BankFrameModule:ReleaseHeld()
@@ -1408,15 +1603,44 @@ function GuildBankFrame:Show()
             GuildBankScanner:LoadFromDatabase(guildName)
         end
     end
-    self:Refresh()
-    UpdateFrameAppearance()
-    GuildBankHeader:UpdateTitle()
-    frame:Show()
+
+    -- Fast reopen (mirrors BankFrame): if the retained layout still matches the current
+    -- view, just show it and reconcile changed slots instead of re-SetItem-ing every
+    -- slot. Decide AFTER the scan so a newly purchased tab is reflected in the signature
+    -- (the scan can't invalidate anything — OnGuildBankUpdated no-ops on a hidden frame).
+    local canFast = self:CanFastReopen()
+    guildBankHeld = false
+    if canFast then
+        frame:Show()
+        UpdateFrameAppearance(true)
+        GuildBankHeader:UpdateTitle()
+        self:IncrementalUpdate(nil)  -- requires frame shown; near-no-op when unchanged
+    else
+        self:Refresh()
+        UpdateFrameAppearance(true)  -- Refresh above already styled buttons
+        GuildBankHeader:UpdateTitle()
+        frame:Show()
+    end
+end
+
+-- Tear down the retained (held-while-hidden) buttons: release them to the shared
+-- pool and clear caches. No-op unless held, so it is safe to call from other pool
+-- consumers (bags/bank/mail) on open and on combat start. Releasing is SetShown/
+-- pool bookkeeping only — combat-safe; it never creates frames.
+function GuildBankFrame:ReleaseHeld()
+    if not guildBankHeld then return end
+    guildBankHeld = false
+    CancelRender()
+    ReleaseAllGuildBankItems()
+    layoutCached = false
 end
 
 function GuildBankFrame:Hide()
     if frame then
-        CancelRender()
+        -- Note: no CancelRender here. We keep the buttons on close and let any in-flight
+        -- progressive render finish in the background so layoutCached stays valid for a
+        -- fast reopen (see the frame's OnHide handler). frame:Hide() below also fires
+        -- OnHide, which sets guildBankHeld for every close path.
 
         -- Clear search/chip filters on close
         SearchBar:ClearAllFilters(frame)
@@ -1424,8 +1648,10 @@ function GuildBankFrame:Hide()
         frame:Hide()
         -- Reset transient search toggle so next open starts collapsed
         self:ResetSearchToggle()
-        ReleaseAllGuildBankItems()
-        layoutCached = false
+
+        -- Keep the buttons + layout so the next open reuses them (no teardown freeze
+        -- when walking away). Released later by ReleaseHeld if the pool is needed.
+        guildBankHeld = true
     end
 end
 
@@ -1498,9 +1724,13 @@ ns.OnGuildBankOpened = function()
         end
     end
 
-    -- Refresh bags to update stacking (unstack when interaction window opens)
+    -- Refresh bags to update stacking (unstack when interaction window opens).
+    -- View-aware: only category view re-renders (single view has no grouping), so
+    -- this no longer does a pointless full bag refresh on open in single view.
     if BagFrameModule and BagFrameModule:IsShown() then
-        BagFrameModule:Refresh()
+        if BagFrameModule.RefreshForInteraction then
+            BagFrameModule:RefreshForInteraction()
+        end
         local bagFrame = BagFrameModule:GetFrame()
         if bagFrame then
             SearchBar:UpdateTransferState(bagFrame)
@@ -1522,9 +1752,12 @@ ns.OnGuildBankClosed = function()
         BagFrameModule:OnAutoInteractionClose()
     end
 
-    -- Refresh bags to update stacking (re-stack when interaction window closes)
+    -- Refresh bags to update stacking (re-stack when interaction window closes).
+    -- View-aware: only category view re-renders; single view skips the full refresh.
     if BagFrameModule and BagFrameModule:IsShown() then
-        BagFrameModule:Refresh()
+        if BagFrameModule.RefreshForInteraction then
+            BagFrameModule:RefreshForInteraction()
+        end
         local bagFrame = BagFrameModule:GetFrame()
         if bagFrame then
             SearchBar:UpdateTransferState(bagFrame)
@@ -1535,14 +1768,18 @@ end
 -- Called when guild bank items change
 ns.OnGuildBankUpdated = function(dirtyTabs)
     if frame and frame:IsShown() then
-        GuildBankFrame:Refresh()
+        -- Update only the changed slots; falls back to a full Refresh when needed.
+        GuildBankFrame:IncrementalUpdate(dirtyTabs)
     end
 end
 
 -- Called when tab selection changes
 ns.OnGuildBankTabChanged = function(tabIndex)
     if frame and frame:IsShown() then
+        ns:ProfileStart("GuildBank.tabswitch")
+        GuildBankFrame:UpdateSideTabSelection()
         GuildBankFrame:Refresh()
+        ns:ProfileStop("GuildBank.tabswitch")
     end
 end
 
@@ -1583,13 +1820,13 @@ local function OnSettingChanged(event, key, value)
     if not frame or not frame:IsShown() then return end
 
     if appearanceSettings[key] then
-        UpdateFrameAppearance()
+        UpdateFrameAppearance()  -- no rebuild here, so restyle the buttons
     elseif key == "guildBankColumns" or key == "iconSize" or key == "iconSpacing" then
         -- Column/size changes need full refresh
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         GuildBankFrame:Refresh()
     elseif key == "showFooter" or key == "showSearchBar" or key == "showFilterChips" then
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         GuildBankFrame:Refresh()
     end
 end
@@ -1598,7 +1835,15 @@ Events:Register("SETTING_CHANGED", OnSettingChanged, GuildBankFrame)
 
 Events:Register("PROFILE_LOADED", function()
     if frame and frame:IsShown() then
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         GuildBankFrame:Refresh()
     end
 end, GuildBankFrame)
+
+-- Combat start: release the retained (held-while-hidden) buttons so an in-combat bag
+-- open can reuse the shared ItemButton pool without creating new secure frames
+-- (forbidden in combat). Releasing uses SetShown — combat-safe. The guild bank is
+-- only reopened out of combat, so it simply reuses/rebuilds next time.
+Events:Register("PLAYER_REGEN_DISABLED", function()
+    GuildBankFrame:ReleaseHeld()
+end, "GuildBankFrame.CombatPoolRelease")
