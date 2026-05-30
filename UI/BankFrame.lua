@@ -2748,11 +2748,15 @@ end
 function BankFrame:Show()
     LoadComponents()
 
-    -- Free any bag buttons retained while the bag frame is hidden — bank shares
-    -- the ItemButton pool (no-op if the bag frame is open or not holding).
+    -- Free any bag/guild-bank buttons retained while those frames are hidden — bank
+    -- shares the ItemButton pool (no-op if they're open or not holding).
     local BagFrameModule = ns:GetModule("BagFrame")
     if BagFrameModule and BagFrameModule.ReleaseHeld then
         BagFrameModule:ReleaseHeld()
+    end
+    local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
+    if GuildBankFrameModule and GuildBankFrameModule.ReleaseHeld then
+        GuildBankFrameModule:ReleaseHeld()
     end
 
     if not frame then

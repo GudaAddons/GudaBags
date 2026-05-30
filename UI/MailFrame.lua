@@ -495,6 +495,10 @@ function MailFrame:Show()
     if BankFrameModule and BankFrameModule.ReleaseHeld then
         BankFrameModule:ReleaseHeld()
     end
+    local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
+    if GuildBankFrameModule and GuildBankFrameModule.ReleaseHeld then
+        GuildBankFrameModule:ReleaseHeld()
+    end
 
     if not frame then
         frame = CreateMailFrame()
