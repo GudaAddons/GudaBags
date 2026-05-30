@@ -34,6 +34,21 @@ local combatLockdownRegistered = false
 local bagsAutoOpened = false   -- Did the addon open the bags for the current interaction?
 local inInteraction  = false   -- True between any interaction-open and its matching close
 
+-- Persist-across-close: instead of tearing down all buttons on Hide and fully
+-- rebuilding on the next Show (~110ms/cycle, the rapid open/close stutter), we
+-- keep the buttons + layout and just hide the frame. A reopen with nothing
+-- changed is then near-instant. The retained layout is released (ReleaseHeld)
+-- when it goes stale: inventory/settings changed while hidden, or another frame
+-- that shares the ItemButton pool (bank/guild bank/mail) opens.
+local heldHidden = false        -- frame is hidden but buttons/layout retained
+local dirtyWhileHidden = false  -- bags/settings changed since being hidden
+
+-- Cached container anchor (UpdateFrameAppearance). Re-anchoring the container
+-- moves the reference point for all ~190 child buttons, forcing a full relayout on
+-- the next frame:Show(). We skip the SetPoint when the computed anchor is unchanged.
+local lastContainerTop = nil
+local lastContainerBottom = nil
+
 -- Layout caching for incremental updates (Single View)
 local buttonsBySlot = {}  -- Key: "bagID:slot" -> button reference
 local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-specific lookups
@@ -153,7 +168,7 @@ local RegisterCombatEndCallback
 ns:GetModule("SearchBarToggle"):Apply(BagFrame, {
     getFrame = function() return frame end,
     onChanged = function()
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         BagFrame:Refresh()
     end,
 })
@@ -454,6 +469,8 @@ end
 function BagFrame:Refresh()
     if not frame then return end
 
+    ns:ProfileStart("Refresh")
+
     local viewType = Database:GetSetting("bagViewType") or "single"
 
     -- Detect view type change - must release all buttons when switching views
@@ -547,13 +564,17 @@ function BagFrame:Refresh()
     }
 
     -- Classify bags by type
+    ns:ProfileStart("Refresh.classify")
     local classifiedBags = BagClassifier:ClassifyBags(bags, isViewingCached)
+    ns:ProfileStop("Refresh.classify")
 
     -- Build display order
     local showKeyring = Footer:IsKeyringVisible()
     local showSoulBag = Footer:IsSoulBagVisible()
     local showQuiverBag = Footer:IsQuiverBagVisible()
+    ns:ProfileStart("Refresh.buildorder")
     local bagsToShow = LayoutEngine:BuildDisplayOrder(classifiedBags, showKeyring, bags, showSoulBag, showQuiverBag)
+    ns:ProfileStop("Refresh.buildorder")
 
     -- Filter out hidden bags in single/split view mode (not when viewing cached character)
     if (viewType == "single" or viewType == "split") and not isViewingCached then
@@ -570,6 +591,7 @@ function BagFrame:Refresh()
         end
     end
 
+    ns:ProfileStart("Refresh.render")
     if viewType == "category" then
         self:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isViewingCached)
     elseif viewType == "split" then
@@ -577,6 +599,7 @@ function BagFrame:Refresh()
     else
         self:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isViewingCached)
     end
+    ns:ProfileStop("Refresh.render")
 
     -- Update slot info (show regular bags only, special bags in tooltip)
     if isViewingCached then
@@ -605,6 +628,8 @@ function BagFrame:Refresh()
 
     -- Apply the selected font to any chrome/text created during this refresh.
     Font:ApplyToRegions(frame)
+
+    ns:ProfileStop("Refresh")
 end
 
 function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isViewingCached)
@@ -625,11 +650,15 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isVie
 
     -- Render buttons
     for i, slotInfo in ipairs(allSlots) do
+        ns:ProfileStart("render.acquire")
         local button = ItemButton:Acquire(frame.container)
+        ns:ProfileStop("render.acquire")
         local slotKey = slotInfo.bagID .. ":" .. slotInfo.slot
 
         if slotInfo.itemData then
+            ns:ProfileStart("render.setitem")
             ItemButton:SetItem(button, slotInfo.itemData, iconSize, isViewingCached)
+            ns:ProfileStop("render.setitem")
             if hasSearch then
                 ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, slotInfo.itemData))
             else
@@ -640,7 +669,9 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isVie
             cachedItemCount[slotKey] = slotInfo.itemData.count
             CacheChargesForSlot(slotKey, slotInfo.bagID, slotInfo.slot)
         else
+            ns:ProfileStart("render.setempty")
             ItemButton:SetEmpty(button, slotInfo.bagID, slotInfo.slot, iconSize, isViewingCached)
+            ns:ProfileStop("render.setempty")
             if hasSearch then
                 ItemButton:SetSearchState(button, false)
             else
@@ -1117,21 +1148,51 @@ function BagFrame:Toggle()
         RestoreFramePosition()
     end
 
+    ns:ProfileStart("Toggle")
     if frame:IsShown() then
-        self:Hide()  -- Use BagFrame:Hide() to properly release buttons
+        self:Hide()  -- keeps buttons for a fast reopen (see Hide)
     else
-        BagScanner:ScanAllBags()
-        -- Clean up stale Recent items (items no longer in bags)
-        -- If items were removed, force full button release to prevent texture artifacts
-        local RecentItems = ns:GetModule("RecentItems")
-        if RecentItems and RecentItems:CleanupStale() then
-            ItemButton:ReleaseAll(frame.container)
-            buttonsByItemKey = {}
-        end
-        self:Refresh()
-        UpdateFrameAppearance()
-        frame:Show()
+        self:Show()  -- takes the fast-reopen path when nothing changed
     end
+    ns:ProfileStop("Toggle")
+end
+
+-- True when the frame is hidden but still holding a valid, unchanged layout, so
+-- it can be re-shown without a scan/rebuild. Requires layoutCached (any layout
+-- invalidation clears it) and no changes accumulated while hidden.
+function BagFrame:CanFastReopen()
+    return heldHidden
+        and layoutCached
+        and not dirtyWhileHidden
+        and not viewingCharacter
+        and frame and not frame:IsShown()
+end
+
+-- Tear down the retained (held-while-hidden) layout: release buttons back to the
+-- shared pool and clear layout caches. No-op when the frame is shown or not held,
+-- so it is safe to call from other pool consumers (bank/guild bank/mail) on open.
+function BagFrame:ReleaseHeld()
+    if not heldHidden then return end
+    heldHidden = false
+    dirtyWhileHidden = false
+    if not frame then return end
+    ItemButton:ReleaseAll(frame.container)
+    ReleaseAllCategoryHeaders()
+    buttonsBySlot = {}
+    buttonsByBag = {}
+    cachedItemData = {}
+    cachedItemCount = {}
+    cachedItemCharges = {}
+    cachedItemCategory = {}
+    buttonsByItemKey = {}
+    buttonPositions = {}
+    categoryViewItems = {}
+    lastCategoryLayout = nil
+    lastTotalItemCount = 0
+    pseudoItemButtons = {}
+    itemButtons = {}
+    layoutCached = false
+    lastLayoutSettings = nil
 end
 
 function BagFrame:Show()
@@ -1139,6 +1200,26 @@ function BagFrame:Show()
         frame = CreateBagFrame()
         RestoreFramePosition()
     end
+
+    -- Fast reopen: the retained layout is still valid — just show it. This is the
+    -- common rapid open/close case and skips the full scan + button rebuild.
+    if self:CanFastReopen() then
+        heldHidden = false
+        -- Lightweight appearance pass: reconciles search-bar/container/footer state
+        -- (cheap, ~4ms) while skipping the per-button restyle loops (already styled).
+        ns:ProfileStart("fast.appearance")
+        UpdateFrameAppearance(true)
+        ns:ProfileStop("fast.appearance")
+        ns:ProfileStart("fast.show")
+        frame:Show()
+        ns:ProfileStop("fast.show")
+        return
+    end
+
+    -- Full path: drop any stale retained buttons, then rescan and rebuild.
+    self:ReleaseHeld()
+    heldHidden = false
+    dirtyWhileHidden = false
 
     BagScanner:ScanAllBags()
     -- Clean up Recent items: both expired (time-based) and stale (no longer in bags)
@@ -1155,51 +1236,46 @@ function BagFrame:Show()
         buttonsByItemKey = {}
     end
     self:Refresh()
-    UpdateFrameAppearance()
+    UpdateFrameAppearance(true)  -- Refresh already styled every button
     frame:Show()
 end
 
 function BagFrame:Hide()
-    if frame then
-        frame:Hide()
-        -- Reset transient search toggle so next open starts collapsed
-        self:ResetSearchToggle()
-        -- Reset to current character when closing
-        if viewingCharacter then
-            viewingCharacter = nil
-            Header:SetViewingCharacter(nil, nil)
-        end
-        -- Release ALL buttons (item buttons and pseudo-item buttons) to prevent stacking
-        ItemButton:ReleaseAll(frame.container)
-        ReleaseAllCategoryHeaders()
-        -- Clear layout cache so next open does full refresh
-        buttonsBySlot = {}
-        buttonsByBag = {}
-        cachedItemData = {}
-        cachedItemCount = {}
-        cachedItemCharges = {}
-        cachedItemCategory = {}
-        -- Category view item-key tracking
-        buttonsByItemKey = {}
-        buttonPositions = {}
-        categoryViewItems = {}
-        lastCategoryLayout = nil
-        lastTotalItemCount = 0
-        pseudoItemButtons = {}
-        itemButtons = {}
-        layoutCached = false
-        lastLayoutSettings = nil
-        -- Cancel drag state tracking
-        isDraggingItem = false
-        if dragCheckTicker then
-            dragCheckTicker:Cancel()
-            dragCheckTicker = nil
-        end
-        local DragFlyoutBar = ns:GetModule("DragFlyoutBar")
-        if DragFlyoutBar then
-            DragFlyoutBar:OnDragEnd()
-        end
+    if not frame then return end
+    ns:ProfileStart("Hide")
+
+    -- Capture state BEFORE frame:Hide(): the frame's OnHide hook clears the search
+    -- and resets viewingCharacter, both of which would make a retained layout stale.
+    -- A retained layout is only valid for the current character with no active search.
+    local canHold = layoutCached
+        and not viewingCharacter
+        and not SearchBar:HasActiveFilters(frame)
+
+    frame:Hide()
+    -- Reset transient search toggle so next open starts collapsed
+    self:ResetSearchToggle()
+
+    -- Cancel drag state tracking
+    isDraggingItem = false
+    if dragCheckTicker then
+        dragCheckTicker:Cancel()
+        dragCheckTicker = nil
     end
+    local DragFlyoutBar = ns:GetModule("DragFlyoutBar")
+    if DragFlyoutBar then
+        DragFlyoutBar:OnDragEnd()
+    end
+
+    heldHidden = true
+    if canHold then
+        -- Keep buttons + layout so the next open is near-instant. Released later
+        -- by ReleaseHeld if anything changes while hidden (see CanFastReopen).
+        dirtyWhileHidden = false
+    else
+        -- Stale/invalid layout — tear it down so the next open rebuilds cleanly.
+        self:ReleaseHeld()
+    end
+    ns:ProfileStop("Hide")
 end
 
 function BagFrame:IsShown()
@@ -1222,7 +1298,7 @@ function BagFrame:ViewCharacter(fullName, charData)
     viewingCharacter = fullName
     Header:SetViewingCharacter(fullName, charData)
 
-    UpdateFrameAppearance()
+    UpdateFrameAppearance(true)  -- Refresh below restyles buttons
     self:Refresh()
 end
 
@@ -1880,6 +1956,10 @@ end
 -- dirtyBags: table of {bagID = true} for bags that were updated
 ns.OnBagsUpdated = function(dirtyBags)
     ns:Debug("OnBagsUpdated called, frame shown:", frame and frame:IsShown() or false)
+    -- Inventory changed while holding a hidden layout — invalidate the fast reopen.
+    if heldHidden and not (frame and frame:IsShown()) then
+        dirtyWhileHidden = true
+    end
     -- Only auto-refresh when viewing current character
     if not viewingCharacter then
         if frame and frame:IsShown() then
@@ -1934,7 +2014,12 @@ ns.OnBagsUpdated = function(dirtyBags)
     end
 end
 
-UpdateFrameAppearance = function()
+-- skipButtonRestyle: when true, skip the per-button theme/font/alpha loops. These
+-- iterate every active button and are redundant on a normal open — a full rebuild
+-- already styles each button in Acquire/SetItem, and a fast reopen retains styling.
+-- Only the appearance/hoverBagline SETTING_CHANGED paths (which don't rebuild) need
+-- the restyle, so they call this without the flag.
+UpdateFrameAppearance = function(skipButtonRestyle)
     if not frame then return end
 
     local isViewingCached = viewingCharacter ~= nil
@@ -1948,25 +2033,32 @@ UpdateFrameAppearance = function()
 
     Header:SetBackdropAlpha(bgAlpha)
 
-    -- Update slot background alpha (item icons stay fully visible)
-    ItemButton:UpdateSlotAlpha(bgAlpha)
-    ItemButton:ApplyThemeTextures()
+    -- Per-button restyle (skipped on the hot open paths — see note above)
+    if not skipButtonRestyle then
+        -- Update slot background alpha (item icons stay fully visible)
+        ItemButton:UpdateSlotAlpha(bgAlpha)
+        ItemButton:ApplyThemeTextures()
+    end
 
     -- Update footer button theme colors
     local Footer = ns:GetModule("Footer")
     if Footer then Footer:UpdateTheme() end
 
-    -- Update icon font size and tracked bar
-    ItemButton:UpdateFontSize()
-    local TrackedBar = ns:GetModule("TrackedBar")
-    if TrackedBar then
-        TrackedBar:UpdateFontSize()
-        TrackedBar:UpdateSize()
-    end
-    local QuestBar = ns:GetModule("QuestBar")
-    if QuestBar then
-        QuestBar:UpdateFontSize()
-        QuestBar:UpdateSize()
+    -- Update icon font size and the Tracked/Quest bars. These bars self-update via
+    -- their own SETTING_CHANGED handlers, so refreshing them here is only needed
+    -- when an appearance setting actually changed (skipButtonRestyle = false).
+    if not skipButtonRestyle then
+        ItemButton:UpdateFontSize()
+        local TrackedBar = ns:GetModule("TrackedBar")
+        if TrackedBar then
+            TrackedBar:UpdateFontSize()
+            TrackedBar:UpdateSize()
+        end
+        local QuestBar = ns:GetModule("QuestBar")
+        if QuestBar then
+            QuestBar:UpdateFontSize()
+            QuestBar:UpdateSize()
+        end
     end
 
     -- Show/Hide search bar (always hide for cached views)
@@ -1976,15 +2068,23 @@ UpdateFrameAppearance = function()
     local dynamicFooterHeight = Footer:GetHeight()
     local footerHeight = (not showFooter and not isViewingCached) and Constants.FRAME.PADDING or (dynamicFooterHeight + Constants.FRAME.PADDING + 6)
 
-    frame.container:ClearAllPoints()
+    local topOffset
     if showSearchBar then
         SearchBar:Show(frame)
-        frame.container:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Header:GetHeight() + SearchBar:GetTotalHeight(frame) + Constants.FRAME.PADDING + 6))
+        topOffset = -(Header:GetHeight() + SearchBar:GetTotalHeight(frame) + Constants.FRAME.PADDING + 6)
     else
         SearchBar:Hide(frame)
-        frame.container:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, -(Header:GetHeight() + Constants.FRAME.PADDING + 2))
+        topOffset = -(Header:GetHeight() + Constants.FRAME.PADDING + 2)
     end
-    frame.container:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING, footerHeight)
+    -- Only re-anchor when the offsets actually changed — an identical SetPoint still
+    -- dirties layout and forces frame:Show() to relayout every child button.
+    if lastContainerTop ~= topOffset or lastContainerBottom ~= footerHeight then
+        frame.container:ClearAllPoints()
+        frame.container:SetPoint("TOPLEFT", frame, "TOPLEFT", Constants.FRAME.PADDING, topOffset)
+        frame.container:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -Constants.FRAME.PADDING, footerHeight)
+        lastContainerTop = topOffset
+        lastContainerBottom = footerHeight
+    end
 
     -- Footer visibility (always show money for cached views)
     if isViewingCached then
@@ -2055,6 +2155,12 @@ local function OnSettingChanged(event, key, value)
         return
     end
 
+    -- A setting changed while holding a hidden layout invalidates the fast reopen
+    -- (size/columns/view/appearance won't have been applied to the retained buttons).
+    if heldHidden and not (frame and frame:IsShown()) then
+        dirtyWhileHidden = true
+    end
+
     if not frame or not frame:IsShown() then return end
 
     -- When changing view type while viewing another character, reset to current character
@@ -2066,7 +2172,7 @@ local function OnSettingChanged(event, key, value)
     if appearanceSettings[key] then
         UpdateFrameAppearance()
     elseif resizeSettings[key] then
-        UpdateFrameAppearance()
+        UpdateFrameAppearance(true)  -- Refresh below restyles buttons
         BagFrame:Refresh()
     elseif key == "hoverBagline" then
         -- Refresh footer layout for hover bagline mode (preserves cached view state)

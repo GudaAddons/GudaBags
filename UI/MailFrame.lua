@@ -485,6 +485,13 @@ function MailFrame:Toggle()
 end
 
 function MailFrame:Show()
+    -- Free any bag buttons retained while the bag frame is hidden — mail shares
+    -- the ItemButton pool (no-op if the bag frame is open or not holding).
+    local BagFrameModule = ns:GetModule("BagFrame")
+    if BagFrameModule and BagFrameModule.ReleaseHeld then
+        BagFrameModule:ReleaseHeld()
+    end
+
     if not frame then
         frame = CreateMailFrame()
         RestoreFramePosition()

@@ -28,6 +28,7 @@ local PawnCompat  -- resolved lazily to avoid load-order coupling
 -- Which addon says this item is an upgrade? Returns "pawn", "sil", or nil.
 -- Pawn takes priority. classID 2 = Weapon, 4 = Armor (itemType is localized).
 local function GetUpgradeArrowSource(itemData, isReadOnly)
+    if ns.suspectDisabled and ns.suspectDisabled.upgrade then return nil end
     if isReadOnly or not itemData or not itemData.link then return nil end
     if not (itemData.classID == 2 or itemData.classID == 4) then return nil end
 
@@ -1504,8 +1505,9 @@ function ItemButton:Release(button)
     end
     if not isActive then return end
 
-    -- Minimal cleanup - visual reset happens in SetItem (lazy cleanup)
-    button.currentSize = nil
+    -- Keep button.currentSize intact: a pooled button reused at the same icon size
+    -- can then skip the redundant SetSize/Masque re-register in EnsureButtonSize.
+    -- (EnsureButtonSize still resizes correctly when the size actually differs.)
 
     -- Release to pool (ResetButton callback handles hide/clear/anchors)
     buttonPool:Release(button)
@@ -1639,6 +1641,7 @@ end
 -- Register button with Masque after sizing is complete, then reapply icon anchoring
 -- Masque overrides icon anchors as part of skinning, so we must re-anchor after registration
 local function ApplyMasqueAfterSizing(button)
+    if ns.suspectDisabled and ns.suspectDisabled.masque then return end
     if button._masqueApplied then return end
     local MasqueModule = ns:GetModule("Masque")
     if not MasqueModule or not MasqueModule:IsActive() or not button.owner then return end
@@ -1679,6 +1682,7 @@ local function EnsureButtonSize(button, size)
 end
 
 function ItemButton:SetItem(button, itemData, size, isReadOnly)
+    ns:ProfileBump("SetItem.calls")
     -- Hide Blizzard template's built-in textures (they may re-show from events)
     if button.IconBorder then button.IconBorder:Hide() end
     if button.IconOverlay then button.IconOverlay:Hide() end
@@ -1712,10 +1716,12 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     local settings = GetCachedSettings()
     size = size or settings.iconSize
 
+    ns:ProfileStart("setitem.masque")
     EnsureButtonSize(button, size)
 
     -- Register with Masque after sizing (deferred from Acquire to avoid icon anchor issues)
     ApplyMasqueAfterSizing(button)
+    ns:ProfileStop("setitem.masque")
 
     button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, settings.bgAlpha)
 
@@ -1851,6 +1857,12 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- Helper to show inner shadow with color
         local function ShowInnerShadow(color)
+            if ns.suspectDisabled and ns.suspectDisabled.glow then
+                if button.innerShadow then
+                    for _, tex in pairs(button.innerShadow) do tex:Hide() end
+                end
+                return
+            end
             if button.innerShadow then
                 local r, g, b = color[1], color[2], color[3]
                 button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
@@ -1866,6 +1878,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
+        ns:ProfileStart("setitem.glow")
         if showQuestIndicator then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
@@ -1885,6 +1898,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             button.border:Hide()
             HideInnerShadow()
         end
+        ns:ProfileStop("setitem.glow")
 
         -- The scanner snapshots `locked` at scan time, which during an equip-swap
         -- can capture the item while it is transiently locked. When the snapshot

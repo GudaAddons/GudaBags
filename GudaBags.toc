@@ -18,6 +18,7 @@ Core\Locales.lua
 
 # Core modules (load order matters)
 Core\Init.lua
+Core\Profiler.lua
 Core\PublicAPI.lua
 Core\Expansion.lua
 Core\Constants.lua

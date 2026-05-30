@@ -1586,6 +1586,7 @@ function BankFrame:Refresh()
         splitColumns = splitColumns,
     }
 
+    ns:ProfileStart("BankRefresh.render")
     if viewType == "category" then
         self:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, isReadOnly)
     elseif viewType == "split" then
@@ -1593,6 +1594,7 @@ function BankFrame:Refresh()
     else
         self:RefreshSingleView(bank, bagsToShow, settings, hasSearch, isReadOnly)
     end
+    ns:ProfileStop("BankRefresh.render")
 
     if isViewingCached or not isBankOpen then
         local totalSlots = 0
@@ -2463,6 +2465,13 @@ end
 
 function BankFrame:Show()
     LoadComponents()
+
+    -- Free any bag buttons retained while the bag frame is hidden — bank shares
+    -- the ItemButton pool (no-op if the bag frame is open or not holding).
+    local BagFrameModule = ns:GetModule("BagFrame")
+    if BagFrameModule and BagFrameModule.ReleaseHeld then
+        BagFrameModule:ReleaseHeld()
+    end
 
     if not frame then
         frame = CreateBankFrame()
