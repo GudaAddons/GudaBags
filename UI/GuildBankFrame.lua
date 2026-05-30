@@ -1042,8 +1042,13 @@ local function FinishRender(st)
     GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
     GuildBankFooter:Update()
 
-    -- Apply the selected font to any chrome/text created during this refresh.
-    Font:ApplyToRegions(frame)
+    -- Font: nothing to sweep here. The frame's static chrome is registered once via
+    -- Font:RegisterFrame at creation, and every region created during a render
+    -- self-applies the font and registers itself: item buttons (Font:Apply on
+    -- create/SetItem) and category headers (Font:Override on create). A font-family
+    -- change re-sweeps the whole frame via ReapplyAll. Re-walking all ~600 buttons
+    -- every render (the old Font:ApplyToRegions(frame) here) cost ~100-150ms per
+    -- render for nothing.
 
     renderState = nil
     renderDriver:Hide()
@@ -1085,6 +1090,7 @@ renderDriver:SetScript("OnUpdate", ProcessRenderChunk)
 
 function GuildBankFrame:Refresh()
     if not frame then return end
+    ns:ProfileBump("GuildBankRefresh.calls")
 
     ns:Debug("GuildBankFrame:Refresh called")
 
@@ -1199,7 +1205,9 @@ function GuildBankFrame:Refresh()
     frame.container:Show()
 
     -- Show side tabs
+    ns:ProfileStart("gb.sidetabs")
     self:ShowSideTabs()
+    ns:ProfileStop("gb.sidetabs")
 
     local iconSize = Database:GetSetting("iconSize")
     local spacing = Database:GetSetting("iconSpacing")
@@ -1208,6 +1216,7 @@ function GuildBankFrame:Refresh()
     local selectedTab = GuildBankScanner and GuildBankScanner:GetSelectedTab() or 0
 
     -- Collect all slots from guild bank
+    ns:ProfileStart("gb.gather")
     local allSlots = {}
     local showTabSections = selectedTab == 0 and GuildBankScanner and GuildBankScanner:GetNumTabs() > 1
 
@@ -1247,6 +1256,8 @@ function GuildBankFrame:Refresh()
             end
         end
     end
+
+    ns:ProfileStop("gb.gather")
 
     -- Calculate content dimensions
     local numSlots = 0
@@ -1361,8 +1372,30 @@ function GuildBankFrame:Refresh()
         isReadOnly = not isGuildBankOpen,
         guildBank = guildBank,
     }
-    ProcessRenderChunk()
-    if renderState then renderDriver:Show() end
+    -- Render the visible viewport synchronously so nothing on-screen pops in, then
+    -- defer the off-screen remainder to the driver (it fills in invisibly across
+    -- frames). In combat, finish in one pass rather than spreading secure ops across
+    -- combat frames. (currentY is the position of the next op; once it drops past the
+    -- viewport, everything after is off-screen.)
+    local st = renderState
+    local n = #allSlots
+    local drainAll = InCombatLockdown()
+    local visibleCutoff = -(scrollAreaHeight + iconSize + spacing)
+    ns:ProfileStart("GuildBankRender.sync")
+    while st.cursor <= n do
+        RenderOneSlot(allSlots[st.cursor], st)
+        st.cursor = st.cursor + 1
+        if not drainAll and st.currentY < visibleCutoff then
+            break
+        end
+    end
+    ns:ProfileStop("GuildBankRender.sync")
+    if st.cursor > n then
+        FinishRender(st)
+    else
+        ns:ProfileBump("GuildBank.progressive")  -- deferred the off-screen remainder
+        renderDriver:Show()
+    end
 end
 
 -- Update only the slots that actually changed in the given tabs, instead of
@@ -1376,9 +1409,10 @@ function GuildBankFrame:IncrementalUpdate(dirtyTabs)
         self:Refresh()
         return
     end
-
     local guildBank = GuildBankScanner and GuildBankScanner:GetCachedGuildBank()
     if not guildBank then return end
+
+    ns:ProfileStart("GuildBank.incremental")
 
     local iconSize = Database:GetSetting("iconSize")
     local hasSearch = SearchBar:HasActiveFilters(frame)
@@ -1441,6 +1475,7 @@ function GuildBankFrame:IncrementalUpdate(dirtyTabs)
     end
     GuildBankFooter:UpdateSlotInfo(totalSlots - freeSlots, totalSlots)
     GuildBankFooter:Update()
+    ns:ProfileStop("GuildBank.incremental")
 end
 
 -------------------------------------------------
@@ -1480,12 +1515,13 @@ function GuildBankFrame:Show()
     -- We're showing now; the retained buttons become the live view (Refresh reuses them).
     guildBankHeld = false
 
-    -- Free any bag/bank buttons retained while those frames are hidden — the guild
-    -- bank shares the ItemButton pool and needs many (no-op if they're open / not holding).
-    local BagFrameModule = ns:GetModule("BagFrame")
-    if BagFrameModule and BagFrameModule.ReleaseHeld then
-        BagFrameModule:ReleaseHeld()
-    end
+    -- Free the bank's retained buttons (it doesn't coexist with the guild bank, so
+    -- this returns its share of the shared ItemButton pool; no-op if open / not holding).
+    --
+    -- Do NOT release the bags' held buttons: the bags auto-open *together* with the
+    -- guild bank, so tearing down their persisted layout would force a full cold
+    -- re-render right as they reopen. Leaving them held lets the bag auto-open take
+    -- its fast-reopen path. In-combat pool pressure is handled by PLAYER_REGEN_DISABLED.
     local BankFrameModule = ns:GetModule("BankFrame")
     if BankFrameModule and BankFrameModule.ReleaseHeld then
         BankFrameModule:ReleaseHeld()
@@ -1609,9 +1645,13 @@ ns.OnGuildBankOpened = function()
         end
     end
 
-    -- Refresh bags to update stacking (unstack when interaction window opens)
+    -- Refresh bags to update stacking (unstack when interaction window opens).
+    -- View-aware: only category view re-renders (single view has no grouping), so
+    -- this no longer does a pointless full bag refresh on open in single view.
     if BagFrameModule and BagFrameModule:IsShown() then
-        BagFrameModule:Refresh()
+        if BagFrameModule.RefreshForInteraction then
+            BagFrameModule:RefreshForInteraction()
+        end
         local bagFrame = BagFrameModule:GetFrame()
         if bagFrame then
             SearchBar:UpdateTransferState(bagFrame)
@@ -1633,9 +1673,12 @@ ns.OnGuildBankClosed = function()
         BagFrameModule:OnAutoInteractionClose()
     end
 
-    -- Refresh bags to update stacking (re-stack when interaction window closes)
+    -- Refresh bags to update stacking (re-stack when interaction window closes).
+    -- View-aware: only category view re-renders; single view skips the full refresh.
     if BagFrameModule and BagFrameModule:IsShown() then
-        BagFrameModule:Refresh()
+        if BagFrameModule.RefreshForInteraction then
+            BagFrameModule:RefreshForInteraction()
+        end
         local bagFrame = BagFrameModule:GetFrame()
         if bagFrame then
             SearchBar:UpdateTransferState(bagFrame)
@@ -1654,8 +1697,10 @@ end
 -- Called when tab selection changes
 ns.OnGuildBankTabChanged = function(tabIndex)
     if frame and frame:IsShown() then
+        ns:ProfileStart("GuildBank.tabswitch")
         GuildBankFrame:UpdateSideTabSelection()
         GuildBankFrame:Refresh()
+        ns:ProfileStop("GuildBank.tabswitch")
     end
 end
 

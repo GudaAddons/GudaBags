@@ -626,8 +626,10 @@ function BagFrame:Refresh()
     -- Save current view type for detecting view switches
     lastLayoutSettings = { viewType = viewType }
 
-    -- Apply the selected font to any chrome/text created during this refresh.
-    Font:ApplyToRegions(frame)
+    -- Font: no per-render sweep needed. The frame is registered once via
+    -- Font:RegisterFrame; item buttons (Font:Apply) and headers (Font:Override)
+    -- self-register on create, and a font-family change re-sweeps via ReapplyAll.
+    -- Re-walking every bag button here cost ~tens of ms per Refresh for nothing.
 
     ns:ProfileStop("Refresh")
 end
@@ -2618,6 +2620,14 @@ local function RefreshForInteractionWindow()
             BagFrame:Refresh()
         end
     end
+end
+
+-- Public entry point so external interaction modules (e.g. GuildBankFrame) route
+-- through the same view-aware logic: only category view needs a re-render to
+-- unstack/restack grouped items. In single view there is no grouping, so skipping
+-- the refresh avoids a pointless ~80ms full bag render on every open/close.
+function BagFrame:RefreshForInteraction()
+    RefreshForInteractionWindow()
 end
 
 -- Trade window

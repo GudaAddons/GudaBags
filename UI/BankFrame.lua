@@ -1609,7 +1609,10 @@ local function FinishBankRender()
     bankRenderDriver:Hide()
     ParkBankRecycleLeftovers()
     layoutCached = true
-    if frame then Font:ApplyToRegions(frame) end
+    -- Font: no per-render sweep needed. The frame is registered once via
+    -- Font:RegisterFrame; item buttons (Font:Apply) and headers (Font:Override)
+    -- self-register on create, and a font-family change re-sweeps via ReapplyAll.
+    -- Re-walking every bank button here cost ~tens of ms per render for nothing.
     -- A bank update arrived while rendering — apply it now with one incremental pass.
     if bankRenderNeedsRerender then
         bankRenderNeedsRerender = false
@@ -1910,8 +1913,8 @@ function BankFrame:Refresh()
         BankFooter:Update()
     end
 
-    -- Apply the selected font to any chrome/text created during this refresh.
-    Font:ApplyToRegions(frame)
+    -- Font: no per-render sweep (see FinishBankRender note). Dynamic content
+    -- self-registers; a font-family change re-sweeps the frame via ReapplyAll.
 
     -- Record what view was rendered so a later persist-across-close reopen can tell
     -- whether the retained layout still matches the intended view.
@@ -2719,13 +2722,19 @@ end
 -- True when the frame is hidden but still holds a valid layout matching the
 -- current intended view, so reopen can incrementally update instead of rebuild.
 function BankFrame:CanFastReopen()
-    return bankHeld
-        and layoutCached
-        and not bankDirtyWhileHidden
-        and not viewingCharacter
-        and frame and not frame:IsShown()
-        and lastRenderSig ~= nil
-        and lastRenderSig == ComputeBankRenderSig()
+    if not bankHeld then ns:ProfileBump("bankfast.no_held"); return false end
+    if not layoutCached then ns:ProfileBump("bankfast.no_layout"); return false end
+    if bankDirtyWhileHidden then ns:ProfileBump("bankfast.dirty"); return false end
+    if viewingCharacter then ns:ProfileBump("bankfast.viewchar"); return false end
+    if not (frame and not frame:IsShown()) then ns:ProfileBump("bankfast.shown"); return false end
+    if lastRenderSig == nil then ns:ProfileBump("bankfast.nosig"); return false end
+    if lastRenderSig ~= ComputeBankRenderSig() then
+        ns:ProfileBump("bankfast.sigmismatch")
+        ns:Debug("CanFastReopen sig mismatch: had=" .. tostring(lastRenderSig) .. " now=" .. tostring(ComputeBankRenderSig()))
+        return false
+    end
+    ns:ProfileBump("bankfast.ok")
+    return true
 end
 
 function BankFrame:Toggle()
@@ -2748,12 +2757,16 @@ end
 function BankFrame:Show()
     LoadComponents()
 
-    -- Free any bag/guild-bank buttons retained while those frames are hidden — bank
-    -- shares the ItemButton pool (no-op if they're open or not holding).
-    local BagFrameModule = ns:GetModule("BagFrame")
-    if BagFrameModule and BagFrameModule.ReleaseHeld then
-        BagFrameModule:ReleaseHeld()
-    end
+    -- Free the guild bank's retained buttons (it doesn't coexist with the bank, so
+    -- this just returns its share of the shared ItemButton pool; no-op if it's open
+    -- or not holding).
+    --
+    -- Do NOT release the bags' held buttons here: the bags auto-open *together* with
+    -- the bank, so tearing down their persisted layout would force a full cold
+    -- re-render right as they reopen (the "slow when bags were closed" case). Leaving
+    -- them held lets the bag auto-open take its fast-reopen path. Pool headroom is
+    -- fine (bank + bags fit under the prewarm target), and in-combat pool pressure is
+    -- handled separately by PLAYER_REGEN_DISABLED releasing held buttons.
     local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
     if GuildBankFrameModule and GuildBankFrameModule.ReleaseHeld then
         GuildBankFrameModule:ReleaseHeld()
@@ -2765,11 +2778,17 @@ function BankFrame:Show()
     end
 
     ns:ProfileStart("Bank.Show")
+    -- Decide the fast-reopen path BEFORE scanning. ScanAllBank fires ns.OnBankUpdated,
+    -- and because the bank is still held/hidden at this point that handler sets
+    -- bankDirtyWhileHidden = true — which would make CanFastReopen() return false on
+    -- EVERY reopen, forcing a needless full render. The fast path's IncrementalUpdate
+    -- below reconciles whatever the scan finds, so the scan's own update must not veto it.
+    local canFast = self:CanFastReopen()
     if BankScanner:IsBankOpen() then
         BankScanner:ScanAllBank()
     end
 
-    if self:CanFastReopen() then
+    if canFast then
         -- Smooth reopen: reuse the retained layout and update only changed slots.
         -- (Bank contents rarely change while you're away; the scan above refreshed
         -- the cache and IncrementalUpdate reconciles any differences.)
@@ -3271,10 +3290,14 @@ end
 
 -- dirtyBags: table of {bagID = true} for bags that were updated
 ns.OnBankUpdated = function(dirtyBags)
-    -- Bank contents changed while holding a hidden layout — invalidate fast reopen.
-    if bankHeld and not (frame and frame:IsShown()) then
-        bankDirtyWhileHidden = true
-    end
+    -- NOTE: we intentionally do NOT set bankDirtyWhileHidden on a content change here.
+    -- Walking up to the banker fires BANKFRAME_OPENED → BAG_UPDATE for the bank bags
+    -- *before* BankFrame:Show runs, so this handler would dirty the held layout on
+    -- EVERY reopen and defeat the fast path entirely. Content changes are reconciled by
+    -- the fast path's IncrementalUpdate(nil) (it re-scans all bank bags and updates only
+    -- changed slots), so a full render isn't needed. Only layout-affecting setting
+    -- changes (OnSettingChanged) and view/bank-type/tab changes (the render signature)
+    -- still force a full rebuild on reopen.
     if not viewingCharacter and frame and frame:IsShown() then
         if bankRenderInFlight then
             -- A progressive render is mid-flight (layoutCached is intentionally false
@@ -3336,11 +3359,27 @@ ns.OnBankOpened = function()
     BankFrame:Show()
 end
 
+local closingBank = false  -- re-entrancy guard for ns.OnBankClosed (see below)
 ns.OnBankClosed = function()
-    if frame and frame:IsShown() then
+    if not frame or closingBank then return end
+    -- Already closed and holding the retained layout — ignore a duplicate/late
+    -- BANKFRAME_CLOSED. ClearInteraction(Banker) re-fires the event a frame later
+    -- (async), after closingBank has reset; this skips that redundant second pass.
+    if bankHeld and not frame:IsShown() then return end
+    closingBank = true
+    -- Save only when the bank was actually open (the scanner has fresh data then).
+    if frame:IsShown() then
         BankScanner:SaveToDatabase()
-        BankFrame:Hide()
     end
+    -- Always run Hide so persist-across-close engages even when the frame was already
+    -- hidden directly. ESC / the close button / UISpecialFrames hide the frame without
+    -- going through BankFrame:Hide, so without this the layout is never retained
+    -- (bankHeld stays false) and every reopen does a full render. Hide is a no-op on an
+    -- already-hidden frame apart from the persist bookkeeping we need here.
+    -- The guard above absorbs any re-entrant BANKFRAME_CLOSED that BankFrame:Hide ->
+    -- frame:Hide() -> OnHide -> ClearInteraction(Banker) might fire back at us.
+    BankFrame:Hide()
+    closingBank = false
 end
 
 -- skipButtonRestyle: skip the per-button theme/font/alpha loops (they iterate every

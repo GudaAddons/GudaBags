@@ -485,12 +485,13 @@ function MailFrame:Toggle()
 end
 
 function MailFrame:Show()
-    -- Free any bag/bank buttons retained while those frames are hidden — mail shares
-    -- the ItemButton pool (no-op if they're open or not holding).
-    local BagFrameModule = ns:GetModule("BagFrame")
-    if BagFrameModule and BagFrameModule.ReleaseHeld then
-        BagFrameModule:ReleaseHeld()
-    end
+    -- Free the bank/guild-bank retained buttons (they don't coexist with mail, so this
+    -- returns their share of the shared ItemButton pool; no-op if open / not holding).
+    --
+    -- Do NOT release the bags' held buttons: the bags auto-open *together* with mail,
+    -- so tearing down their persisted layout would force a full cold re-render right as
+    -- they reopen. Leaving them held lets the bag auto-open take its fast-reopen path.
+    -- In-combat pool pressure is handled by PLAYER_REGEN_DISABLED.
     local BankFrameModule = ns:GetModule("BankFrame")
     if BankFrameModule and BankFrameModule.ReleaseHeld then
         BankFrameModule:ReleaseHeld()
