@@ -60,6 +60,26 @@ local cachedItemCategory = {} -- Key: "bagID:slot" -> previous categoryId (for c
 local cachedItemCharges = {} -- Key: "bagID:slot" -> previous charges value
 local layoutCached = false -- True when layout is cached and can do incremental updates
 
+-- Progressive (frame-spread) render driver for Single/Split views.
+-- A full refresh re-skins every button via Masque (group:AddButton runs per button
+-- because ResetButton clears _masqueApplied on release); doing hundreds of them in one
+-- frame trips WoW's instruction watchdog ("script ran too long", which surfaces inside
+-- Masque because that's where execution happens to be). We render a first chunk
+-- synchronously within a time budget — small/normal inventories still finish in one
+-- frame, pixel-identical to before — then spread the remainder across the next frames.
+-- The driver frame is hidden when idle, so there is no per-frame polling cost (mirrors
+-- the bank's All-Tabs render driver in BankFrame.lua).
+local BAG_RENDER_BUDGET_MS = 8
+local bagRenderDriver = CreateFrame("Frame")
+bagRenderDriver:Hide()
+local bagRenderState = nil            -- { ops, cursor, iconSize, hasSearch, isViewingCached }
+local bagRenderInFlight = false
+local bagRenderNeedsRerender = false  -- a bag update arrived mid-render; replay once at finish
+-- Forward declarations: Refresh/Hide/OnBagsUpdated (defined below) reference CancelBagRender,
+-- so the locals must exist before those functions are defined. Bodies are assigned just
+-- above RefreshSingleView, where their dependencies (AcquireCategoryHeader, etc.) are in scope.
+local RenderOneBagSlot, ProcessBagRenderChunk, FinishBagRender, CancelBagRender
+
 -- Category View: Item-key-based button tracking for efficient reuse
 -- This allows button reuse when items move, avoiding expensive SetItem calls
 local buttonsByItemKey = {}  -- Key: itemKey -> {button1, button2, ...} (array for stacked items)
@@ -469,6 +489,9 @@ end
 function BagFrame:Refresh()
     if not frame then return end
 
+    -- Stop any in-flight progressive render before tearing down/rebuilding buttons.
+    CancelBagRender()
+
     ns:ProfileStart("Refresh")
 
     local viewType = Database:GetSetting("bagViewType") or "single"
@@ -634,6 +657,168 @@ function BagFrame:Refresh()
     ns:ProfileStop("Refresh")
 end
 
+-- ---------------------------------------------------------------------------
+-- Progressive render driver (Single/Split views). Bodies assigned here (not at the
+-- top-of-file declaration) so they can capture AcquireCategoryHeader, CacheChargesForSlot,
+-- etc., which are declared above this point. See the state block near the top for why
+-- this exists.
+-- ---------------------------------------------------------------------------
+
+-- Render exactly one op: a split-view section header, or a single item slot (acquire
+-- from pool + SetItem/SetEmpty + position + cache). Per-op granularity lets the driver
+-- yield between any two buttons.
+RenderOneBagSlot = function(op, st)
+    if op.isHeader then
+        local section = op.section
+        local header = AcquireCategoryHeader(frame.container)
+        header:SetWidth(section.width)
+        header:ClearAllPoints()
+        header:SetPoint("TOPLEFT", frame.container, "TOPLEFT", section.x, section.headerY)
+        if section.displayInfo.icon then
+            header.icon:SetTexture(section.displayInfo.icon)
+            header.icon:SetSize(12, 12)
+            header.icon:Show()
+            header.text:ClearAllPoints()
+            header.text:SetPoint("LEFT", header.icon, "RIGHT", 4, 0)
+        else
+            header.icon:Hide()
+            header.text:ClearAllPoints()
+            header.text:SetPoint("LEFT", header, "LEFT", 0, 0)
+        end
+        header.text:SetText(section.displayInfo.name or "")
+        local _, _, fontFlags = header.text:GetFont()
+        if st.iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
+            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
+        else
+            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
+        end
+        header.line:Show()
+        header:EnableMouse(false)
+        table.insert(categoryHeaders, header)
+        return
+    end
+
+    local slotInfo = op.slotInfo
+    local iconSize, hasSearch, isViewingCached = st.iconSize, st.hasSearch, st.isViewingCached
+    local bagID, slot = slotInfo.bagID, slotInfo.slot
+    ns:ProfileStart("render.acquire")
+    local button = ItemButton:Acquire(frame.container)
+    ns:ProfileStop("render.acquire")
+    local slotKey = bagID .. ":" .. slot
+
+    if slotInfo.itemData then
+        ns:ProfileStart("render.setitem")
+        ItemButton:SetItem(button, slotInfo.itemData, iconSize, isViewingCached)
+        ns:ProfileStop("render.setitem")
+        if hasSearch then
+            ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, slotInfo.itemData))
+        else
+            ItemButton:ClearSearchState(button)
+        end
+        cachedItemData[slotKey] = slotInfo.itemData.itemID
+        cachedItemCount[slotKey] = slotInfo.itemData.count
+        CacheChargesForSlot(slotKey, bagID, slot)
+    else
+        ns:ProfileStart("render.setempty")
+        ItemButton:SetEmpty(button, bagID, slot, iconSize, isViewingCached)
+        ns:ProfileStop("render.setempty")
+        if hasSearch then
+            ItemButton:SetSearchState(button, false)
+        else
+            ItemButton:ClearSearchState(button)
+        end
+        cachedItemData[slotKey] = nil
+        cachedItemCount[slotKey] = nil
+        cachedItemCharges[slotKey] = nil
+    end
+
+    button.wrapper:ClearAllPoints()
+    button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", op.x, op.y)
+
+    buttonsBySlot[slotKey] = button
+    table.insert(itemButtons, button)
+    if not buttonsByBag[bagID] then
+        buttonsByBag[bagID] = {}
+    end
+    buttonsByBag[bagID][slot] = button
+end
+
+-- Finalize a deferred render: mark the layout cached and, if a bag update arrived
+-- mid-render, replay it once with a single incremental pass.
+FinishBagRender = function()
+    bagRenderState = nil
+    bagRenderInFlight = false
+    bagRenderDriver:Hide()
+    layoutCached = true
+    if bagRenderNeedsRerender then
+        bagRenderNeedsRerender = false
+        if frame and frame:IsShown() and not viewingCharacter then
+            BagFrame:IncrementalUpdate(nil)
+        end
+    end
+end
+
+-- Stop an in-flight render (view switch, close, or a new full refresh). The caller owns
+-- button teardown (ReleaseAll), so we only drop the driver state here.
+CancelBagRender = function()
+    if not bagRenderInFlight then return end
+    bagRenderState = nil
+    bagRenderInFlight = false
+    bagRenderNeedsRerender = false  -- an upcoming full refresh supersedes it
+    bagRenderDriver:Hide()
+end
+
+-- OnUpdate: render ops until the per-frame budget is spent, then yield to the next frame.
+ProcessBagRenderChunk = function()
+    local st = bagRenderState
+    if not st then bagRenderDriver:Hide() return end
+    -- If combat began mid-render, finish in one frame rather than spreading work across
+    -- combat frames. Bags must stay responsive in combat (RULES Rule 3).
+    local drainAll = InCombatLockdown()
+    local startT = debugprofilestop()
+    local ops = st.ops
+    local n = #ops
+    while st.cursor <= n do
+        RenderOneBagSlot(ops[st.cursor], st)
+        st.cursor = st.cursor + 1
+        -- Check the budget every few ops to amortise the timer call.
+        if not drainAll and (st.cursor % 8 == 0) and debugprofilestop() - startT > BAG_RENDER_BUDGET_MS then
+            return
+        end
+    end
+    FinishBagRender()
+end
+bagRenderDriver:SetScript("OnUpdate", ProcessBagRenderChunk)
+
+-- Render an ops list within the frame budget: paint synchronously this frame until the
+-- budget is spent (small/normal inventories complete here, exactly as before), then hand
+-- any remainder to the driver to fill across the next frames. layoutCached flips true only
+-- when the whole list is rendered (here if it all fits, else in FinishBagRender).
+local function RenderBagOps(ops, st)
+    st.ops = ops
+    st.cursor = 1
+    bagRenderState = st
+    local drainAll = InCombatLockdown()
+    local startT = debugprofilestop()
+    local n = #ops
+    while st.cursor <= n do
+        RenderOneBagSlot(ops[st.cursor], st)
+        st.cursor = st.cursor + 1
+        if not drainAll and (st.cursor % 8 == 0) and debugprofilestop() - startT > BAG_RENDER_BUDGET_MS then
+            break
+        end
+    end
+    if st.cursor > n then
+        bagRenderState = nil
+        bagRenderInFlight = false
+        layoutCached = true
+    else
+        ns:ProfileBump("Bag.progressive")
+        bagRenderInFlight = true
+        bagRenderDriver:Show()
+    end
+end
+
 function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isViewingCached)
     local iconSize = settings.iconSize
 
@@ -650,58 +835,18 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isVie
     -- Calculate button positions
     local positions = LayoutEngine:CalculateButtonPositions(allSlots, settings)
 
-    -- Render buttons
-    for i, slotInfo in ipairs(allSlots) do
-        ns:ProfileStart("render.acquire")
-        local button = ItemButton:Acquire(frame.container)
-        ns:ProfileStop("render.acquire")
-        local slotKey = slotInfo.bagID .. ":" .. slotInfo.slot
-
-        if slotInfo.itemData then
-            ns:ProfileStart("render.setitem")
-            ItemButton:SetItem(button, slotInfo.itemData, iconSize, isViewingCached)
-            ns:ProfileStop("render.setitem")
-            if hasSearch then
-                ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, slotInfo.itemData))
-            else
-                ItemButton:ClearSearchState(button)
-            end
-            -- Cache item data for incremental updates
-            cachedItemData[slotKey] = slotInfo.itemData.itemID
-            cachedItemCount[slotKey] = slotInfo.itemData.count
-            CacheChargesForSlot(slotKey, slotInfo.bagID, slotInfo.slot)
-        else
-            ns:ProfileStart("render.setempty")
-            ItemButton:SetEmpty(button, slotInfo.bagID, slotInfo.slot, iconSize, isViewingCached)
-            ns:ProfileStop("render.setempty")
-            if hasSearch then
-                ItemButton:SetSearchState(button, false)
-            else
-                ItemButton:ClearSearchState(button)
-            end
-            cachedItemData[slotKey] = nil
-            cachedItemCount[slotKey] = nil
-            cachedItemCharges[slotKey] = nil
-        end
-
-        -- Position the wrapper frame
+    -- Build the render-op list (one op per slot, carrying its precomputed position) and
+    -- render it within the frame budget; large inventories spread across the next frames.
+    local ops = {}
+    for i = 1, #allSlots do
         local pos = positions[i]
-        button.wrapper:ClearAllPoints()
-        button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", pos.x, pos.y)
-
-        -- Store button by slot key for incremental updates
-        buttonsBySlot[slotKey] = button
-        table.insert(itemButtons, button)
-
-        -- Store by bagID for fast bag-specific lookups
-        local bagID = slotInfo.bagID
-        if not buttonsByBag[bagID] then
-            buttonsByBag[bagID] = {}
-        end
-        buttonsByBag[bagID][slotInfo.slot] = button
+        ops[i] = { slotInfo = allSlots[i], x = pos.x, y = pos.y }
     end
-
-    layoutCached = true
+    RenderBagOps(ops, {
+        iconSize = iconSize,
+        hasSearch = hasSearch,
+        isViewingCached = isViewingCached,
+    })
 end
 
 function BagFrame:RefreshSplitView(bags, bagsToShow, settings, hasSearch, isViewingCached)
@@ -712,89 +857,37 @@ function BagFrame:RefreshSplitView(bags, bagsToShow, settings, hasSearch, isView
     local frameWidth, frameHeight = LayoutEngine:CalculateSplitFrameSize(layout, settings)
     frame:SetSize(frameWidth, frameHeight)
 
+    -- Build the render-op list: a header op per section, then one op per slot carrying its
+    -- precomputed position. Rendered within the frame budget; large layouts spread frames.
+    local ops = {}
     for _, section in ipairs(layout.sections) do
-        -- Create header with bag icon + name
-        local header = AcquireCategoryHeader(frame.container)
-        header:SetWidth(section.width)
-        header:ClearAllPoints()
-        header:SetPoint("TOPLEFT", frame.container, "TOPLEFT", section.x, section.headerY)
+        ops[#ops + 1] = { isHeader = true, section = section }
 
-        if section.displayInfo.icon then
-            header.icon:SetTexture(section.displayInfo.icon)
-            header.icon:SetSize(12, 12)
-            header.icon:Show()
-            header.text:ClearAllPoints()
-            header.text:SetPoint("LEFT", header.icon, "RIGHT", 4, 0)
-        else
-            header.icon:Hide()
-            header.text:ClearAllPoints()
-            header.text:SetPoint("LEFT", header, "LEFT", 0, 0)
-        end
-        header.text:SetText(section.displayInfo.name or "")
-
-        local _, _, fontFlags = header.text:GetFont()
-        if iconSize < Constants.CATEGORY_ICON_SIZE_THRESHOLD then
-            Font:Apply(header.text, Constants.CATEGORY_FONT_SMALL, fontFlags)
-        else
-            Font:Apply(header.text, Constants.CATEGORY_FONT_LARGE, fontFlags)
-        end
-
-        header.line:Show()
-        header:EnableMouse(false)
-        table.insert(categoryHeaders, header)
-
-        -- Render item slots for this bag
         local bagID = section.bagID
         local bagData = bags[bagID]
         local sectionColumns = section.columns
         local numSlots = section.numSlots
 
         for slot = 1, numSlots do
-            local itemData = bagData and bagData.slots and bagData.slots[slot]
-            local button = ItemButton:Acquire(frame.container)
-            local slotKey = bagID .. ":" .. slot
-
-            if itemData then
-                ItemButton:SetItem(button, itemData, iconSize, isViewingCached)
-                if hasSearch then
-                    ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, itemData))
-                else
-                    ItemButton:ClearSearchState(button)
-                end
-                cachedItemData[slotKey] = itemData.itemID
-                cachedItemCount[slotKey] = itemData.count
-                CacheChargesForSlot(slotKey, bagID, slot)
-            else
-                ItemButton:SetEmpty(button, bagID, slot, iconSize, isViewingCached)
-                if hasSearch then
-                    ItemButton:SetSearchState(button, false)
-                else
-                    ItemButton:ClearSearchState(button)
-                end
-                cachedItemData[slotKey] = nil
-                cachedItemCount[slotKey] = nil
-                cachedItemCharges[slotKey] = nil
-            end
-
             local col = (slot - 1) % sectionColumns
             local row = math.floor((slot - 1) / sectionColumns)
-            local x = section.x + col * (iconSize + spacing)
-            local y = section.slotsStartY - (row * (iconSize + spacing))
-
-            button.wrapper:ClearAllPoints()
-            button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", x, y)
-
-            buttonsBySlot[slotKey] = button
-            table.insert(itemButtons, button)
-
-            if not buttonsByBag[bagID] then
-                buttonsByBag[bagID] = {}
-            end
-            buttonsByBag[bagID][slot] = button
+            ops[#ops + 1] = {
+                slotInfo = {
+                    bagID = bagID,
+                    slot = slot,
+                    itemData = bagData and bagData.slots and bagData.slots[slot],
+                },
+                x = section.x + col * (iconSize + spacing),
+                y = section.slotsStartY - (row * (iconSize + spacing)),
+            }
         end
     end
 
-    layoutCached = true
+    RenderBagOps(ops, {
+        iconSize = iconSize,
+        hasSearch = hasSearch,
+        isViewingCached = isViewingCached,
+    })
 end
 
 function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isViewingCached)
@@ -1178,6 +1271,8 @@ function BagFrame:ReleaseHeld()
     heldHidden = false
     dirtyWhileHidden = false
     if not frame then return end
+    -- Stop any in-flight progressive render: its buttons are about to be released.
+    CancelBagRender()
     ItemButton:ReleaseAll(frame.container)
     ReleaseAllCategoryHeaders()
     buttonsBySlot = {}
@@ -1246,6 +1341,10 @@ function BagFrame:Hide()
     if not frame then return end
     ns:ProfileStart("Hide")
 
+    -- Stop any in-flight progressive render; layoutCached stays false so the frame
+    -- won't be held with a partial layout (next open does a clean full refresh).
+    CancelBagRender()
+
     -- Capture state BEFORE frame:Hide(): the frame's OnHide hook clears the search
     -- and resets viewingCharacter, both of which would make a retained layout stale.
     -- A retained layout is only valid for the current character with no active search.
@@ -1285,6 +1384,9 @@ function BagFrame:IsShown()
 end
 
 function BagFrame:InvalidateLayout()
+    -- Stop any in-flight progressive render too, or FinishBagRender would re-set
+    -- layoutCached = true and mask this invalidation.
+    CancelBagRender()
     layoutCached = false
 end
 
@@ -1312,6 +1414,14 @@ end
 -- dirtyBags: optional table of {bagID = true} for bags that changed
 function BagFrame:IncrementalUpdate(dirtyBags)
     if not frame or not frame:IsShown() then return end
+
+    -- A full render is still spreading across frames; the layout (buttonsBySlot etc.)
+    -- is only partially built. Defer this update and replay it once when the render
+    -- finishes (see FinishBagRender).
+    if bagRenderInFlight then
+        bagRenderNeedsRerender = true
+        return
+    end
 
     -- Never do incremental updates while viewing a cached character
     -- Live bag events should not affect cached character display
@@ -1958,6 +2068,12 @@ end
 -- dirtyBags: table of {bagID = true} for bags that were updated
 ns.OnBagsUpdated = function(dirtyBags)
     ns:Debug("OnBagsUpdated called, frame shown:", frame and frame:IsShown() or false)
+    -- A full render is still spreading across frames. Don't kick off another refresh
+    -- on a partial layout; flag it and let FinishBagRender replay one incremental pass.
+    if bagRenderInFlight then
+        bagRenderNeedsRerender = true
+        return
+    end
     -- Inventory changed while holding a hidden layout — invalidate the fast reopen.
     if heldHidden and not (frame and frame:IsShown()) then
         dirtyWhileHidden = true
