@@ -270,19 +270,24 @@ function Tooltip:ShowForItem(button)
     AddInventorySection(GameTooltip, button.itemData.itemID)
 
     -- Add tracking hint for bag items (not read-only/cached)
-    if not button.isReadOnly and button.itemData.itemID then
-        local TrackedBar = ns:GetModule("TrackedBar")
-        if TrackedBar then
-            GameTooltip:AddLine(" ")
-            if TrackedBar:IsTracked(button.itemData.itemID) then
-                GameTooltip:AddLine(L["HINT_UNTRACK"], 0.7, 0.7, 0.7)
-            else
-                GameTooltip:AddLine(L["HINT_TRACK"], 0.7, 0.7, 0.7)
-            end
-        end
-    end
+    Tooltip:AddTrackHint(button)
 
     GameTooltip:Show()
+end
+
+-- Append the track/untrack hint for a real (non-read-only) bag item. Shared so
+-- the Blizzard-driven tooltip path (UI/ItemButton.lua OnEnter, where Blizzard's
+-- secure handler owns the tooltip) can add the hint without re-driving SetBagItem.
+function Tooltip:AddTrackHint(button)
+    if button.isReadOnly or not (button.itemData and button.itemData.itemID) then return end
+    local TrackedBar = ns:GetModule("TrackedBar")
+    if not TrackedBar then return end
+    GameTooltip:AddLine(" ")
+    if TrackedBar:IsTracked(button.itemData.itemID) then
+        GameTooltip:AddLine(L["HINT_UNTRACK"], 0.7, 0.7, 0.7)
+    else
+        GameTooltip:AddLine(L["HINT_TRACK"], 0.7, 0.7, 0.7)
+    end
 end
 
 -- Hide the item tooltip
