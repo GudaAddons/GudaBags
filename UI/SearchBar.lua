@@ -56,6 +56,8 @@ local TYPE_CHIPS = {
 local SPECIAL_CHIPS = {
     {key = "boe", localeKey = "CHIP_SPECIAL_BOE"},
     {key = "new", localeKey = "CHIP_SPECIAL_NEW"},
+    {key = "openable", localeKey = "CHIP_SPECIAL_OPENABLE"},
+    {key = "learnable", localeKey = "CHIP_SPECIAL_LEARNABLE"},
 }
 
 -------------------------------------------------
@@ -597,7 +599,11 @@ local function UpdateChipLayout(searchBar)
     local availableWidth = chipStrip:GetWidth()
     if availableWidth <= 0 then return end
 
-    if availableWidth < CHIP_COLLAPSE_WIDTH then
+    -- Collapse when the inline chips can't fit. Prefer the measured natural width
+    -- (set when the chips were laid out) so adding/removing chips or switching
+    -- locale never overflows; fall back to the constant if not measured yet.
+    local collapseWidth = searchBar.chipsNaturalWidth or CHIP_COLLAPSE_WIDTH
+    if availableWidth < collapseWidth then
         -- Collapse: hide type/special chips and separators, show dropdown
         for _, chip in ipairs(searchBar.typeChips) do chip:Hide() end
         for _, chip in ipairs(searchBar.specialChips) do chip:Hide() end
@@ -683,6 +689,10 @@ local function CreateChipStrip(searchBar, parent)
         xOffset = xOffset + chip:GetWidth() + spacing
         searchBar.specialChips[#searchBar.specialChips + 1] = chip
     end
+
+    -- Width the inline chips actually need (plus a small right margin). Used as the
+    -- collapse threshold so it self-adjusts to chip count and per-locale label widths.
+    searchBar.chipsNaturalWidth = xOffset + 4
 
     -- Types dropdown button (hidden by default, shown on overflow)
     local typesDropdown = CreateFrame("Button", nil, chipStrip)

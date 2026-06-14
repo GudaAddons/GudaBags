@@ -62,6 +62,7 @@ Data\BagScanner.lua
 Data\BankScanner.lua
 Data\EquipmentSets.lua
 Data\RetailBankScanner.lua
+Data\CurrencyScanner.lua
 
 # Sorting
 Sorting\SortEngine.lua
