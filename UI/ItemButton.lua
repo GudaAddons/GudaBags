@@ -907,10 +907,17 @@ local function CreateButton(parent)
             -- handler resolves the correct item. Read-only/cached and guild-bank
             -- (IDs forced to 0) and keyring (bagID -2, hyperlink path) are NOT
             -- live slots — they need ShowForItem's SetHyperlink/SetItemByID.
+            -- Bank slots are also excluded: Blizzard's ContainerFrameItemButton_OnEnter
+            -- does not resolve the Classic main bank container (bagID -1), so it would
+            -- leave the item body empty while our SetBagItem hook still adds the
+            -- inventory counts — making blizzardPopulated wrongly true. Bank items are
+            -- never shown at a merchant, so routing them through ShowForItem cannot
+            -- reintroduce the sell-price money-frame taint the live-slot path guards.
             local liveSlot = self.itemData and self.itemData.bagID and self.itemData.slot
                 and not self.isReadOnly
                 and not self.itemData.isGuildBank
                 and self.itemData.bagID ~= -2
+                and not Tooltip:IsBankSlot(self.itemData.bagID)
                 and not self.isEmptySlotButton and not self.isDropTargetButton
                 and not self.itemData.isEmptySlots
 
