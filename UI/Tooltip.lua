@@ -99,6 +99,34 @@ GameTooltip:HookScript("OnTooltipCleared", function()
     tooltipReady = true
 end)
 
+-- Returns true if bagID belongs to the bank (main bank container, bank bags, or
+-- retail Warband/Character bank tabs). Single source of truth so the tooltip
+-- driver (UI/ItemButton.lua OnEnter) and ShowForItem agree on what a bank slot is.
+-- Uses a simple range check that covers both Classic (5-11) and Retail (6-12) bank
+-- bags rather than relying on Constants arrays (which depend on Expansion detection).
+function Tooltip:IsBankSlot(bagID)
+    if bagID == nil then return false end
+    -- Main bank container (all versions)
+    if bagID == -1 then return true end
+    -- Bank bags: Classic uses 5-11, older Retail uses 6-12; cover both
+    if bagID >= 5 and bagID <= 12 then return true end
+    -- Retail only: Warband and Character bank tabs (high bag IDs)
+    if ns.IsRetail then
+        local Constants = ns.Constants
+        if Constants and Constants.WARBAND_BANK_TAB_IDS then
+            for _, warbandBagID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+                if bagID == warbandBagID then return true end
+            end
+        end
+        if Constants and Constants.CHARACTER_BANK_TAB_IDS then
+            for _, charBankTabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
+                if bagID == charBankTabID then return true end
+            end
+        end
+    end
+    return false
+end
+
 -- Show tooltip for an item button (uses GameTooltip for addon compatibility)
 function Tooltip:ShowForItem(button)
     if not button.itemData then return end
@@ -115,38 +143,8 @@ function Tooltip:ShowForItem(button)
     local isKeyring = bagID == -2
     local isGuildBank = button.itemData.isGuildBank
 
-    -- Check if this is a bank item
-    -- Use simple range check that covers both Classic (5-11) and Retail (6-12) bank bags
-    -- This is more robust than relying on Constants arrays which depend on Expansion detection
-    local isBankItem = false
-    if bagID == -1 then
-        -- Main bank container (all versions)
-        isBankItem = true
-    elseif bagID and bagID >= 5 and bagID <= 12 then
-        -- Bank bags: Classic uses 5-11, older Retail uses 6-12
-        -- This range covers both to handle detection edge cases
-        isBankItem = true
-    end
-    -- Retail only: check Warband and Character bank tabs (high bag IDs)
-    if not isBankItem and ns.IsRetail then
-        local Constants = ns.Constants
-        if Constants and Constants.WARBAND_BANK_TAB_IDS then
-            for _, warbandBagID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
-                if bagID == warbandBagID then
-                    isBankItem = true
-                    break
-                end
-            end
-        end
-        if not isBankItem and Constants and Constants.CHARACTER_BANK_TAB_IDS then
-            for _, charBankTabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
-                if bagID == charBankTabID then
-                    isBankItem = true
-                    break
-                end
-            end
-        end
-    end
+    -- Check if this is a bank item (main bank container, bank bags, or retail bank tabs)
+    local isBankItem = self:IsBankSlot(bagID)
 
     if isGuildBank then
         -- Guild bank items - use SetGuildBankItem if at bank, otherwise hyperlink
