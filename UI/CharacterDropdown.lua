@@ -95,7 +95,7 @@ local function PopulateDropdown(dropdown)
     local frame = dropdown.frame
     if not frame then return end
 
-    local characters = Database:GetAllCharacters(false, true)
+    local characters = Database:GetVisibleCharacters(false, true)
     local currentFullName = Database:GetPlayerFullName()
     local viewingCharacter = dropdown.getViewingCharacter and dropdown.getViewingCharacter() or nil
 

@@ -675,6 +675,20 @@ function Database:GetAllCharacters(sameFactionOnly, sameRealmOnly)
     return characters
 end
 
+-- Same as GetAllCharacters but drops characters the user has excluded (gold blacklist).
+-- Used by the character-switcher dropdowns so excluded alts are hidden everywhere.
+function Database:GetVisibleCharacters(sameFactionOnly, sameRealmOnly)
+    local characters = self:GetAllCharacters(sameFactionOnly, sameRealmOnly)
+    if not GudaBags_DB.goldBlacklist then return characters end
+    local filtered = {}
+    for _, char in ipairs(characters) do
+        if not GudaBags_DB.goldBlacklist[char.fullName] then
+            table.insert(filtered, char)
+        end
+    end
+    return filtered
+end
+
 function Database:GetTotalMoney(sameFactionOnly, sameRealmOnly)
     local total = 0
     local characters = self:GetAllCharacters(sameFactionOnly, sameRealmOnly)

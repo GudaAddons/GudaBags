@@ -102,7 +102,7 @@ end
 local function PopulateDropdown()
     if not frame then return end
 
-    local characters = Database:GetAllCharacters(false, true) -- Same realm only
+    local characters = Database:GetVisibleCharacters(false, true) -- Same realm only, excludes hidden chars
     local currentFullName = Database:GetPlayerFullName()
     local BagFrame = ns:GetModule("BagFrame")
     local viewingCharacter = BagFrame:GetViewingCharacter()
