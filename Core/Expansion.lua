@@ -9,7 +9,7 @@ ns:RegisterModule("Expansion", Expansion)
 -- WoW Project ID constants (from Blizzard API)
 -- WOW_PROJECT_MAINLINE = 1                  (Retail, Interface 110005+)
 -- WOW_PROJECT_CLASSIC = 2                   (Classic Era, Interface 11508)
--- WOW_PROJECT_BURNING_CRUSADE_CLASSIC = 5   (TBC Anniversary, Interface 20505)
+-- WOW_PROJECT_BURNING_CRUSADE_CLASSIC = 5   (TBC Anniversary, Interface 20506)
 -- WOW_PROJECT_MISTS_CLASSIC = 19            (MoP Classic, Interface 50504)
 
 -- Primary detection via WOW_PROJECT_ID
