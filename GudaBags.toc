@@ -137,6 +137,7 @@ Data\MailScanner.lua
 UI\MailFrame\MailCharacters.lua
 UI\MailFrame\MailHeader.lua
 UI\MailFrame\MailFooter.lua
+UI\MailFrame\MailBulkSend.lua
 UI\MailFrame.lua
 
 # Tracked Item Bar

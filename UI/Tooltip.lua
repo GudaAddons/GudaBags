@@ -344,6 +344,13 @@ function Tooltip:AddTrackHint(button)
     else
         GameTooltip:AddLine(L["HINT_TRACK"], 0.7, 0.7, 0.7)
     end
+
+    -- The bulk mail shortcut is only actionable at an open mailbox, so only hint
+    -- there rather than advertising it on every tooltip.
+    local MailBulkSend = ns:GetModule("MailBulkSend")
+    if MailBulkSend and MailBulkSend:CanStart() then
+        GameTooltip:AddLine(L["HINT_MAIL_BULK"], 0.7, 0.7, 0.7)
+    end
 end
 
 -- Hide the item tooltip

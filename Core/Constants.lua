@@ -290,6 +290,7 @@ Constants.DEFAULTS = {
     autoCloseBags = true,  -- Auto close bags when ending those interactions
     autoVendorJunk = true,  -- Auto sell gray items at merchants
     autoRepair = false,  -- Auto repair all items at repair-capable merchants
+    mailBulkAttach = true,  -- Shift+Right-Click at a mailbox mails every copy of an item
     retailEmptySlots = false,  -- Use retail-style empty slot textures (Classic only)
     minimalEmptySlots = false,  -- Show empty slots as thin border outline instead of slot icon
     gudaSort = false,  -- Use GudaBags custom sort engine instead of Blizzard's (Retail only)
@@ -390,7 +391,11 @@ Constants.CATEGORY_UI = {
 
     -- Settings popup
     POPUP_WIDTH = 620,
-    POPUP_HEIGHT = 560,
+    -- 592 = 560 + one schema row: HorizontalRow DEFAULT_HEIGHT (22) plus the
+    -- VerticalStack spacing (10) used by CreateTabFromSchema. Bumped when the
+    -- Bulk mail attach row was added to the General tab's Automation section.
+    -- The schema tabs do not scroll, so this height must cover the tallest tab.
+    POPUP_HEIGHT = 592,
     POPUP_PADDING = 16,
 
     -- Editor
