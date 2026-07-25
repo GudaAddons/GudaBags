@@ -1159,6 +1159,20 @@ local function CreateButton(parent)
             return
         end
 
+        -- Complete bulk mail attach (PreClick blocked the template)
+        if self._mailBulkIntercept then
+            local data = self._mailBulkIntercept
+            self._mailBulkIntercept = nil
+            -- Restore IDs for future clicks
+            self.wrapper:SetID(data.bagID)
+            self:SetID(data.slot)
+            local MailBulkSend = ns:GetModule("MailBulkSend")
+            if MailBulkSend then
+                MailBulkSend:Start(data.itemID, data.link)
+            end
+            return
+        end
+
         -- Wrap in pcall to prevent errors from breaking item interaction
         local success, err = pcall(function()
             -- Handle shift-click to link items in chat for read-only items (cached/view mode)
@@ -1416,6 +1430,36 @@ local function CreateButton(parent)
                         self:SetID(0)
                     end)
                 end
+            end
+        end
+
+        -- Shift+Right-Click at a mailbox: attach every copy of this item across the
+        -- bags (see UI/MailFrame/MailBulkSend.lua). The template would attach a
+        -- single stack, so neuter it and let the OnClick hook run the bulk path.
+        -- CanStart() is false unless a mailbox is open, so an ordinary
+        -- Shift+Right-Click elsewhere never touches the IDs.
+        if mouseButton == "RightButton" and IsShiftKeyDown()
+           and not IsControlKeyDown() and not IsAltKeyDown()
+           and not InCombatLockdown()
+           and not self.isReadOnly and not self.isEmptySlotButton and not self.isDropTargetButton
+           and self.itemData and self.itemData.itemID
+           and not self.itemData.isGuildBank
+           and not self.itemData.isEmptySlots and not self.itemData.isSoulSlots
+           and not self.itemData.isDropTarget then
+            local MailBulkSend = ns:GetModule("MailBulkSend")
+            if MailBulkSend and MailBulkSend:CanStart() then
+                self._mailBulkIntercept = {
+                    bagID = self.itemData.bagID,
+                    slot = self.itemData.slot,
+                    itemID = self.itemData.itemID,
+                    link = self.itemData.link or self.itemData.itemLink,
+                }
+                -- SetID(0) blocks the secure template's default UseContainerItem
+                -- Wrapped in pcall to contain any taint propagation
+                pcall(function()
+                    self.wrapper:SetID(0)
+                    self:SetID(0)
+                end)
             end
         end
 
