@@ -1203,6 +1203,13 @@ function BagFrame:Show()
         RestoreFramePosition()
     end
 
+    -- Restore the stock backpack open sound: the addon overwrites Blizzard's
+    -- ToggleBackpack/OpenAllBags globals, so ContainerFrame never plays it.
+    -- Guarded because OpenAllBags fires repeatedly during mail/vendor sessions.
+    if not frame:IsShown() then
+        PlaySound(SOUNDKIT and SOUNDKIT.IG_BACKPACK_OPEN or 862)
+    end
+
     -- Fast reopen: the retained layout is still valid — just show it. This is the
     -- common rapid open/close case and skips the full scan + button rebuild.
     if self:CanFastReopen() then
@@ -1244,6 +1251,12 @@ end
 
 function BagFrame:Hide()
     if not frame then return end
+
+    -- Must run before frame:Hide() below, while IsShown() still reads true.
+    if frame:IsShown() then
+        PlaySound(SOUNDKIT and SOUNDKIT.IG_BACKPACK_CLOSE or 863)
+    end
+
     ns:ProfileStart("Hide")
 
     -- Capture state BEFORE frame:Hide(): the frame's OnHide hook clears the search

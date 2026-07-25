@@ -2765,6 +2765,12 @@ function BankFrame:Show()
         RestoreFramePosition()
     end
 
+    -- Deliberately not the backpack sound: opening the bank auto-opens the bags
+    -- too (see the held-buttons note above), and two identical sounds would flam.
+    if not frame:IsShown() then
+        PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPEN or 850)
+    end
+
     ns:ProfileStart("Bank.Show")
     -- Decide the fast-reopen path BEFORE scanning. ScanAllBank fires ns.OnBankUpdated,
     -- and because the bank is still held/hidden at this point that handler sets
@@ -2801,6 +2807,12 @@ end
 
 function BankFrame:Hide()
     if not frame then return end
+
+    -- Must run before frame:Hide() below, while IsShown() still reads true.
+    if frame:IsShown() then
+        PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_CLOSE or 851)
+    end
+
     ns:ProfileStart("Bank.Hide")
     CancelBankRender()
 
