@@ -64,6 +64,14 @@ local TYPE_ALIASES = {
     quiver = "Quiver",
 }
 
+-- Short alias → numeric classID, so `t:weapon` works on every client locale.
+-- Aliases that don't resolve to a class fall back to matching the localized
+-- itemType string, which also lets a player type `t:武器` directly.
+local TYPE_ALIAS_CLASS = {}
+for alias, englishName in pairs(TYPE_ALIASES) do
+    TYPE_ALIAS_CLASS[alias] = ns.Constants.ITEM_CLASS_BY_NAME[englishName]
+end
+
 -------------------------------------------------
 -- Operator pattern: key<op>value
 -- Supports: q:epic, q>=3, q>2, q<=4, q<5, q=3
@@ -72,6 +80,10 @@ local TYPE_ALIASES = {
 
 local strfind = string.find
 local strlower = string.lower
+-- Item names/types are localized, and string.lower only folds A-Z, so user
+-- text goes through the UTF-8 aware fold instead.
+local Utils = ns:GetModule("Utils")
+local function utf8lower(s) return Utils:UTF8Lower(s) end
 local strsub = string.sub
 local tonumber = tonumber
 
@@ -163,7 +175,7 @@ function SearchParser:ParseSearchInput(text)
             if key then
                 local op, val = ParseComparison(rest)
                 if op and val and val ~= "" then
-                    local valLower = strlower(val)
+                    local valLower = utf8lower(val)
 
                     if key == "q" or key == "quality" then
                         local qVal = ParseQuality(val)
@@ -172,8 +184,13 @@ function SearchParser:ParseSearchInput(text)
                             handled = true
                         end
                     elseif key == "t" or key == "type" then
-                        local resolved = TYPE_ALIASES[valLower] or val
-                        table.insert(result.operators, {type = "itemType", op = "=", value = resolved})
+                        local classID = TYPE_ALIAS_CLASS[valLower]
+                        if classID then
+                            table.insert(result.operators, {type = "itemClass", op = "=", value = classID})
+                        else
+                            local resolved = TYPE_ALIASES[valLower] or val
+                            table.insert(result.operators, {type = "itemType", op = "=", value = resolved})
+                        end
                         handled = true
                     elseif key == "st" or key == "subtype" then
                         table.insert(result.operators, {type = "itemSubType", op = "=", value = valLower})
@@ -211,7 +228,7 @@ function SearchParser:ParseSearchInput(text)
 
     -- Join remaining parts as plain text search
     if #textParts > 0 then
-        result.textSearch = strlower(table.concat(textParts, " "))
+        result.textSearch = utf8lower(table.concat(textParts, " "))
     end
 
     -- Return nil if nothing was parsed
@@ -233,13 +250,16 @@ function SearchParser:MatchOperator(operator, itemData)
     if t == "quality" then
         return CompareNum(itemData.quality or 0, operator.op, operator.value)
 
+    elseif t == "itemClass" then
+        return itemData.classID == operator.value
+
     elseif t == "itemType" then
         if not itemData.itemType then return false end
-        return strlower(itemData.itemType) == strlower(operator.value)
+        return utf8lower(itemData.itemType) == utf8lower(operator.value)
 
     elseif t == "itemSubType" then
         if not itemData.itemSubType then return false end
-        return strfind(strlower(itemData.itemSubType), operator.value, 1, true) ~= nil
+        return strfind(utf8lower(itemData.itemSubType), operator.value, 1, true) ~= nil
 
     elseif t == "itemLevel" then
         return CompareNum(itemData.itemLevel or 0, operator.op, operator.value)
@@ -254,7 +274,7 @@ function SearchParser:MatchOperator(operator, itemData)
 
     elseif t == "name" then
         if not itemData.name then return false end
-        return strfind(strlower(itemData.name), operator.value, 1, true) ~= nil
+        return strfind(utf8lower(itemData.name), operator.value, 1, true) ~= nil
     end
 
     return false
@@ -285,8 +305,11 @@ function SearchParser:MatchKeyword(keyword, itemData, context)
         return false
 
     elseif keyword == "quest" then
+        -- classID is locale-independent; the string check is an enUS fallback
         return itemData.isQuestItem == true
-            or (itemData.itemType and strlower(itemData.itemType) == "quest")
+            or itemData.classID == ns.Constants.ITEM_CLASS.QUEST
+            or (not itemData.classID and itemData.itemType
+                and strlower(itemData.itemType) == "quest")
 
     elseif keyword == "new" then
         if context and context.recentItems and itemData.itemID then
@@ -322,13 +345,13 @@ function SearchParser:MatchesTextSearch(itemData, textSearch)
     if not textSearch or textSearch == "" then return true end
     if not itemData then return false end
 
-    if itemData.name and strfind(strlower(itemData.name), textSearch, 1, true) then
+    if itemData.name and strfind(utf8lower(itemData.name), textSearch, 1, true) then
         return true
     end
-    if itemData.itemType and strfind(strlower(itemData.itemType), textSearch, 1, true) then
+    if itemData.itemType and strfind(utf8lower(itemData.itemType), textSearch, 1, true) then
         return true
     end
-    if itemData.itemSubType and strfind(strlower(itemData.itemSubType), textSearch, 1, true) then
+    if itemData.itemSubType and strfind(utf8lower(itemData.itemSubType), textSearch, 1, true) then
         return true
     end
 

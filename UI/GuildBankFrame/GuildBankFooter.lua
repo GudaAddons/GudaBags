@@ -104,13 +104,13 @@ function GuildBankFooter:Init(parent)
     slotInfoFrame:SetScript("OnEnter", function(self)
         if frame.tabSlotData then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Guild Bank", 1, 1, 1)
+            GameTooltip:AddLine(L["GUILD_BANK_TITLE"], 1, 1, 1)
             GameTooltip:AddLine(" ")
 
             -- Show per-tab slot info
             for tabIndex, data in pairs(frame.tabSlotData) do
                 local used = data.total - data.free
-                local tabName = data.name or string.format("Tab %d", tabIndex)
+                local tabName = data.name or string.format(L["TOOLTIP_GUILD_TAB"], tabIndex)
                 GameTooltip:AddDoubleLine(tabName .. ":", string.format("%d/%d", used, data.total), 0, 0.8, 0.4, 0.8, 0.8, 0.8)
             end
 
@@ -134,7 +134,7 @@ function GuildBankFooter:Init(parent)
     logBtn:SetPoint("LEFT", centerBtns, "LEFT", 0, 0)
     local logText = logBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     logText:SetPoint("LEFT")
-    logText:SetText("Log")
+    logText:SetText(L["GUILD_BANK_LOG"])
     logText:SetTextColor(1, 0.82, 0)  -- Gold
     logBtn.text = logText
     logBtn:SetScript("OnEnter", function(self)
@@ -166,7 +166,7 @@ function GuildBankFooter:Init(parent)
     moneyLogBtn:RegisterForClicks("AnyUp")
     local moneyLogText = moneyLogBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     moneyLogText:SetPoint("CENTER")
-    moneyLogText:SetText("Money Log")
+    moneyLogText:SetText(L["GUILD_BANK_MONEY_LOG"])
     moneyLogText:SetTextColor(1, 0.82, 0)  -- Gold
     moneyLogBtn.text = moneyLogText
     moneyLogBtn:SetScript("OnEnter", function(self)
@@ -199,7 +199,7 @@ function GuildBankFooter:Init(parent)
     infoBtn:SetPoint("LEFT", sep2, "RIGHT", 4, 0)
     local infoText = infoBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     infoText:SetPoint("CENTER")
-    infoText:SetText("Info")
+    infoText:SetText(L["GUILD_BANK_INFO"])
     infoText:SetTextColor(1, 0.82, 0)  -- Gold
     infoBtn.text = infoText
     infoBtn:SetScript("OnEnter", function(self)
@@ -441,7 +441,7 @@ local function CreateGuildBankPopup()
 
     local titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     titleText:SetPoint("LEFT", titleBar, "LEFT", 4, 0)
-    titleText:SetText("Guild Bank")
+    titleText:SetText(L["GUILD_BANK_TITLE"])
     titleText:SetTextColor(1, 0.82, 0)
     popup.titleText = titleText
 
@@ -755,7 +755,7 @@ function GuildBankFooter:PopulateLogContent(content)
     local scanner = ns:GetModule("GuildBankScanner")
     local tabInfo = scanner and scanner:GetTabInfo(selectedTab)
     local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
-    guildBankPopup.titleText:SetText("Guild Bank Log - " .. tabName)
+    guildBankPopup.titleText:SetText(string.format(L["GUILD_BANK_LOG_TITLE"], tabName))
 
     local numTransactions = GetNumGuildBankTransactions(selectedTab) or 0
     local yOffset = 0
@@ -764,7 +764,7 @@ function GuildBankFooter:PopulateLogContent(content)
     if numTransactions == 0 then
         local noData = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         noData:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-        noData:SetText("No transactions found.")
+        noData:SetText(L["GUILD_BANK_NO_TRANSACTIONS"])
         noData:SetTextColor(0.6, 0.6, 0.6)
         yOffset = -entryHeight
     else
@@ -830,7 +830,7 @@ function GuildBankFooter:PopulateMoneyLogContent(content)
         end
     end
 
-    guildBankPopup.titleText:SetText("Guild Bank Money Log")
+    guildBankPopup.titleText:SetText(L["GUILD_BANK_MONEY_LOG_TITLE"])
 
     local numTransactions = GetNumGuildBankMoneyTransactions and GetNumGuildBankMoneyTransactions() or 0
     ns:Debug("Number of money transactions:", numTransactions)
@@ -840,7 +840,7 @@ function GuildBankFooter:PopulateMoneyLogContent(content)
     if numTransactions == 0 then
         local noData = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         noData:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-        noData:SetText("No money transactions found.")
+        noData:SetText(L["GUILD_BANK_NO_MONEY_TRANSACTIONS"])
         noData:SetTextColor(0.6, 0.6, 0.6)
         yOffset = -entryHeight
     else
@@ -905,7 +905,7 @@ function GuildBankFooter:PopulateInfoContent(content)
     local scanner = ns:GetModule("GuildBankScanner")
     local tabInfo = scanner and scanner:GetTabInfo(selectedTab)
     local tabName = tabInfo and tabInfo.name or ("Tab " .. selectedTab)
-    guildBankPopup.titleText:SetText("Guild Bank Info - " .. tabName)
+    guildBankPopup.titleText:SetText(string.format(L["GUILD_BANK_INFO_TITLE"], tabName))
 
     local yOffset = 0
     local lineHeight = 18
@@ -919,7 +919,9 @@ function GuildBankFooter:PopulateInfoContent(content)
         if tabInfo.canDeposit ~= nil then
             local depositLine = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             depositLine:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
-            depositLine:SetText("Can Deposit: " .. (tabInfo.canDeposit and "|cff00ff00Yes|r" or "|cffff0000No|r"))
+            depositLine:SetText(string.format(L["GUILD_BANK_CAN_DEPOSIT"],
+                tabInfo.canDeposit and ("|cff00ff00" .. L["GUILD_BANK_YES"] .. "|r")
+                    or ("|cffff0000" .. L["GUILD_BANK_NO"] .. "|r")))
             yOffset = yOffset - lineHeight
         end
 
@@ -929,9 +931,10 @@ function GuildBankFooter:PopulateInfoContent(content)
             local remaining = tabInfo.remainingWithdrawals or 0
             local total = tabInfo.numWithdrawals or 0
             if total == -1 then
-                withdrawLine:SetText("Withdrawals: |cff00ff00Unlimited|r")
+                withdrawLine:SetText(string.format(L["GUILD_BANK_WITHDRAWALS"],
+                    "|cff00ff00" .. L["GUILD_BANK_UNLIMITED"] .. "|r"))
             else
-                withdrawLine:SetText(string.format("Withdrawals: %d remaining of %d", remaining, total))
+                withdrawLine:SetText(string.format(L["GUILD_BANK_WITHDRAWALS_COUNT"], remaining, total))
             end
             yOffset = yOffset - lineHeight
         end
@@ -956,7 +959,7 @@ function GuildBankFooter:PopulateInfoContent(content)
     else
         local noDesc = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         noDesc:SetPoint("TOPLEFT", content, "TOPLEFT", 0, yOffset)
-        noDesc:SetText("No description set for this tab.")
+        noDesc:SetText(L["GUILD_BANK_NO_DESCRIPTION"])
         noDesc:SetTextColor(0.6, 0.6, 0.6)
         yOffset = yOffset - lineHeight
     end
@@ -1086,7 +1089,7 @@ function GuildBankFooter:UpdateWithdrawInfo()
 
             local depositText = canDeposit and "|cff00ff00Yes|r" or "|cffff0000No|r"
 
-            frame.itemWithdrawInfo:SetText("Items: " .. withdrawText .. " | Deposit: " .. depositText)
+            frame.itemWithdrawInfo:SetText(string.format(L["GUILD_BANK_ITEMS_DEPOSIT"], withdrawText, depositText))
             frame.itemWithdrawInfo:Show()
         else
             frame.itemWithdrawInfo:SetText("")
@@ -1107,7 +1110,8 @@ function GuildBankFooter:UpdateWithdrawInfo()
             -- (some Classic builds return MIN_INT64 which wraps to a huge positive in arithmetic)
             if withdrawLimit < 0 or withdrawLimit > 1e11 then
                 -- Unlimited rights - total bank balance is already shown in the top-right
-                frame.moneyWithdrawInfo:SetText("Available: |cff00ff00Unlimited|r")
+                frame.moneyWithdrawInfo:SetText(string.format(L["GUILD_BANK_AVAILABLE"],
+                    "|cff00ff00" .. L["GUILD_BANK_UNLIMITED"] .. "|r"))
             else
                 -- Has a positive limit - cap at actual guild money
                 local withdrawMoney = math.min(withdrawLimit, guildMoney)
@@ -1115,7 +1119,7 @@ function GuildBankFooter:UpdateWithdrawInfo()
                 if not canWithdraw or withdrawMoney == 0 then
                     -- Cannot withdraw - either no permission or limit reached
                     local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:12|t"
-                    frame.moneyWithdrawInfo:SetText("Available: |cffff00000|r " .. COPPER_ICON)
+                    frame.moneyWithdrawInfo:SetText(string.format(L["GUILD_BANK_AVAILABLE"], "|cffff00000|r " .. COPPER_ICON))
                 else
                     -- Has a limit and can withdraw
                     local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:12|t"
@@ -1139,7 +1143,7 @@ function GuildBankFooter:UpdateWithdrawInfo()
                         moneyStr = moneyStr .. copper .. COPPER_ICON
                     end
 
-                    frame.moneyWithdrawInfo:SetText("Available: " .. moneyStr)
+                    frame.moneyWithdrawInfo:SetText(string.format(L["GUILD_BANK_AVAILABLE"], moneyStr))
                 end
             end
             frame.moneyWithdrawInfo:Show()

@@ -110,13 +110,13 @@ function Footer:Init(parent)
     slotInfoFrame:SetScript("OnEnter", function(self)
         if frame.specialBagsData and next(frame.specialBagsData) then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Bag Slots", 1, 1, 1)
+            GameTooltip:AddLine(ns.L["TOOLTIP_BAG_SLOTS"], 1, 1, 1)
             GameTooltip:AddLine(" ")
 
             -- Show regular bags info
             if frame.regularTotal then
                 local regularUsed = frame.regularTotal - (frame.regularFree or 0)
-                GameTooltip:AddDoubleLine("Regular Bags:", string.format("%d/%d", regularUsed, frame.regularTotal), 1, 1, 1, 0.8, 0.8, 0.8)
+                GameTooltip:AddDoubleLine(ns.L["TOOLTIP_REGULAR_BAGS"], string.format("%d/%d", regularUsed, frame.regularTotal), 1, 1, 1, 0.8, 0.8, 0.8)
             end
 
             -- Show special bags

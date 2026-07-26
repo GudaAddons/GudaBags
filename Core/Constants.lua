@@ -104,6 +104,118 @@ Constants.KEYRING_BAG_ID = Expansion and (Expansion.IsClassicEra or Expansion.Is
 
 Constants.HEARTHSTONE_ID = 6948
 
+-------------------------------------------------
+-- Item Class / Subclass (locale-independent)
+--
+-- GetItemInfo returns itemType (index 6) and itemSubType (index 7) already
+-- translated into the client's language, so comparing them against English
+-- literals fails on every non-enUS client. classID (index 12) and subClassID
+-- (index 13) are numeric and identical in every locale, so all type matching
+-- keys off these instead.
+--
+-- The English names below stay the canonical values written to SavedVariables
+-- (existing rules keep working, no migration). Only the *display* label is
+-- localized, via GetItemClassInfo, which the client translates for us.
+-------------------------------------------------
+
+-- SINGLE SOURCE OF TRUTH: canonical English item type name -> classID.
+-- Everything else in this section is derived from this table.
+--
+-- These are the game's own numeric item classes. They are hardcoded rather than
+-- read from Enum.ItemClass because the .toc spans five flavors (Retail through
+-- Classic Era) and Enum.ItemClass is absent or incomplete on the older ones.
+Constants.ITEM_CLASS_BY_NAME = {
+    ["Consumable"]     = 0,
+    ["Container"]      = 1,
+    ["Weapon"]         = 2,
+    ["Gem"]            = 3,
+    ["Armor"]          = 4,
+    ["Reagent"]        = 5,
+    ["Projectile"]     = 6,
+    ["Trade Goods"]    = 7,
+    ["Recipe"]         = 9,
+    ["Quiver"]         = 11,
+    ["Quest"]          = 12,
+    ["Key"]            = 13,
+    ["Miscellaneous"]  = 15,
+    ["Glyph"]          = 16,
+}
+
+-- Derived: named constants so call sites read as WEAPON rather than 2.
+-- "Trade Goods" -> TRADE_GOODS.
+Constants.ITEM_CLASS = {}
+local ITEM_CLASS_NAME_BY_ID = {}
+for name, classID in pairs(Constants.ITEM_CLASS_BY_NAME) do
+    Constants.ITEM_CLASS[(name:upper():gsub(" ", "_"))] = classID
+    ITEM_CLASS_NAME_BY_ID[classID] = name
+end
+
+-- Canonical English subtype name -> {classID, subClassID}.
+-- Covers the subtypes the built-in categories and heuristics rely on, plus the
+-- ones a user is likely to type into the free-text "Item Subtype" rule.
+Constants.ITEM_SUBCLASS_BY_NAME = {
+    ["Soul Bag"]      = {1, 1},
+    ["Fishing Poles"] = {2, 20},
+    ["Fishing Pole"]  = {2, 20},
+    ["Arrow"]         = {6, 2},
+    ["Bullet"]        = {6, 3},
+}
+
+-- Derived: {classID, subClassID} pair for fishing poles (profession tools)
+Constants.ITEM_SUBCLASS_FISHING_POLE = Constants.ITEM_SUBCLASS_BY_NAME["Fishing Poles"]
+
+-- Trade Goods subclasses that are NOT crafting reagents
+Constants.TRADE_GOODS_SUBCLASS = {
+    EXPLOSIVES = 2,
+    DEVICES    = 3,
+}
+
+-- Weapon subclass shared by most physical profession tools (mining picks,
+-- blacksmith hammers, skinning knives, spanners). Resolved from a known tool
+-- rather than hardcoded, so it stays correct on every flavor without anyone
+-- having to look the number up.
+--
+-- Why this matters: tool detection otherwise falls back to English item-name
+-- patterns, which never fire on a non-English client, so a tool could be
+-- auto-marked as junk there but not on enUS. Matching the class/subclass
+-- catches the whole family, including tools nobody has enumerated.
+--
+-- Left nil if it cannot be resolved, in which case callers skip the check and
+-- fall back to the previous itemID + name behaviour (never a regression).
+-- GetItemInfoInstant reads the client's static item DB, so it needs no server
+-- round-trip and is safe to call at load.
+Constants.TOOL_WEAPON_SUBCLASS = nil
+do
+    local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    -- Probe several tools: any single one may be missing on a given flavor.
+    local probes = {5956, 2901, 7005, 6219}  -- Blacksmith Hammer, Mining Pick, Skinning Knife, Arclight Spanner
+    if getInstant then
+        for _, itemID in ipairs(probes) do
+            local ok, _, _, _, _, _, classID, subClassID = pcall(getInstant, itemID)
+            if ok and classID == Constants.ITEM_CLASS.WEAPON and subClassID then
+                Constants.TOOL_WEAPON_SUBCLASS = subClassID
+                break
+            end
+        end
+    end
+end
+
+-- Localized display label for an item class, falling back to the English name.
+-- GetItemClassInfo follows the game client's language, not the addon's test
+-- locale, so this returns e.g. 护甲 on a zhCN client with no locale entries.
+-- pcall'd because this runs while building the category editor's dropdown: a
+-- classID missing on an older flavor (Reagent, Glyph) must not take the whole
+-- editor down.
+function Constants.GetItemClassLabel(classID)
+    if GetItemClassInfo then
+        local ok, label = pcall(GetItemClassInfo, classID)
+        if ok and label and label ~= "" then
+            return label
+        end
+    end
+    return ITEM_CLASS_NAME_BY_ID[classID] or tostring(classID)
+end
+
 -- Item IDs to ignore for quest item indicator
 -- These items have itemType="Quest" but shouldn't show quest borders/icons
 Constants.QUEST_INDICATOR_IGNORE = {
@@ -349,6 +461,97 @@ do
     end
 end
 
+-------------------------------------------------
+-- Font picker options (locale-aware)
+--
+-- The default above is locale-correct, but the picker must be too: offering
+-- ARIALN/FRIZQT__/MORPHEUS/SKURRI on a CJK or Korean client lets the user turn
+-- every string in the addon into boxes, with no obvious way back. Blizzard
+-- ships a different font set per locale, so build the candidate list per
+-- locale and validate each one against the client before offering it.
+--
+-- Labels are font names (proper nouns) plus the existing SETTINGS_SORT_DEFAULT
+-- key, so this needs no new locale strings.
+-------------------------------------------------
+local FONT_CANDIDATES = {
+    zhCN = {
+        {"Fonts\\ARKai_T.ttf", "楷体"},
+        {"Fonts\\ARHei.ttf",   "黑体"},
+        {"Fonts\\ARKai_C.ttf", "楷体 (Chat)"},
+    },
+    zhTW = {
+        {"Fonts\\bKAI00M.ttf",     "楷體"},
+        {"Fonts\\bHEI00M.ttf",     "黑體"},
+        {"Fonts\\bHEI01B.ttf",     "黑體 Bold"},
+        {"Fonts\\arheiuhk_bd.ttf", "Arial Unicode HK Bold"},
+    },
+    koKR = {
+        {"Fonts\\2002.TTF",      "2002"},
+        {"Fonts\\2002B.TTF",     "2002 Bold"},
+        {"Fonts\\K_Damage.TTF",  "K_Damage"},
+        {"Fonts\\K_Pagetext.TTF","K_Pagetext"},
+    },
+    ruRU = {
+        {"Fonts\\FRIZQT___CYR.TTF", "Friz Quadrata"},
+        {"Fonts\\ARIALN.TTF",       "Arial Narrow"},
+        {"Fonts\\MORPHEUS_CYR.TTF", "Morpheus"},
+        {"Fonts\\SKURRI_CYR.TTF",   "Skurri"},
+    },
+}
+
+local FONT_CANDIDATES_LATIN = {
+    {"Fonts\\ARIALN.TTF",   "Arial Narrow"},
+    {"Fonts\\FRIZQT__.TTF", "Friz Quadrata"},
+    {"Fonts\\MORPHEUS.TTF", "Morpheus"},
+    {"Fonts\\SKURRI.TTF",   "Skurri"},
+    {"Fonts\\2002.TTF",     "2002"},
+}
+
+local fontProbe
+local cachedFontOptions
+
+-- A font path is only offered if the client actually loads it. SetFont leaves
+-- the previous font in place when it fails, so verify by reading it back rather
+-- than trusting the return value (which varies by flavor).
+local function FontLoads(path)
+    if not fontProbe then
+        fontProbe = UIParent:CreateFontString(nil, "OVERLAY")
+        fontProbe:Hide()
+    end
+    local ok = pcall(fontProbe.SetFont, fontProbe, path, 12)
+    if not ok then return false end
+    local applied = fontProbe:GetFont()
+    return applied ~= nil and applied:lower() == path:lower()
+end
+
+function Constants.GetFontOptions()
+    if cachedFontOptions then return cachedFontOptions end
+
+    local options, seen = {}, {}
+    local function add(path, label)
+        if path and path ~= "" and not seen[path] and FontLoads(path) then
+            seen[path] = true
+            options[#options + 1] = { value = path, label = label }
+        end
+    end
+
+    -- The client's own standard font first: always valid for this locale.
+    local L = ns.L
+    add(STANDARD_TEXT_FONT, (L and L["SETTINGS_SORT_DEFAULT"]) or "Default")
+
+    for _, entry in ipairs(FONT_CANDIDATES[GetLocale()] or FONT_CANDIDATES_LATIN) do
+        add(entry[1], entry[2])
+    end
+
+    -- Never hand back an empty list, even if every probe somehow failed.
+    if #options == 0 then
+        options[1] = { value = Constants.DEFAULTS.fontFamily, label = "Default" }
+    end
+
+    cachedFontOptions = options
+    return options
+end
+
 Constants.ICON = {
     BORDER_THICKNESS = 2,
 }
@@ -507,13 +710,6 @@ Constants.VALUABLE_EQUIP_SLOTS = {
     ["INVTYPE_RELIC"] = true,
     ["INVTYPE_BODY"] = true,      -- Shirt
     ["INVTYPE_TABARD"] = true,    -- Tabard
-}
-
--------------------------------------------------
--- Fonts
--------------------------------------------------
-Constants.FONTS = {
-    DEFAULT = "Fonts\\FRIZQT__.TTF",
 }
 
 -------------------------------------------------

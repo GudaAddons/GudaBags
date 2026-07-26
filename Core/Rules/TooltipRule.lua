@@ -4,6 +4,17 @@ local RuleEngine = ns:GetModule("RuleEngine")
 local Utils = ns:GetModule("Utils")
 local Constants = ns.Constants
 
+local ITEM_CLASS = Constants.ITEM_CLASS
+
+-- Weapon/armor check on classID; itemType from GetItemInfo is localized
+local function IsEquipment(itemData)
+    if itemData.classID then
+        return itemData.classID == ITEM_CLASS.ARMOR
+            or itemData.classID == ITEM_CLASS.WEAPON
+    end
+    return itemData.itemType == "Armor" or itemData.itemType == "Weapon"
+end
+
 -------------------------------------------------
 -- Bind on Equip Rule
 -- Requires tooltip scan (not available for other characters)
@@ -92,8 +103,9 @@ RuleEngine:RegisterEvaluator("isJunk", function(ruleValue, itemData, context)
         return (itemData.quality == 0) == ruleValue
     end
 
-    -- Profession tools are never junk
-    if Utils:IsProfessionTool(itemData) then
+    -- Profession tools are never junk. Uses the broader IsToolLike so an
+    -- unlisted tool is not treated as junk on non-English clients only.
+    if Utils:IsToolLike(itemData) then
         return false == ruleValue
     end
 
@@ -107,7 +119,7 @@ RuleEngine:RegisterEvaluator("isJunk", function(ruleValue, itemData, context)
         local Database = ns:GetModule("Database")
         local whiteItemsJunk = Database and Database:GetSetting("whiteItemsJunk") or false
 
-        if whiteItemsJunk and (itemData.itemType == "Armor" or itemData.itemType == "Weapon") then
+        if whiteItemsJunk and IsEquipment(itemData) then
             local equipSlot = itemData.equipSlot
             if equipSlot and equipSlot ~= "" then
                 -- Trinkets, rings, necks, shirts, tabards, off-hands, relics are never junk

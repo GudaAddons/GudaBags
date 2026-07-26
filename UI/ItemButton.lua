@@ -25,12 +25,26 @@ local PAWN_ARROW_TEXTURE = "Interface\\AddOns\\Pawn\\Textures\\UpgradeArrow"
 
 local PawnCompat  -- resolved lazily to avoid load-order coupling
 
+-- Weapon/armor check. Keyed on classID because GetItemInfo's itemType is
+-- localized ("武器"/"Waffe"/...), so comparing it to English literals only
+-- works on an enUS client. Falls back to the strings when classID is absent.
+local ITEM_CLASS = ns.Constants.ITEM_CLASS
+local function IsWeaponOrArmor(itemData)
+    if itemData.classID then
+        return itemData.classID == ITEM_CLASS.WEAPON
+            or itemData.classID == ITEM_CLASS.ARMOR
+    end
+    return itemData.itemType == "Weapon" or itemData.itemType == "Armor"
+end
+
 -- Which addon says this item is an upgrade? Returns "pawn", "sil", or nil.
--- Pawn takes priority. classID 2 = Weapon, 4 = Armor (itemType is localized).
+-- Pawn takes priority. Deliberately strict on classID (no itemType fallback):
+-- an unresolved item must not get an arrow.
 local function GetUpgradeArrowSource(itemData, isReadOnly)
     if ns.suspectDisabled and ns.suspectDisabled.upgrade then return nil end
     if isReadOnly or not itemData or not itemData.link then return nil end
-    if not (itemData.classID == 2 or itemData.classID == 4) then return nil end
+    if not (itemData.classID == ITEM_CLASS.WEAPON
+        or itemData.classID == ITEM_CLASS.ARMOR) then return nil end
 
     PawnCompat = PawnCompat or ns:GetModule("Compatibility.Pawn")
     if PawnCompat and PawnCompat:IsAvailable() then
@@ -446,7 +460,7 @@ local function IsJunkItem(itemData)
             return false  -- Setting is off, white items are never junk
         end
 
-        local isEquipment = itemData.itemType == "Armor" or itemData.itemType == "Weapon"
+        local isEquipment = IsWeaponOrArmor(itemData)
         if isEquipment then
             -- Valuable slots (trinket, ring, neck, shirt, tabard) are never junk
             local equipSlot = itemData.equipSlot
@@ -867,7 +881,7 @@ local function CreateButton(parent)
     Font:Apply(boeText, 10, "OUTLINE")
     boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
     boeText:SetJustifyH("LEFT")
-    boeText:SetText("BoE")
+    boeText:SetText(ns.L["ITEM_BOE_LABEL"])
     boeText:Hide()
     button.boeText = boeText
 
@@ -2237,13 +2251,13 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- BoE label (bottom-left corner). Only on unbound BoE weapons/armor;
         -- TooltipScanner:IsBindOnEquip excludes soulbound, BoP, and non-gear.
-        -- The itemType pre-check skips the tooltip scan for the common case
+        -- The item class pre-check skips the tooltip scan for the common case
         -- (consumables, reagents, etc.) so this stays cheap.
         ns:ProfileStart("si.boe")
         if button.boeText then
             local showBoe = settings.showBoeLabel
                 and not isReadOnly
-                and (itemData.itemType == "Weapon" or itemData.itemType == "Armor")
+                and IsWeaponOrArmor(itemData)
                 and (itemData.quality or 0) > 0
                 and itemData.bagID and itemData.slot
             if showBoe then

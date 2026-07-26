@@ -856,7 +856,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                 table.insert(tabs, {
                     index = tabData.index,
                     containerID = tabData.containerID,
-                    name = tabData.name or (isWarband and string.format("Warband Tab %d", tabData.index) or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", tabData.index)),
+                    name = tabData.name or (isWarband and string.format(ns.L["WARBAND_TAB_NUMBER"], tabData.index) or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", tabData.index)),
                     icon = tabData.icon or TAB_ICON_DEFAULT,  -- Use tab's actual icon
                 })
             end
@@ -877,7 +877,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                 table.insert(tabs, {
                     index = tabData.index,
                     containerID = tabData.containerID,
-                    name = tabData.name or string.format("Warband Tab %d", tabData.index),
+                    name = tabData.name or string.format(ns.L["WARBAND_TAB_NUMBER"], tabData.index),
                     icon = tabData.icon or TAB_ICON_DEFAULT,  -- Use tab's actual icon
                 })
             end
@@ -899,7 +899,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                     table.insert(tabs, {
                         index = i,
                         containerID = containerID,
-                        name = tab.name or string.format("Warband Tab %d", i),
+                        name = tab.name or string.format(ns.L["WARBAND_TAB_NUMBER"], i),
                         icon = tab.icon or TAB_ICON_DEFAULT,  -- Use tab's actual icon
                     })
                 end
@@ -920,7 +920,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                     index = i,
                     containerID = containerID,
                     name = isWarband
-                        and string.format("Warband Tab %d", i)
+                        and string.format(ns.L["WARBAND_TAB_NUMBER"], i)
                         or string.format(ns.L["TOOLTIP_BANK_TAB"] or "Tab %d", i),
                     icon = TAB_ICON_DEFAULT,
                 })
@@ -954,7 +954,7 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
                     table.insert(tabs, {
                         index = i,
                         containerID = containerID,
-                        name = string.format("Warband Tab %d", i),
+                        name = string.format(ns.L["WARBAND_TAB_NUMBER"], i),
                         icon = TAB_ICON_DEFAULT,
                     })
                 end
@@ -1173,7 +1173,7 @@ function BankFrame:OpenTabSettings(containerID, tabIndex)
                 return {
                     ID = containerID,
                     icon = tabInfo and tabInfo.icon or TAB_ICON_DEFAULT,
-                    name = tabInfo and tabInfo.name or string.format("Tab %d", tabIndex),
+                    name = tabInfo and tabInfo.name or string.format(ns.L["TOOLTIP_BANK_TAB"], tabIndex),
                     depositFlags = tabInfo and tabInfo.depositFlags or 0,
                     bankType = bankTypeEnum,
                 }
@@ -1276,9 +1276,9 @@ local function CreateBottomBankTypeTab(parent, bankType, label)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         if self.bankType == "character" then
-            GameTooltip:SetText("Character Bank")
+            GameTooltip:SetText(ns.L["TOOLTIP_CHARACTER_BANK"])
         else
-            GameTooltip:SetText("Warband Bank")
+            GameTooltip:SetText(ns.L["BANK_TITLE_WARBAND"])
         end
         GameTooltip:Show()
     end)
@@ -2263,11 +2263,11 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, hasSearch, isReadOn
             end
 
             -- Get tab name
-            local tabName = string.format("Tab %d", tabIndex)
+            local tabName = string.format(ns.L["TOOLTIP_BANK_TAB"], tabIndex)
             if cachedTabs and cachedTabs[tabIndex] then
                 tabName = cachedTabs[tabIndex].name or tabName
             elseif isWarbandView then
-                tabName = string.format("Warband Tab %d", tabIndex)
+                tabName = string.format(ns.L["WARBAND_TAB_NUMBER"], tabIndex)
             end
 
             table.insert(tabSections, {

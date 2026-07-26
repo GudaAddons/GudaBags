@@ -21,13 +21,11 @@ function SettingsSchema.GetGeneral()
             end
             return opts
         end)()},
-        { type = "select", key = "fontFamily", label = L["SETTINGS_FONT"], tooltip = L["SETTINGS_FONT_TIP"], options = {
-            { value = "Fonts\\ARIALN.TTF",   label = "Arial Narrow" },
-            { value = "Fonts\\FRIZQT__.TTF", label = "Friz Quadrata" },
-            { value = "Fonts\\MORPHEUS.TTF", label = "Morpheus" },
-            { value = "Fonts\\SKURRI.TTF",   label = "Skurri" },
-            { value = "Fonts\\2002.TTF",     label = "2002" },
-        }},
+        -- Locale-aware: only fonts the client can actually render are offered,
+        -- so a CJK/Korean player cannot pick a Latin-only font and turn every
+        -- string in the addon into boxes.
+        { type = "select", key = "fontFamily", label = L["SETTINGS_FONT"], tooltip = L["SETTINGS_FONT_TIP"],
+          options = ns.Constants.GetFontOptions() },
         { type = "slider", key = "bgAlpha", label = L["SETTINGS_BG_OPACITY"], min = 0, max = 100, step = 5, format = "%" },
         { type = "row", children = {
             { type = "checkbox", key = "retailEmptySlots", label = L["SETTINGS_RETAIL_EMPTY_SLOTS"], tooltip = L["SETTINGS_RETAIL_EMPTY_SLOTS_TIP"],

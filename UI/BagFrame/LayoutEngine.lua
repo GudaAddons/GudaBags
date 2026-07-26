@@ -211,7 +211,8 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                         local itemData = nil
                         if itemInfo then
-                            local itemName, _, itemQuality, _, _, itemType, itemSubType = GetItemInfo(itemInfo.hyperlink or "")
+                            local itemName, _, itemQuality, _, _, itemType, itemSubType,
+                                  _, _, _, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
                             itemData = {
                                 bagID = bagID,
                                 slot = slot,
@@ -222,6 +223,8 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                                 name = itemName or "",
                                 itemType = itemType or "",
                                 itemSubType = itemSubType or "",
+                                classID = classID,
+                                subClassID = subClassID,
                                 locked = itemInfo.isLocked,
                             }
                         end
@@ -266,7 +269,8 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                         local itemData = nil
                         if itemInfo then
-                            local itemName, _, itemQuality, _, _, itemType, itemSubType = GetItemInfo(itemInfo.hyperlink or "")
+                            local itemName, _, itemQuality, _, _, itemType, itemSubType,
+                                  _, _, _, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
                             itemData = {
                                 bagID = bagID,
                                 slot = slot,
@@ -277,6 +281,8 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                                 name = itemName or "",
                                 itemType = itemType or "",
                                 itemSubType = itemSubType or "",
+                                classID = classID,
+                                subClassID = subClassID,
                                 locked = itemInfo.isLocked,
                             }
                         end
@@ -474,7 +480,10 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                     for slot = 1, numSlots do
                         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                         if itemInfo then
-                            local itemName, _, itemQuality, _, _, itemType, itemSubType = GetItemInfo(itemInfo.hyperlink or "")
+                            -- classID/subClassID are locale-independent and drive
+                            -- the itemType rules; itemType/itemSubType are localized.
+                            local itemName, _, itemQuality, _, _, itemType, itemSubType,
+                                  _, _, _, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
                             local itemData = {
                                 bagID = bagID,
                                 slot = slot,
@@ -485,6 +494,8 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                                 name = itemName or "",
                                 itemType = itemType or "",
                                 itemSubType = itemSubType or "",
+                                classID = classID,
+                                subClassID = subClassID,
                                 locked = itemInfo.isLocked,
                             }
                             table.insert(items, {
@@ -880,6 +891,8 @@ function LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, 
                             name = firstItem.itemData.name,
                             itemType = firstItem.itemData.itemType,
                             itemSubType = firstItem.itemData.itemSubType,
+                            classID = firstItem.itemData.classID,
+                            subClassID = firstItem.itemData.subClassID,
                             isGroupedStack = true,
                             groupedLocations = locations,
                         },

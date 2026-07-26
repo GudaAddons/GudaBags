@@ -8,6 +8,7 @@ local L = ns.L
 local SearchParser = ns:GetModule("SearchParser")
 local Database = ns:GetModule("Database")
 local Font = ns:GetModule("Font")
+local Utils = ns:GetModule("Utils")
 
 local instances = {}
 local searchOverlay = nil
@@ -39,16 +40,90 @@ local QUALITY_NAMES = {
 }
 
 -------------------------------------------------
--- Type chip definitions: {key, localeKey, itemType}
+-- Type chip definitions: {key, localeKey, labelKey}
 -------------------------------------------------
+-- localeKey = compact label (CHIP_TYPE_*, authored for enUS only)
+-- labelKey  = full localized word, reusing the category-header translations
+--             that already exist in all 11 locales. No new strings.
 local TYPE_CHIPS = {
-    {key = "Weapon",       localeKey = "CHIP_TYPE_WPN"},
-    {key = "Armor",        localeKey = "CHIP_TYPE_ARM"},
-    {key = "Consumable",   localeKey = "CHIP_TYPE_CON"},
-    {key = "Trade Goods",  localeKey = "CHIP_TYPE_TRD"},
-    {key = "Quest",        localeKey = "CHIP_TYPE_QST"},
-    {key = "Junk",         localeKey = "CHIP_TYPE_JNK"},
+    {key = "Weapon",       localeKey = "CHIP_TYPE_WPN", labelKey = "CAT_WEAPON"},
+    {key = "Armor",        localeKey = "CHIP_TYPE_ARM", labelKey = "CAT_ARMOR"},
+    {key = "Consumable",   localeKey = "CHIP_TYPE_CON", labelKey = "CAT_CONSUMABLE"},
+    {key = "Trade Goods",  localeKey = "CHIP_TYPE_TRD", labelKey = "CAT_TRADE_GOODS"},
+    {key = "Quest",        localeKey = "CHIP_TYPE_QST", labelKey = "CAT_QUEST"},
+    {key = "Junk",         localeKey = "CHIP_TYPE_JNK", labelKey = "CAT_JUNK"},
 }
+
+-------------------------------------------------
+-- Chip label resolution
+--
+-- The inline chip strip shares one non-wrapping row with the quality dots and
+-- the special chips, so it is width-constrained. The dropdown menu rows are
+-- full-width and are not.
+--
+-- Strip: use the locale's own word, but only when the whole set fits the
+-- budget; otherwise the entire strip falls back to the compact enUS
+-- abbreviations so it stays visually consistent rather than mixing
+-- "Waffe" with "Trd".
+--
+-- This needs no per-locale special-casing, because it measures what actually
+-- renders: CJK words (武器, 护甲, 消耗品) are narrower than "Wpn", so those
+-- locales get native labels, while enUS ("Consumable") and the long-word
+-- European locales ("Handwerkswaren") keep the compact form.
+-------------------------------------------------
+local MAX_TYPE_CHIP_LABEL_WIDTH = 40
+local useCompactTypeLabels = nil
+
+local function UseCompactTypeLabels()
+    if useCompactTypeLabels ~= nil then
+        return useCompactTypeLabels
+    end
+
+    local probe = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    if Font then Font:Override(probe) end
+
+    useCompactTypeLabels = false
+    for _, chipDef in ipairs(TYPE_CHIPS) do
+        local full = chipDef.labelKey and L[chipDef.labelKey]
+        if not full or full == "" then
+            useCompactTypeLabels = true
+            break
+        end
+        probe:SetText(full)
+        if (probe:GetStringWidth() or 0) > MAX_TYPE_CHIP_LABEL_WIDTH then
+            useCompactTypeLabels = true
+            break
+        end
+    end
+
+    probe:Hide()
+    return useCompactTypeLabels
+end
+
+-- Full localized word: dropdown rows and tooltips, where width is not a concern
+local function ChipFullLabel(chipDef)
+    return (chipDef.labelKey and L[chipDef.labelKey])
+        or L[chipDef.localeKey] or chipDef.key
+end
+
+-- Inline strip label: compact when the localized set would not fit
+local function ChipStripLabel(chipDef)
+    if chipDef.labelKey and not UseCompactTypeLabels() then
+        return ChipFullLabel(chipDef)
+    end
+    return L[chipDef.localeKey] or chipDef.key
+end
+
+-- classID → chip key, so chip matching is locale-independent (itemType from
+-- GetItemInfo is translated per client). "Junk" is quality-based, not a class,
+-- and is handled separately in the matcher below.
+local CHIP_KEY_BY_CLASS = {}
+for _, chip in ipairs(TYPE_CHIPS) do
+    local classID = ns.Constants.ITEM_CLASS_BY_NAME[chip.key]
+    if classID then
+        CHIP_KEY_BY_CLASS[classID] = chip.key
+    end
+end
 
 -------------------------------------------------
 -- Special chip definitions: {key, localeKey}
@@ -252,8 +327,14 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
     local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     Font:Override(label)
     label:SetPoint("CENTER", 0, 0)
-    label:SetText(L[chipDef.localeKey] or chipDef.key)
+    local stripLabel = ChipStripLabel(chipDef)
+    label:SetText(stripLabel)
     btn.label = label
+
+    -- When the strip shows a compact label, the full localized word is only
+    -- available on hover.
+    local fullLabel = ChipFullLabel(chipDef)
+    btn.tooltipText = (fullLabel ~= stripLabel) and fullLabel or nil
 
     local textWidth = label:GetStringWidth() or 20
     btn:SetSize(textWidth + 10, Constants.FRAME.CHIP_SIZE)
@@ -270,11 +351,19 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
         if not searchBar.filterState[filterCategory][chipDef.key] then
             self.bg:SetVertexColor(0.25, 0.25, 0.25, 0.8)
         end
+        if self.tooltipText then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.tooltipText, 1, 1, 1)
+            GameTooltip:Show()
+        end
     end)
 
     btn:SetScript("OnLeave", function(self)
         if not searchBar.filterState[filterCategory][chipDef.key] then
             self.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+        end
+        if self.tooltipText then
+            GameTooltip:Hide()
         end
     end)
 
@@ -437,7 +526,8 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             typesDropdownMenu.items[itemIndex] = item
         end
 
-        item.label:SetText(L[chipDef.localeKey] or chipDef.key)
+        -- Menu rows are full-width, so always show the full localized word
+        item.label:SetText(ChipFullLabel(chipDef))
         item.chipKey = chipDef.key
         item.chipCategory = "types"
         item:SetPoint("TOPLEFT", typesDropdownMenu, "TOPLEFT", 4, yOffset)
@@ -517,7 +607,8 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             typesDropdownMenu.items[itemIndex] = item
         end
 
-        item.label:SetText(L[chipDef.localeKey] or chipDef.key)
+        -- Menu rows are full-width, so always show the full localized word
+        item.label:SetText(ChipFullLabel(chipDef))
         item.chipKey = chipDef.key
         item.chipCategory = "specials"
         item:SetPoint("TOPLEFT", typesDropdownMenu, "TOPLEFT", 4, yOffset)
@@ -1375,7 +1466,7 @@ function SearchBar:SetNarrowMode(parent, isCompact, isNarrow)
     -- Update placeholder text (compact: < 260)
     if instance.searchBox and instance.searchBox.placeholder then
         if isCompact then
-            instance.searchBox.placeholder:SetText("Search...")
+            instance.searchBox.placeholder:SetText(L["SEARCH_PLACEHOLDER_SHORT"])
         else
             instance.searchBox.placeholder:SetText(L["SEARCH_PLACEHOLDER"])
         end
@@ -1561,17 +1652,16 @@ function SearchBar:ItemMatchesFilters(parent, itemData)
 
     -- 2) Type chips: OR within group
     if next(state.types) then
-        local itemType = itemData.itemType
+        -- state.types is keyed by chip key (always English), so there is no
+        -- itemType string fallback here: on a non-English client the localized
+        -- itemType could never match those keys anyway.
         local matched = false
-        if itemType then
-            if state.types[itemType] then
-                matched = true
-            end
-            -- "Junk" chip matches quality 0 items
-            if not matched and state.types["Junk"] and (itemData.quality or -1) == 0 then
-                matched = true
-            end
-        elseif state.types["Junk"] and (itemData.quality or -1) == 0 then
+        local chipKey = itemData.classID and CHIP_KEY_BY_CLASS[itemData.classID]
+        if chipKey and state.types[chipKey] then
+            matched = true
+        end
+        -- "Junk" chip matches quality 0 items
+        if not matched and state.types["Junk"] and (itemData.quality or -1) == 0 then
             matched = true
         end
         if not matched then return false end
@@ -1638,17 +1728,17 @@ function SearchBar:ItemMatchesSearch(itemData, searchText)
         return false
     end
 
-    local searchLower = strlower(searchText)
+    local searchLower = Utils:UTF8Lower(searchText)
 
-    if itemData.name and strfind(strlower(itemData.name), searchLower, 1, true) then
+    if itemData.name and strfind(Utils:UTF8Lower(itemData.name), searchLower, 1, true) then
         return true
     end
 
-    if itemData.itemType and strfind(strlower(itemData.itemType), searchLower, 1, true) then
+    if itemData.itemType and strfind(Utils:UTF8Lower(itemData.itemType), searchLower, 1, true) then
         return true
     end
 
-    if itemData.itemSubType and strfind(strlower(itemData.itemSubType), searchLower, 1, true) then
+    if itemData.itemSubType and strfind(Utils:UTF8Lower(itemData.itemSubType), searchLower, 1, true) then
         return true
     end
 

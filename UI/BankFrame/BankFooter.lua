@@ -5,6 +5,7 @@ ns:RegisterModule("BankFrame.BankFooter", BankFooter)
 
 local Constants = ns.Constants
 local Font = ns:GetModule("Font")
+local L = ns.L
 
 local frame = nil
 local backButton = nil
@@ -379,7 +380,7 @@ end
 local function CreateDepositReagentsButton(parent)
     local button = CreateFrame("Button", "GudaBankDepositReagents", parent, "UIPanelButtonTemplate")
     button:SetSize(130, 22)
-    button:SetText("Deposit Reagents")
+    button:SetText(L["BANK_DEPOSIT_REAGENTS"])
     button:SetScript("OnClick", function()
         if C_Bank and C_Bank.AutoDepositItemsIntoBank then
             C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Character)
@@ -387,8 +388,8 @@ local function CreateDepositReagentsButton(parent)
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Deposit All Reagents")
-        GameTooltip:AddLine("Automatically deposit all reagents from your bags into the bank.", 1, 1, 1, true)
+        GameTooltip:SetText(L["BANK_DEPOSIT_ALL_REAGENTS"])
+        GameTooltip:AddLine(L["BANK_DEPOSIT_REAGENTS_TIP"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function()
@@ -402,7 +403,7 @@ end
 local function CreateDepositWarboundButton(parent)
     local button = CreateFrame("Button", "GudaBankDepositWarbound", parent, "UIPanelButtonTemplate")
     button:SetSize(150, 22)
-    button:SetText("Deposit Warbound")
+    button:SetText(L["BANK_DEPOSIT_WARBOUND"])
     button:SetScript("OnClick", function()
         if C_Bank and C_Bank.AutoDepositItemsIntoBank then
             C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Account)
@@ -410,8 +411,8 @@ local function CreateDepositWarboundButton(parent)
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Deposit All Warbound Items")
-        GameTooltip:AddLine("Automatically deposit all warbound items from your bags into the Warband bank.", 1, 1, 1, true)
+        GameTooltip:SetText(L["BANK_DEPOSIT_ALL_WARBOUND"])
+        GameTooltip:AddLine(L["BANK_DEPOSIT_WARBOUND_TIP"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function()
@@ -428,7 +429,7 @@ local function CreateIncludeReagentsCheckbox(parent)
 
     local label = checkbox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("LEFT", checkbox, "RIGHT", 2, 0)
-    label:SetText("Include Reagents")
+    label:SetText(L["BANK_INCLUDE_REAGENTS"])
     checkbox.label = label
 
     -- Use CVar to control include reagents setting
@@ -472,8 +473,8 @@ local function CreateIncludeReagentsCheckbox(parent)
 
     checkbox:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Include Reagents")
-        GameTooltip:AddLine("When checked, tradeable reagents will also be deposited.", 1, 1, 1, true)
+        GameTooltip:SetText(L["BANK_INCLUDE_REAGENTS"])
+        GameTooltip:AddLine(L["BANK_INCLUDE_REAGENTS_TIP"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     checkbox:SetScript("OnLeave", function()
@@ -599,7 +600,7 @@ end
 local function CreateDepositMoneyButton(parent)
     local button = CreateFrame("Button", "GudaBankDepositMoney", parent, "UIPanelButtonTemplate")
     button:SetSize(70, 22)
-    button:SetText("Deposit")
+    button:SetText(L["DEPOSIT"])
     button:SetScript("OnClick", function(self)
         local canDeposit = C_Bank and C_Bank.CanDepositMoney and C_Bank.CanDepositMoney(Enum.BankType.Account)
         if canDeposit then
@@ -618,8 +619,8 @@ local function CreateDepositMoneyButton(parent)
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Deposit Money")
-        GameTooltip:AddLine("Deposit gold into the Warband bank.", 1, 1, 1, true)
+        GameTooltip:SetText(L["TOOLTIP_DEPOSIT_MONEY"])
+        GameTooltip:AddLine(L["WARBAND_DEPOSIT_MONEY_TIP"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function()
@@ -633,7 +634,7 @@ end
 local function CreateWithdrawMoneyButton(parent)
     local button = CreateFrame("Button", "GudaBankWithdrawMoney", parent, "UIPanelButtonTemplate")
     button:SetSize(70, 22)
-    button:SetText("Withdraw")
+    button:SetText(L["WITHDRAW"])
     button:SetScript("OnClick", function(self)
         local canWithdraw = C_Bank and C_Bank.CanWithdrawMoney and C_Bank.CanWithdrawMoney(Enum.BankType.Account)
         if canWithdraw then
@@ -652,8 +653,8 @@ local function CreateWithdrawMoneyButton(parent)
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Withdraw Money")
-        GameTooltip:AddLine("Withdraw gold from the Warband bank.", 1, 1, 1, true)
+        GameTooltip:SetText(L["TOOLTIP_WITHDRAW_MONEY"])
+        GameTooltip:AddLine(L["WARBAND_WITHDRAW_MONEY_TIP"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     button:SetScript("OnLeave", function()
@@ -816,7 +817,7 @@ function BankFooter:Init(parent)
             if self.bagID == -1 then
                 GameTooltip:SetText(ns.L["TOOLTIP_BANK"] or "Bank")
             else
-                GameTooltip:SetText(string.format("Bank Bag %d", self.bagID - 4))
+                GameTooltip:SetText(string.format(L["BANK_BAG_NUMBER"], self.bagID - 4))
             end
             GameTooltip:Show()
 
@@ -969,13 +970,13 @@ function BankFooter:Init(parent)
     slotInfoFrame:SetScript("OnEnter", function(self)
         if frame.specialBagsData and next(frame.specialBagsData) then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:AddLine("Bank Slots", 1, 1, 1)
+            GameTooltip:AddLine(L["TOOLTIP_BAG_SLOTS"], 1, 1, 1)
             GameTooltip:AddLine(" ")
 
             -- Show regular bags info
             if frame.regularTotal then
                 local regularUsed = frame.regularTotal - (frame.regularFree or 0)
-                GameTooltip:AddDoubleLine("Regular Bags:", string.format("%d/%d", regularUsed, frame.regularTotal), 1, 1, 1, 0.8, 0.8, 0.8)
+                GameTooltip:AddDoubleLine(L["TOOLTIP_REGULAR_BAGS"], string.format("%d/%d", regularUsed, frame.regularTotal), 1, 1, 1, 0.8, 0.8, 0.8)
             end
 
             -- Show special bags

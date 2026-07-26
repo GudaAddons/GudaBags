@@ -5,6 +5,9 @@ ns:RegisterModule("ItemScanner", ItemScanner)
 
 local Constants = ns.Constants
 
+-- Numeric item classes: itemType/itemSubType from GetItemInfo are localized
+local ITEM_CLASS = Constants.ITEM_CLASS
+
 -- Get inventory slot for bank bag (same logic as BankFooter for API consistency)
 local function GetBankBagInvSlot(bankBagIndex)
     if ContainerIDToInventoryID then
@@ -29,6 +32,55 @@ end
 -- a cache wipe + bulk re-scan; without this guard the red text falsely marks
 -- every item unusable. Cached so we can compare it cheaply per tooltip line.
 local RETRIEVING_ITEM_INFO = RETRIEVING_ITEM_INFO
+
+-- Tooltip labels taken from Blizzard's globals, which the client already
+-- returns in the player's language. Lowercased once here rather than per
+-- tooltip line. Each keeps its English literal as a fallback so a missing or
+-- renamed global degrades to the previous behaviour instead of breaking.
+local function LowerGlobal(value)
+    if type(value) == "string" and value ~= "" then
+        return value:lower()
+    end
+    return nil
+end
+
+local TT_USE = LowerGlobal(ITEM_SPELL_TRIGGER_ONUSE)             -- "Use:"
+local TT_EQUIP = LowerGlobal(ITEM_SPELL_TRIGGER_ONEQUIP)         -- "Equip:"
+local TT_UNIQUE = LowerGlobal(ITEM_UNIQUE)                       -- "Unique"
+local TT_UNIQUE_EQUIPPED = LowerGlobal(ITEM_UNIQUE_EQUIPPABLE)   -- "Unique-Equipped"
+local TT_SELL_PRICE = LowerGlobal(SELL_PRICE)                    -- "Sell Price"
+local TT_CRAFTING_REAGENT = LowerGlobal(PROFESSIONS_CRAFTING_REAGENT
+    or ITEM_CRAFTING_REAGENT)                                    -- "Crafting Reagent"
+
+-- "Duration: 15 minutes" — derive just the label from whichever duration
+-- global this client defines. Kept in its original case so it can be matched
+-- against the raw tooltip line without allocating a lowercased copy.
+local TT_DURATION = "Duration:"
+do
+    local template = ITEM_DURATION_DAYS or ITEM_DURATION_HOURS
+        or ITEM_DURATION_MIN or ITEM_DURATION_SEC
+    local label = type(template) == "string" and template:match("^(.-:)")
+    if label then
+        TT_DURATION = label
+    end
+end
+
+-- Plain (non-pattern) substring tests. Both use find(..., 1, true), which
+-- allocates nothing — these run per tooltip line, per item.
+local function HasLabel(text, localized, english)
+    if localized and text:find(localized, 1, true) then
+        return true
+    end
+    return text:find(english, 1, true) ~= nil
+end
+
+-- Same, but the label must start the line
+local function StartsWithLabel(text, localized, english)
+    if localized and text:find(localized, 1, true) == 1 then
+        return true
+    end
+    return text:find(english, 1, true) == 1
+end
 
 -- Tooltip result caching to avoid repeated expensive scans
 -- Cache by itemLink since the same item has the same properties
@@ -89,7 +141,7 @@ end
 
 -- Scan tooltip once and extract all needed information
 -- itemQuality: pass quality to skip hasSpecialProperties check for non-junk items
-local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQuality, itemLoaded)
+local function ScanTooltipForItem(bagID, slot, classID, itemID, itemLink, itemQuality, itemLoaded)
     local cacheKey = GetCacheKey(itemLink, itemID)
     local cached = GetCachedTooltipResult(cacheKey)
     if cached then
@@ -138,10 +190,11 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
         isQuestItem = true
     end
 
-    -- Mark items with itemType "Quest" as quest items (respect ignore list)
-    -- Only flag poor/common quality items — green+ quality "Quest" type items
-    -- are typically glyphs, enchants, or other non-quest items misclassified by WoW
-    if not isQuestIgnored and itemType == "Quest" and (not itemQuality or itemQuality < 2) then
+    -- Mark items of the Quest item class as quest items (respect ignore list).
+    -- Only flag poor/common quality items — green+ quality Quest-class items
+    -- are typically glyphs, enchants, or other non-quest items misclassified by WoW.
+    -- Uses classID rather than the localized itemType string.
+    if not isQuestIgnored and classID == ITEM_CLASS.QUEST and (not itemQuality or itemQuality < 2) then
         isQuestItem = true
     end
 
@@ -203,7 +256,7 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
                     end
 
                     -- Check for item duration (e.g. "Duration: 1 hour")
-                    if not hasDuration and text:find("^Duration:") then
+                    if not hasDuration and StartsWithLabel(text, TT_DURATION, "Duration:") then
                         hasDuration = true
                     end
 
@@ -211,10 +264,12 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
                     if needSpecialPropertiesCheck and not hasSpecialProperties then
                         local textLower = text:lower()
                         -- Use: or Equip: effects
-                        if textLower:find("use:") or textLower:find("equip:") then
+                        if HasLabel(textLower, TT_USE, "use:")
+                            or HasLabel(textLower, TT_EQUIP, "equip:") then
                             hasSpecialProperties = true
                         -- Unique items
-                        elseif textLower:find("^unique") or textLower:find("unique%-equipped") then
+                        elseif StartsWithLabel(textLower, TT_UNIQUE, "unique")
+                            or HasLabel(textLower, TT_UNIQUE_EQUIPPED, "unique-equipped") then
                             hasSpecialProperties = true
                         -- Green text (special effects)
                         elseif IsGreenColor(r, g, b) then
@@ -223,7 +278,8 @@ local function ScanTooltipForItem(bagID, slot, itemType, itemID, itemLink, itemQ
                         -- Also skip common non-special yellow text like "Crafting Reagent"
                         elseif i > 1 and IsYellowColor(r, g, b) then
                             -- Exclude common crafting/trade labels that aren't special
-                            if not textLower:find("crafting reagent") and not textLower:find("sell price") then
+                            if not HasLabel(textLower, TT_CRAFTING_REAGENT, "crafting reagent")
+                                and not HasLabel(textLower, TT_SELL_PRICE, "sell price") then
                                 hasSpecialProperties = true
                             end
                         end
@@ -376,7 +432,7 @@ function ItemScanner:ScanSlot(bagID, slot)
 
     -- Single optimized tooltip scan for all properties
     -- Pass quality so we only check hasSpecialProperties for gray/white items
-    local isUsable, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration, isOpenable = ScanTooltipForItem(bagID, slot, itemType, itemInfo.itemID, itemLink, quality, itemLoaded)
+    local isUsable, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration, isOpenable = ScanTooltipForItem(bagID, slot, classID, itemInfo.itemID, itemLink, quality, itemLoaded)
 
     return {
         slot = slot,
@@ -507,6 +563,7 @@ if Events then
 
     -- Drop the entries we may have populated while item data was still loading
     -- (the tooltip would have been incomplete; isUsable could be wrong).
+    local categoryClearPending = false
     Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
         if not success or not itemID then return end
         local needle = "item:" .. itemID .. ":"
@@ -516,5 +573,20 @@ if Events then
             end
         end
         tooltipCache[tostring(itemID)] = nil
+
+        -- An item categorized before its data resolved was cached under the
+        -- Miscellaneous fallback (ScanSlot substitutes classID 15 on a miss).
+        -- Drop the category cache so it re-evaluates. Coalesced to one clear
+        -- per frame: this event arrives in bursts at login.
+        if not categoryClearPending then
+            categoryClearPending = true
+            C_Timer.After(0, function()
+                categoryClearPending = false
+                local CategoryManager = ns:GetModule("CategoryManager")
+                if CategoryManager then
+                    CategoryManager:ClearCategoryCache()
+                end
+            end)
+        end
     end, ItemScanner)
 end
