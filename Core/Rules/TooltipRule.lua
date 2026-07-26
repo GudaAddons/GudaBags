@@ -103,8 +103,9 @@ RuleEngine:RegisterEvaluator("isJunk", function(ruleValue, itemData, context)
         return (itemData.quality == 0) == ruleValue
     end
 
-    -- Profession tools are never junk
-    if Utils:IsProfessionTool(itemData) then
+    -- Profession tools are never junk. Uses the broader IsToolLike so an
+    -- unlisted tool is not treated as junk on non-English clients only.
+    if Utils:IsToolLike(itemData) then
         return false == ruleValue
     end
 

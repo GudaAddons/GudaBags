@@ -250,6 +250,31 @@ function Utils:IsProfessionTool(itemData)
     return false
 end
 
+-- Broader tool test, for JUNK SUPPRESSION ONLY — never for categorization.
+--
+-- IsProfessionTool above is precise: itemIDs, fishing poles, then English name
+-- patterns. Those name patterns only fire on an enUS client, so an unlisted
+-- tool (a newer expansion's pickaxe, say) used to be treated as junk on a
+-- zhCN client but not on enUS. That asymmetry is what this fixes.
+--
+-- It adds the "miscellaneous weapon" subclass that most physical tools share.
+-- That net is deliberately broad, which is safe here because a false positive
+-- only means "don't auto-mark as junk", while a miss risks flagging someone's
+-- tool for the vendor. It is kept out of the category rules on purpose: there a
+-- false positive would pull genuine weapons out of the Weapon category, and
+-- categorization is already locale-consistent without it.
+function Utils:IsToolLike(itemData)
+    if self:IsProfessionTool(itemData) then
+        return true
+    end
+
+    local Constants = ns.Constants
+    local toolSubClass = Constants.TOOL_WEAPON_SUBCLASS
+    return toolSubClass ~= nil
+        and itemData.classID == Constants.ITEM_CLASS.WEAPON
+        and itemData.subClassID == toolSubClass
+end
+
 -- Format money with all denominations (for totals/summaries)
 function Utils:FormatMoneyFull(amount)
     if not amount or amount == 0 then return "" end

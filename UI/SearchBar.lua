@@ -39,16 +39,79 @@ local QUALITY_NAMES = {
 }
 
 -------------------------------------------------
--- Type chip definitions: {key, localeKey, itemType}
+-- Type chip definitions: {key, localeKey, labelKey}
 -------------------------------------------------
+-- localeKey = compact label (CHIP_TYPE_*, authored for enUS only)
+-- labelKey  = full localized word, reusing the category-header translations
+--             that already exist in all 11 locales. No new strings.
 local TYPE_CHIPS = {
-    {key = "Weapon",       localeKey = "CHIP_TYPE_WPN"},
-    {key = "Armor",        localeKey = "CHIP_TYPE_ARM"},
-    {key = "Consumable",   localeKey = "CHIP_TYPE_CON"},
-    {key = "Trade Goods",  localeKey = "CHIP_TYPE_TRD"},
-    {key = "Quest",        localeKey = "CHIP_TYPE_QST"},
-    {key = "Junk",         localeKey = "CHIP_TYPE_JNK"},
+    {key = "Weapon",       localeKey = "CHIP_TYPE_WPN", labelKey = "CAT_WEAPON"},
+    {key = "Armor",        localeKey = "CHIP_TYPE_ARM", labelKey = "CAT_ARMOR"},
+    {key = "Consumable",   localeKey = "CHIP_TYPE_CON", labelKey = "CAT_CONSUMABLE"},
+    {key = "Trade Goods",  localeKey = "CHIP_TYPE_TRD", labelKey = "CAT_TRADE_GOODS"},
+    {key = "Quest",        localeKey = "CHIP_TYPE_QST", labelKey = "CAT_QUEST"},
+    {key = "Junk",         localeKey = "CHIP_TYPE_JNK", labelKey = "CAT_JUNK"},
 }
+
+-------------------------------------------------
+-- Chip label resolution
+--
+-- The inline chip strip shares one non-wrapping row with the quality dots and
+-- the special chips, so it is width-constrained. The dropdown menu rows are
+-- full-width and are not.
+--
+-- Strip: use the locale's own word, but only when the whole set fits the
+-- budget; otherwise the entire strip falls back to the compact enUS
+-- abbreviations so it stays visually consistent rather than mixing
+-- "Waffe" with "Trd".
+--
+-- This needs no per-locale special-casing, because it measures what actually
+-- renders: CJK words (武器, 护甲, 消耗品) are narrower than "Wpn", so those
+-- locales get native labels, while enUS ("Consumable") and the long-word
+-- European locales ("Handwerkswaren") keep the compact form.
+-------------------------------------------------
+local MAX_TYPE_CHIP_LABEL_WIDTH = 40
+local useCompactTypeLabels = nil
+
+local function UseCompactTypeLabels()
+    if useCompactTypeLabels ~= nil then
+        return useCompactTypeLabels
+    end
+
+    local probe = UIParent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    if Font then Font:Override(probe) end
+
+    useCompactTypeLabels = false
+    for _, chipDef in ipairs(TYPE_CHIPS) do
+        local full = chipDef.labelKey and L[chipDef.labelKey]
+        if not full or full == "" then
+            useCompactTypeLabels = true
+            break
+        end
+        probe:SetText(full)
+        if (probe:GetStringWidth() or 0) > MAX_TYPE_CHIP_LABEL_WIDTH then
+            useCompactTypeLabels = true
+            break
+        end
+    end
+
+    probe:Hide()
+    return useCompactTypeLabels
+end
+
+-- Full localized word: dropdown rows and tooltips, where width is not a concern
+local function ChipFullLabel(chipDef)
+    return (chipDef.labelKey and L[chipDef.labelKey])
+        or L[chipDef.localeKey] or chipDef.key
+end
+
+-- Inline strip label: compact when the localized set would not fit
+local function ChipStripLabel(chipDef)
+    if chipDef.labelKey and not UseCompactTypeLabels() then
+        return ChipFullLabel(chipDef)
+    end
+    return L[chipDef.localeKey] or chipDef.key
+end
 
 -- classID → chip key, so chip matching is locale-independent (itemType from
 -- GetItemInfo is translated per client). "Junk" is quality-based, not a class,
@@ -263,8 +326,14 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
     local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     Font:Override(label)
     label:SetPoint("CENTER", 0, 0)
-    label:SetText(L[chipDef.localeKey] or chipDef.key)
+    local stripLabel = ChipStripLabel(chipDef)
+    label:SetText(stripLabel)
     btn.label = label
+
+    -- When the strip shows a compact label, the full localized word is only
+    -- available on hover.
+    local fullLabel = ChipFullLabel(chipDef)
+    btn.tooltipText = (fullLabel ~= stripLabel) and fullLabel or nil
 
     local textWidth = label:GetStringWidth() or 20
     btn:SetSize(textWidth + 10, Constants.FRAME.CHIP_SIZE)
@@ -281,11 +350,19 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
         if not searchBar.filterState[filterCategory][chipDef.key] then
             self.bg:SetVertexColor(0.25, 0.25, 0.25, 0.8)
         end
+        if self.tooltipText then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.tooltipText, 1, 1, 1)
+            GameTooltip:Show()
+        end
     end)
 
     btn:SetScript("OnLeave", function(self)
         if not searchBar.filterState[filterCategory][chipDef.key] then
             self.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+        end
+        if self.tooltipText then
+            GameTooltip:Hide()
         end
     end)
 
@@ -448,7 +525,8 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             typesDropdownMenu.items[itemIndex] = item
         end
 
-        item.label:SetText(L[chipDef.localeKey] or chipDef.key)
+        -- Menu rows are full-width, so always show the full localized word
+        item.label:SetText(ChipFullLabel(chipDef))
         item.chipKey = chipDef.key
         item.chipCategory = "types"
         item:SetPoint("TOPLEFT", typesDropdownMenu, "TOPLEFT", 4, yOffset)
@@ -528,7 +606,8 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             typesDropdownMenu.items[itemIndex] = item
         end
 
-        item.label:SetText(L[chipDef.localeKey] or chipDef.key)
+        -- Menu rows are full-width, so always show the full localized word
+        item.label:SetText(ChipFullLabel(chipDef))
         item.chipKey = chipDef.key
         item.chipCategory = "specials"
         item:SetPoint("TOPLEFT", typesDropdownMenu, "TOPLEFT", 4, yOffset)

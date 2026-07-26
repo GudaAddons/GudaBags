@@ -67,6 +67,30 @@ tostringall = function(...) return ... end
 ITEM_SPELL_TRIGGER_ONUSE = "Use:"
 ITEM_SPELL_TRIGGER_ONEQUIP = "Equip:"
 
+STANDARD_TEXT_FONT = "Fonts\\LOCALE_STANDARD.TTF"
+
+-- Static item DB. Weapon subclass 14 = Miscellaneous, where most physical
+-- profession tools live; Constants derives that number from these probes
+-- instead of hardcoding it.
+local INSTANT_DB = {
+    [5956]  = {2, 14},  -- Blacksmith Hammer
+    [2901]  = {2, 14},  -- Mining Pick
+    [7005]  = {2, 14},  -- Skinning Knife
+    [6219]  = {2, 14},  -- Arclight Spanner
+    [40772] = {2, 14},  -- Bladed Pickaxe (NOT in PROFESSION_TOOL_IDS)
+    [11362] = {11, 2},  -- Quiver
+    [14156] = {1, 1},   -- Soul bag
+    [4496]  = {1, 0},   -- Regular bag
+    [22246] = {1, 2},   -- Herb bag
+    [6948]  = {15, 0},  -- Hearthstone
+}
+
+function GetItemInfoInstant(itemID)
+    local e = INSTANT_DB[itemID]
+    if not e then return nil end
+    return itemID, nil, nil, nil, nil, e[1], e[2]
+end
+
 -------------------------------------------------
 -- Addon loader
 -------------------------------------------------
@@ -97,7 +121,11 @@ ns:RegisterModule("Database", {
     IsItemMarkedJunk = function() return false end,
 })
 
-ns.L = setmetatable({}, {__index = function(_, k) return k end})
+-- Missing keys fall back to the key name, which is enough for assertions.
+-- SETTINGS_SORT_DEFAULT is spelled out because the font picker uses it as a
+-- label, and it exists in all 11 real locales.
+ns.L = setmetatable({SETTINGS_SORT_DEFAULT = "Default"},
+    {__index = function(_, k) return k end})
 
 LoadFile("Core/Constants.lua")
 LoadFile("Core/Utils.lua")
@@ -256,18 +284,7 @@ end
 -------------------------------------------------
 -- BagClassifier now uses Constants.ITEM_CLASS instead of Enum.ItemClass
 -------------------------------------------------
-C_Item.GetItemInfoInstant = function(itemID)
-    local map = {
-        [11362] = {11, 2},  -- Quiver
-        [14156] = {1, 1},   -- Soul bag
-        [4496]  = {1, 0},   -- Regular bag
-        [22246] = {1, 2},   -- Herb bag
-        [6948]  = {15, 0},  -- Hearthstone (not a container)
-    }
-    local e = map[itemID]
-    if not e then return nil end
-    return nil, nil, nil, nil, nil, e[1], e[2]
-end
+C_Item.GetItemInfoInstant = GetItemInfoInstant
 LoadFile("UI/BagFrame/BagClassifier.lua")
 local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
 
@@ -286,6 +303,122 @@ for _, case in ipairs(BAG_CASES) do
     if not ok then failures = failures + 1 end
     print(string.format("  %-8s -> %-8s expected %-8s %s",
         case.itemID, got, case.expect, ok and "PASS" or "<<< FAIL"))
+end
+
+-------------------------------------------------
+-- Tool detection: the broad "miscellaneous weapon" net must suppress junk
+-- without disturbing categorization.
+-------------------------------------------------
+print("")
+print("Tool detection (derived weapon subclass):")
+if Constants.TOOL_WEAPON_SUBCLASS ~= 14 then
+    failures = failures + 1
+    print("  <<< FAIL TOOL_WEAPON_SUBCLASS = " .. tostring(Constants.TOOL_WEAPON_SUBCLASS)
+        .. " (expected 14, derived from probe items)")
+else
+    print("  TOOL_WEAPON_SUBCLASS derived = 14 (not hardcoded)")
+end
+
+local Utils = ns:GetModule("Utils")
+-- Bladed Pickaxe: a real tool that is NOT in PROFESSION_TOOL_IDS and whose
+-- name matches none of the English patterns. Before the fix it was junk on
+-- zhCN but not on enUS.
+local unlistedTool = {
+    itemID = 40772, name = "Bladed Pickaxe", quality = 0,
+    classID = 2, subClassID = 14, equipSlot = "", itemType = "", itemSubType = "",
+}
+if Utils:IsProfessionTool(unlistedTool) then
+    failures = failures + 1
+    print("  <<< FAIL precise IsProfessionTool should NOT match (would change categorization)")
+else
+    print("  IsProfessionTool(unlisted tool) = false  (categorization untouched)")
+end
+if not Utils:IsToolLike(unlistedTool) then
+    failures = failures + 1
+    print("  <<< FAIL IsToolLike should match, so the tool is never auto-marked junk")
+else
+    print("  IsToolLike(unlisted tool)       = true   (junk suppressed)")
+end
+-- A genuine gray weapon must stay junk-eligible, i.e. the net must not be so
+-- broad that it swallows ordinary weapons.
+local grayDagger = {
+    itemID = 1234, name = "Rusty Dagger", quality = 0,
+    classID = 2, subClassID = 15, equipSlot = "INVTYPE_WEAPON",
+    itemType = "", itemSubType = "",
+}
+if Utils:IsToolLike(grayDagger) then
+    failures = failures + 1
+    print("  <<< FAIL IsToolLike matched an ordinary dagger")
+else
+    print("  IsToolLike(gray dagger)         = false  (still junk-eligible)")
+end
+
+-------------------------------------------------
+-- Font picker must only offer fonts the client can render
+-------------------------------------------------
+print("")
+print("Font options per locale:")
+-- Stub the probe: only the locale font and fonts whose name says CJK load on a
+-- CJK client, mimicking a client that refuses to load Latin-only faces.
+local LOADABLE = {
+    enUS = {["fonts\\locale_standard.ttf"]=true, ["fonts\\arialn.ttf"]=true,
+            ["fonts\\frizqt__.ttf"]=true, ["fonts\\morpheus.ttf"]=true,
+            ["fonts\\skurri.ttf"]=true, ["fonts\\2002.ttf"]=true},
+    zhCN = {["fonts\\locale_standard.ttf"]=true, ["fonts\\arkai_t.ttf"]=true,
+            ["fonts\\arhei.ttf"]=true, ["fonts\\arkai_c.ttf"]=true},
+}
+local probeFont
+UIParent = {
+    CreateFontString = function()
+        local fs = {path = nil}
+        function fs:SetFont(path)
+            if LOADABLE[CURRENT_LOCALE] and LOADABLE[CURRENT_LOCALE][path:lower()] then
+                self.path = path
+                return true
+            end
+            return false
+        end
+        function fs:GetFont() return self.path end
+        function fs:Hide() end
+        return fs
+    end,
+}
+-- GetFontOptions memoizes per session, so load Constants fresh for each locale
+-- rather than reaching into its internals.
+local function FreshConstants(locale)
+    CURRENT_LOCALE = locale
+    local scratch = {
+        L = ns.L,
+        Modules = ns.Modules,
+        RegisterModule = ns.RegisterModule,
+        GetModule = ns.GetModule,
+    }
+    assert(loadfile(ADDON .. "/Core/Constants.lua"))("GudaBags", scratch)
+    return scratch.Constants
+end
+
+for _, locale in ipairs({"enUS", "zhCN"}) do
+    local C = FreshConstants(locale)
+    local opts = C.GetFontOptions()
+    local names = {}
+    for i, o in ipairs(opts) do names[i] = o.label end
+    print("  " .. locale .. ": " .. table.concat(names, ", "))
+
+    if #opts == 0 then
+        failures = failures + 1
+        print("  <<< FAIL no font options offered")
+    end
+    for _, o in ipairs(opts) do
+        if not (LOADABLE[locale] and LOADABLE[locale][o.value:lower()]) then
+            failures = failures + 1
+            print("  <<< FAIL offered a font the client cannot load: " .. o.value)
+        end
+    end
+    -- The client's own font must always be first so the safe choice is default.
+    if opts[1] and opts[1].value ~= STANDARD_TEXT_FONT then
+        failures = failures + 1
+        print("  <<< FAIL first option is not the client's standard font")
+    end
 end
 
 -- Dropdown labels must follow the client language

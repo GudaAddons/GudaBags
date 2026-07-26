@@ -11,6 +11,9 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Expansion = ns:GetModule("Expansion")
 
+-- Numeric item class: GetItemInfo's itemType is localized
+local ITEM_CLASS_WEAPON = Constants.ITEM_CLASS.WEAPON
+
 -- Cached globals
 local InCombatLockdown = InCombatLockdown
 local ClearCursor = ClearCursor
@@ -277,6 +280,14 @@ local function IsTool(classID, subClassID, itemType, itemSubType, itemName, item
 
     local fishingPole = Constants.ITEM_SUBCLASS_FISHING_POLE
     if fishingPole and classID == fishingPole[1] and subClassID == fishingPole[2] then
+        return true
+    end
+
+    -- Most physical tools share the "miscellaneous weapon" subclass. Erring
+    -- broad is the safe direction here: a false positive only means "don't
+    -- auto-mark as junk", while a miss risks flagging someone's tool for vendor.
+    local toolSubClass = Constants.TOOL_WEAPON_SUBCLASS
+    if toolSubClass and classID == ITEM_CLASS_WEAPON and subClassID == toolSubClass then
         return true
     end
 

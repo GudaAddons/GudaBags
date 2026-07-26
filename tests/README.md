@@ -31,6 +31,13 @@ It also asserts:
 - `BagClassifier` still types bags correctly after moving off `Enum.ItemClass`
 - The Item Type dropdown localizes its **labels** while storing the canonical
   **English** value (so SavedVariables need no migration)
+- `TOOL_WEAPON_SUBCLASS` is *derived* from probe items rather than hardcoded
+- Tool detection stays correctly scoped: an unlisted tool is junk-**suppressed**
+  (`IsToolLike`) without changing categorization (`IsProfessionTool`), and an
+  ordinary gray dagger remains junk-eligible
+- The font picker offers only fonts the client can actually render, with the
+  client's own font first — a zhCN client must never be offered a Latin-only
+  face, which would turn every string in the addon into boxes
 
 ## Regression check
 
