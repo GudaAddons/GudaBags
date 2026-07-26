@@ -60,9 +60,10 @@ function MailScanner:ScanMailbox()
                 local link = GetInboxItemLink(mailIndex, attachIndex)
 
                 if itemID then
-                    local itemType, itemSubType, _, equipSlot
+                    local itemType, itemSubType, equipSlot, classID, subClassID
                     if link then
-                        _, _, _, _, _, itemType, itemSubType, _, equipSlot = GetItemInfo(link)
+                        _, _, _, _, _, itemType, itemSubType, _, equipSlot,
+                            _, _, classID, subClassID = GetItemInfo(link)
                     end
 
                     table.insert(rows, {
@@ -83,6 +84,8 @@ function MailScanner:ScanMailbox()
                         quality = quality or 0,
                         itemType = itemType,
                         itemSubType = itemSubType,
+                        classID = classID,
+                        subClassID = subClassID,
                         equipSlot = equipSlot,
                     })
                 end
@@ -171,7 +174,8 @@ end
 -------------------------------------------------
 
 local function AddPredictedMail(itemID, count, sender)
-    local name, link, quality, _, _, itemType, itemSubType, _, equipSlot, texture = GetItemInfo(itemID)
+    local name, link, quality, _, _, itemType, itemSubType, _, equipSlot, texture,
+          _, classID, subClassID = GetItemInfo(itemID)
 
     local row = {
         mailIndex = -1,  -- Negative index = predicted
@@ -191,6 +195,8 @@ local function AddPredictedMail(itemID, count, sender)
         quality = quality or 0,
         itemType = itemType,
         itemSubType = itemSubType,
+        classID = classID,
+        subClassID = subClassID,
         equipSlot = equipSlot,
         predicted = true,
     }

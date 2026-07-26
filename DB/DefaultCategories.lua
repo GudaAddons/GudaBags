@@ -22,14 +22,36 @@ local Expansion = ns:GetModule("Expansion")
 -- isProjectile: Arrows and bullets
 -- restoreTag: Consumable type from tooltip (eat/drink/restore)
 
+-- Item type dropdown options, in display order.
+-- The stored value stays the canonical English name (so saved rules and this
+-- file's DEFINITIONS keep working), while the label comes from the game client
+-- via GetItemClassInfo and is therefore already in the player's language.
+-- Note: "Reagent" (classID 5) is effectively unused in Classic — the Reagent
+-- category uses the separate isReagent rule (Trade Goods minus explosives/devices).
+local ITEM_TYPE_OPTION_ORDER = {
+    "Armor", "Weapon", "Consumable", "Trade Goods", "Container", "Projectile",
+    "Quiver", "Recipe", "Reagent", "Gem", "Key", "Quest", "Miscellaneous",
+}
+
+local function BuildItemTypeOptions()
+    local Constants = ns.Constants
+    local options = {}
+    for i, name in ipairs(ITEM_TYPE_OPTION_ORDER) do
+        local classID = Constants.ITEM_CLASS_BY_NAME[name]
+        options[i] = {
+            value = name,
+            label = classID and Constants.GetItemClassLabel(classID) or name,
+        }
+    end
+    return options
+end
+
 -- Rule types are returned as a function to get localized labels
 function DefaultCategories:GetRuleTypes()
     local L = ns.L
     return {
-        { id = "itemType", label = L["RULE_ITEM_TYPE"], valueType = "dropdown", options = {
-            "Armor", "Weapon", "Consumable", "Trade Goods", "Container", "Projectile",
-            "Quiver", "Recipe", "Reagent", "Gem", "Key", "Quest", "Miscellaneous"
-        }},
+        { id = "itemType", label = L["RULE_ITEM_TYPE"], valueType = "dropdown",
+          options = BuildItemTypeOptions() },
         { id = "itemID", label = L["RULE_ITEM_ID"], shortLabel = L["RULE_ITEM_ID_SHORT"], valueType = "itemID" },
         { id = "itemSubtype", label = L["RULE_ITEM_SUBTYPE"], valueType = "text" },
         { id = "namePattern", label = L["RULE_NAME_CONTAINS"], valueType = "text" },

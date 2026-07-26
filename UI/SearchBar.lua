@@ -50,6 +50,17 @@ local TYPE_CHIPS = {
     {key = "Junk",         localeKey = "CHIP_TYPE_JNK"},
 }
 
+-- classID → chip key, so chip matching is locale-independent (itemType from
+-- GetItemInfo is translated per client). "Junk" is quality-based, not a class,
+-- and is handled separately in the matcher below.
+local CHIP_KEY_BY_CLASS = {}
+for _, chip in ipairs(TYPE_CHIPS) do
+    local classID = ns.Constants.ITEM_CLASS_BY_NAME[chip.key]
+    if classID then
+        CHIP_KEY_BY_CLASS[classID] = chip.key
+    end
+end
+
 -------------------------------------------------
 -- Special chip definitions: {key, localeKey}
 -------------------------------------------------
@@ -1561,17 +1572,19 @@ function SearchBar:ItemMatchesFilters(parent, itemData)
 
     -- 2) Type chips: OR within group
     if next(state.types) then
-        local itemType = itemData.itemType
         local matched = false
-        if itemType then
-            if state.types[itemType] then
+        local classID = itemData.classID
+        if classID then
+            local chipKey = CHIP_KEY_BY_CLASS[classID]
+            if chipKey and state.types[chipKey] then
                 matched = true
             end
-            -- "Junk" chip matches quality 0 items
-            if not matched and state.types["Junk"] and (itemData.quality or -1) == 0 then
-                matched = true
-            end
-        elseif state.types["Junk"] and (itemData.quality or -1) == 0 then
+        elseif itemData.itemType and state.types[itemData.itemType] then
+            -- No classID available (unresolved item): fall back to the string
+            matched = true
+        end
+        -- "Junk" chip matches quality 0 items
+        if not matched and state.types["Junk"] and (itemData.quality or -1) == 0 then
             matched = true
         end
         if not matched then return false end

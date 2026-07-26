@@ -64,6 +64,14 @@ local TYPE_ALIASES = {
     quiver = "Quiver",
 }
 
+-- Short alias → numeric classID, so `t:weapon` works on every client locale.
+-- Aliases that don't resolve to a class fall back to matching the localized
+-- itemType string, which also lets a player type `t:武器` directly.
+local TYPE_ALIAS_CLASS = {}
+for alias, englishName in pairs(TYPE_ALIASES) do
+    TYPE_ALIAS_CLASS[alias] = ns.Constants.ITEM_CLASS_BY_NAME[englishName]
+end
+
 -------------------------------------------------
 -- Operator pattern: key<op>value
 -- Supports: q:epic, q>=3, q>2, q<=4, q<5, q=3
@@ -172,8 +180,13 @@ function SearchParser:ParseSearchInput(text)
                             handled = true
                         end
                     elseif key == "t" or key == "type" then
-                        local resolved = TYPE_ALIASES[valLower] or val
-                        table.insert(result.operators, {type = "itemType", op = "=", value = resolved})
+                        local classID = TYPE_ALIAS_CLASS[valLower]
+                        if classID then
+                            table.insert(result.operators, {type = "itemClass", op = "=", value = classID})
+                        else
+                            local resolved = TYPE_ALIASES[valLower] or val
+                            table.insert(result.operators, {type = "itemType", op = "=", value = resolved})
+                        end
                         handled = true
                     elseif key == "st" or key == "subtype" then
                         table.insert(result.operators, {type = "itemSubType", op = "=", value = valLower})
@@ -233,6 +246,9 @@ function SearchParser:MatchOperator(operator, itemData)
     if t == "quality" then
         return CompareNum(itemData.quality or 0, operator.op, operator.value)
 
+    elseif t == "itemClass" then
+        return itemData.classID == operator.value
+
     elseif t == "itemType" then
         if not itemData.itemType then return false end
         return strlower(itemData.itemType) == strlower(operator.value)
@@ -285,8 +301,11 @@ function SearchParser:MatchKeyword(keyword, itemData, context)
         return false
 
     elseif keyword == "quest" then
+        -- classID is locale-independent; the string check is an enUS fallback
         return itemData.isQuestItem == true
-            or (itemData.itemType and strlower(itemData.itemType) == "quest")
+            or itemData.classID == ns.Constants.ITEM_CLASS.QUEST
+            or (not itemData.classID and itemData.itemType
+                and strlower(itemData.itemType) == "quest")
 
     elseif keyword == "new" then
         if context and context.recentItems and itemData.itemID then

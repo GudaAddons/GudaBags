@@ -154,7 +154,7 @@ function GuildBankScanner:ScanSlot(tabIndex, slotIndex)
     end
 
     local itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType,
-          itemStackCount, itemEquipLoc, itemTexture, sellPrice, classID, subclassID = GetItemInfo(itemLink)
+          itemStackCount, itemEquipLoc, itemTexture, sellPrice, classID, subClassID = GetItemInfo(itemLink)
 
     return {
         itemID = itemID,
@@ -169,7 +169,7 @@ function GuildBankScanner:ScanSlot(tabIndex, slotIndex)
         itemEquipLoc = itemEquipLoc,
         sellPrice = sellPrice,
         classID = classID,
-        subclassID = subclassID,
+        subClassID = subClassID,
         tabIndex = tabIndex,
         slotIndex = slotIndex,
     }

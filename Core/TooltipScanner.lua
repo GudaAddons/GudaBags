@@ -3,6 +3,9 @@ local addonName, ns = ...
 local TooltipScanner = {}
 ns:RegisterModule("TooltipScanner", TooltipScanner)
 
+-- Numeric item classes: itemType/itemSubType from GetItemInfo are localized
+local ITEM_CLASS = ns.Constants.ITEM_CLASS
+
 -------------------------------------------------
 -- Tooltip Management
 -------------------------------------------------
@@ -128,8 +131,12 @@ end
 function TooltipScanner:IsBindOnEquip(bagID, slotID, itemData)
     if not bagID or not slotID then return false end
 
-    -- Only weapons and armor can be BoE
-    if itemData and itemData.itemType ~= "Weapon" and itemData.itemType ~= "Armor" then
+    -- Only weapons and armor can be BoE.
+    -- Keyed on classID: itemType is localized, so comparing it to "Weapon"/"Armor"
+    -- would reject every item on a non-English client.
+    if itemData and itemData.classID
+        and itemData.classID ~= ITEM_CLASS.WEAPON
+        and itemData.classID ~= ITEM_CLASS.ARMOR then
         return false
     end
 
@@ -189,8 +196,8 @@ end
 function TooltipScanner:GetRestoreTag(bagID, slotID, itemData)
     if not bagID or not slotID then return nil end
 
-    -- Only consumables have restore tags
-    if itemData and itemData.itemType ~= "Consumable" then
+    -- Only consumables have restore tags (classID, not the localized itemType)
+    if itemData and itemData.classID and itemData.classID ~= ITEM_CLASS.CONSUMABLE then
         return nil
     end
 

@@ -104,6 +104,84 @@ Constants.KEYRING_BAG_ID = Expansion and (Expansion.IsClassicEra or Expansion.Is
 
 Constants.HEARTHSTONE_ID = 6948
 
+-------------------------------------------------
+-- Item Class / Subclass (locale-independent)
+--
+-- GetItemInfo returns itemType (index 6) and itemSubType (index 7) already
+-- translated into the client's language, so comparing them against English
+-- literals fails on every non-enUS client. classID (index 12) and subClassID
+-- (index 13) are numeric and identical in every locale, so all type matching
+-- keys off these instead.
+--
+-- The English names below stay the canonical values written to SavedVariables
+-- (existing rules keep working, no migration). Only the *display* label is
+-- localized, via GetItemClassInfo, which the client translates for us.
+-------------------------------------------------
+
+-- Canonical English item type name -> classID
+Constants.ITEM_CLASS_BY_NAME = {
+    ["Consumable"]     = 0,
+    ["Container"]      = 1,
+    ["Weapon"]         = 2,
+    ["Gem"]            = 3,
+    ["Armor"]          = 4,
+    ["Reagent"]        = 5,
+    ["Projectile"]     = 6,
+    ["Trade Goods"]    = 7,
+    ["Recipe"]         = 9,
+    ["Quiver"]         = 11,
+    ["Quest"]          = 12,
+    ["Key"]            = 13,
+    ["Miscellaneous"]  = 15,
+    ["Glyph"]          = 16,
+}
+
+-- Frequently compared classIDs, named so call sites stay readable
+Constants.ITEM_CLASS = {
+    CONSUMABLE    = 0,
+    CONTAINER     = 1,
+    WEAPON        = 2,
+    ARMOR         = 4,
+    PROJECTILE    = 6,
+    TRADE_GOODS   = 7,
+    RECIPE        = 9,
+    QUIVER        = 11,
+    QUEST         = 12,
+    KEY           = 13,
+    MISCELLANEOUS = 15,
+}
+
+-- Canonical English subtype name -> {classID, subClassID}
+-- Only covers the subtypes the built-in categories and heuristics rely on.
+Constants.ITEM_SUBCLASS_BY_NAME = {
+    ["Soul Bag"]      = {1, 1},
+    ["Fishing Poles"] = {2, 20},
+    ["Fishing Pole"]  = {2, 20},
+    ["Arrow"]         = {6, 2},
+    ["Bullet"]        = {6, 3},
+}
+
+-- Weapon subClassID for fishing poles (profession tool detection)
+Constants.ITEM_SUBCLASS_FISHING_POLE = 20
+
+-- Localized display label for an item class, falling back to the English name.
+-- GetItemClassInfo follows the game client's language, not the addon's test
+-- locale, so this returns e.g. 护甲 on a zhCN client with no locale entries.
+local ITEM_CLASS_NAME_BY_ID = {}
+for name, classID in pairs(Constants.ITEM_CLASS_BY_NAME) do
+    ITEM_CLASS_NAME_BY_ID[classID] = name
+end
+
+function Constants.GetItemClassLabel(classID)
+    if GetItemClassInfo then
+        local label = GetItemClassInfo(classID)
+        if label and label ~= "" then
+            return label
+        end
+    end
+    return ITEM_CLASS_NAME_BY_ID[classID] or tostring(classID)
+end
+
 -- Item IDs to ignore for quest item indicator
 -- These items have itemType="Quest" but shouldn't show quest borders/icons
 Constants.QUEST_INDICATOR_IGNORE = {

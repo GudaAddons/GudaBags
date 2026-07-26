@@ -473,11 +473,12 @@ function CategoryDropIndicator:IsDraggedItemInCategory(categoryId)
     -- Get the item's current category
     -- We need itemData to categorize, so fetch it from the cursor item
     local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType,
-          itemStackCount, itemEquipLoc, itemTexture = GetItemInfo(itemID)
+          itemStackCount, itemEquipLoc, itemTexture, _, classID, subClassID = GetItemInfo(itemID)
 
     if not itemName then return false end
 
-    -- Build minimal itemData for categorization
+    -- Build minimal itemData for categorization. classID/subClassID are required:
+    -- the itemType rules match on them, since itemType/itemSubType are localized.
     local itemData = {
         itemID = itemID,
         name = itemName,
@@ -485,6 +486,8 @@ function CategoryDropIndicator:IsDraggedItemInCategory(categoryId)
         quality = itemQuality,
         itemType = itemType,
         itemSubType = itemSubType,
+        classID = classID,
+        subClassID = subClassID,
         equipSlot = itemEquipLoc,
     }
 

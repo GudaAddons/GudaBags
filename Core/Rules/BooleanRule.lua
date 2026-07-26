@@ -2,13 +2,22 @@ local addonName, ns = ...
 
 local RuleEngine = ns:GetModule("RuleEngine")
 local Utils = ns:GetModule("Utils")
+local Constants = ns.Constants
+
+local ITEM_CLASS = Constants.ITEM_CLASS
 
 local function IsSoulShard(itemData)
     return itemData.itemID == 6265 or
            (itemData.name and itemData.name:find("Soul Shard"))
 end
 
+-- Arrow and Bullet are both subclasses of Projectile, so the class check alone
+-- covers them. Falls back to the localized strings only when classID is absent.
 local function IsProjectile(itemData)
+    if itemData.classID then
+        return itemData.classID == ITEM_CLASS.PROJECTILE
+    end
+
     return itemData.itemType == "Projectile" or
            itemData.itemSubType == "Arrow" or
            itemData.itemSubType == "Bullet"
