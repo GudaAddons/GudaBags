@@ -593,6 +593,21 @@ L["TOOLTIP_FLYOUT_JUNK_OFF"] = "Mark as junk"
 L["TOOLTIP_FLYOUT_JUNK_ON"] = "Unmark as junk"
 L["TOOLTIP_FLYOUT_JUNK_AUTOVENDOR"] = "Will be auto-sold at vendor"
 
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Deposit"
+L["WITHDRAW"] = "Withdraw"
+L["GUILD_BANK_DEPOSIT"] = "Deposit Money"
+L["GUILD_BANK_WITHDRAW"] = "Withdraw Money"
+L["GUILD_BANK_WITHDRAW_NONE"] = "No withdrawal limit remaining"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Remaining today: %dg"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Unlimited withdrawals"
+L["GUILD_BANK_OFFLINE"] = "Guild bank must be open"
+L["TOOLTIP_PURCHASE_TAB"] = "Purchase New Tab"
+L["RIGHT_CLICK_HIDE_BAG"] = "Right-click to hide bag"
+L["RIGHT_CLICK_SHOW_BAG"] = "Right-click to show bag"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Click to show soul shards"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Click to hide soul shards"
+
 -------------------------------------------------
 -- Other Languages (placeholders for translators)
 -------------------------------------------------
@@ -1110,6 +1125,21 @@ L["PROFILE_NAME_PLACEHOLDER"] = "Nom du profil..."
 L["PROFILE_RESET_DEFAULTS"] = "Réinitialiser"
 L["PROFILE_RESET_CONFIRM"] = "Réinitialiser tous les réglages ? Cette action est irréversible."
 L["PROFILE_RESET_MSG"] = "Réglages réinitialisés"
+
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Déposer"
+L["WITHDRAW"] = "Retirer"
+L["GUILD_BANK_DEPOSIT"] = "Déposer de l'argent"
+L["GUILD_BANK_WITHDRAW"] = "Retirer de l'argent"
+L["GUILD_BANK_WITHDRAW_NONE"] = "Plus aucun retrait autorisé"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Restant aujourd'hui : %dpo"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Retraits illimités"
+L["GUILD_BANK_OFFLINE"] = "La banque de guilde doit être ouverte"
+L["TOOLTIP_PURCHASE_TAB"] = "Acheter un nouvel onglet"
+L["RIGHT_CLICK_HIDE_BAG"] = "Clic droit pour masquer le sac"
+L["RIGHT_CLICK_SHOW_BAG"] = "Clic droit pour afficher le sac"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Cliquer pour afficher les fragments d'âme"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Cliquer pour masquer les fragments d'âme"
 
 -- German
 local L = Locales.deDE
@@ -1679,6 +1709,21 @@ L["PROFILE_RESET_DEFAULTS"] = "Zurücksetzen"
 L["PROFILE_RESET_CONFIRM"] = "Alle Einstellungen zurücksetzen? Dies kann nicht rückgängig gemacht werden."
 L["PROFILE_RESET_MSG"] = "Einstellungen zurückgesetzt"
 
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Einzahlen"
+L["WITHDRAW"] = "Abheben"
+L["GUILD_BANK_DEPOSIT"] = "Geld einzahlen"
+L["GUILD_BANK_WITHDRAW"] = "Geld abheben"
+L["GUILD_BANK_WITHDRAW_NONE"] = "Kein Abhebungslimit mehr übrig"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Heute noch: %dG"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Unbegrenzte Abhebungen"
+L["GUILD_BANK_OFFLINE"] = "Die Gildenbank muss geöffnet sein"
+L["TOOLTIP_PURCHASE_TAB"] = "Neuen Reiter kaufen"
+L["RIGHT_CLICK_HIDE_BAG"] = "Rechtsklick, um die Tasche auszublenden"
+L["RIGHT_CLICK_SHOW_BAG"] = "Rechtsklick, um die Tasche einzublenden"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Klicken, um Seelensplitter anzuzeigen"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Klicken, um Seelensplitter auszublenden"
+
 -- Russian
 local L = Locales.ruRU
 L["ADDON_LOADED"] = "v%s загружен. Введите /guda для открытия."
@@ -2190,6 +2235,21 @@ L["PROFILE_NAME_PLACEHOLDER"] = "Имя профиля..."
 L["PROFILE_RESET_DEFAULTS"] = "Сбросить настройки"
 L["PROFILE_RESET_CONFIRM"] = "Сбросить все настройки? Это действие нельзя отменить."
 L["PROFILE_RESET_MSG"] = "Настройки сброшены"
+
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Положить"
+L["WITHDRAW"] = "Взять"
+L["GUILD_BANK_DEPOSIT"] = "Положить золото"
+L["GUILD_BANK_WITHDRAW"] = "Взять золото"
+L["GUILD_BANK_WITHDRAW_NONE"] = "Лимит на снятие исчерпан"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Осталось сегодня: %dз"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Снятие без ограничений"
+L["GUILD_BANK_OFFLINE"] = "Банк гильдии должен быть открыт"
+L["TOOLTIP_PURCHASE_TAB"] = "Купить новую вкладку"
+L["RIGHT_CLICK_HIDE_BAG"] = "Правый клик, чтобы скрыть сумку"
+L["RIGHT_CLICK_SHOW_BAG"] = "Правый клик, чтобы показать сумку"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Клик, чтобы показать осколки душ"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Клик, чтобы скрыть осколки душ"
 
 -- Brazilian Portuguese
 local L = Locales.ptBR
@@ -2703,6 +2763,21 @@ L["PROFILE_RESET_DEFAULTS"] = "Restaurar padrões"
 L["PROFILE_RESET_CONFIRM"] = "Restaurar todas as configurações? Esta ação não pode ser desfeita."
 L["PROFILE_RESET_MSG"] = "Configurações restauradas"
 
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Depositar"
+L["WITHDRAW"] = "Retirar"
+L["GUILD_BANK_DEPOSIT"] = "Depositar dinheiro"
+L["GUILD_BANK_WITHDRAW"] = "Retirar dinheiro"
+L["GUILD_BANK_WITHDRAW_NONE"] = "Nenhum limite de retirada restante"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Restante hoje: %do"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Retiradas ilimitadas"
+L["GUILD_BANK_OFFLINE"] = "O banco da guilda precisa estar aberto"
+L["TOOLTIP_PURCHASE_TAB"] = "Comprar nova aba"
+L["RIGHT_CLICK_HIDE_BAG"] = "Clique com o botão direito para ocultar a bolsa"
+L["RIGHT_CLICK_SHOW_BAG"] = "Clique com o botão direito para mostrar a bolsa"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Clique para mostrar os fragmentos de alma"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Clique para ocultar os fragmentos de alma"
+
 -- Spanish (Spain)
 local L = Locales.esES
 L["ADDON_LOADED"] = "v%s cargado. Escribe /guda para abrir."
@@ -3214,6 +3289,21 @@ L["PROFILE_NAME_PLACEHOLDER"] = "Nombre del perfil..."
 L["PROFILE_RESET_DEFAULTS"] = "Restablecer"
 L["PROFILE_RESET_CONFIRM"] = "¿Restablecer todos los ajustes? Esta acción no se puede deshacer."
 L["PROFILE_RESET_MSG"] = "Ajustes restablecidos"
+
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Depositar"
+L["WITHDRAW"] = "Retirar"
+L["GUILD_BANK_DEPOSIT"] = "Depositar dinero"
+L["GUILD_BANK_WITHDRAW"] = "Retirar dinero"
+L["GUILD_BANK_WITHDRAW_NONE"] = "No queda límite de retirada"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Restante hoy: %do"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Retiradas ilimitadas"
+L["GUILD_BANK_OFFLINE"] = "El banco de hermandad debe estar abierto"
+L["TOOLTIP_PURCHASE_TAB"] = "Comprar nueva pestaña"
+L["RIGHT_CLICK_HIDE_BAG"] = "Clic derecho para ocultar la bolsa"
+L["RIGHT_CLICK_SHOW_BAG"] = "Clic derecho para mostrar la bolsa"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Clic para mostrar las esquirlas de alma"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Clic para ocultar las esquirlas de alma"
 
 -- Spanish (Mexico) - Uses esES translations
 local L = Locales.esMX
@@ -3735,6 +3825,21 @@ L["PROFILE_RESET_DEFAULTS"] = "恢復預設"
 L["PROFILE_RESET_CONFIRM"] = "將所有設定恢復為預設值？此操作無法復原。"
 L["PROFILE_RESET_MSG"] = "設定已恢復預設"
 
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "存入"
+L["WITHDRAW"] = "取出"
+L["GUILD_BANK_DEPOSIT"] = "存入金幣"
+L["GUILD_BANK_WITHDRAW"] = "取出金幣"
+L["GUILD_BANK_WITHDRAW_NONE"] = "今日提取額度已用完"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "今日剩餘：%d金"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "提取無限制"
+L["GUILD_BANK_OFFLINE"] = "必須開啟公會銀行"
+L["TOOLTIP_PURCHASE_TAB"] = "購買新標籤頁"
+L["RIGHT_CLICK_HIDE_BAG"] = "右鍵點擊隱藏該背包"
+L["RIGHT_CLICK_SHOW_BAG"] = "右鍵點擊顯示該背包"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "點擊顯示靈魂碎片"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "點擊隱藏靈魂碎片"
+
 -- Simplified Chinese
 local L = Locales.zhCN
 L["ADDON_LOADED"] = "v%s 已加载。输入 /guda 打开。"
@@ -4247,6 +4352,21 @@ L["PROFILE_NAME_PLACEHOLDER"] = "配置方案名称..."
 L["PROFILE_RESET_DEFAULTS"] = "恢复默认"
 L["PROFILE_RESET_CONFIRM"] = "将所有设置恢复为默认值？此操作无法撤销。"
 L["PROFILE_RESET_MSG"] = "设置已恢复默认"
+
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "存入"
+L["WITHDRAW"] = "取出"
+L["GUILD_BANK_DEPOSIT"] = "存入金币"
+L["GUILD_BANK_WITHDRAW"] = "取出金币"
+L["GUILD_BANK_WITHDRAW_NONE"] = "今日提取额度已用完"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "今日剩余：%d金"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "提取无限制"
+L["GUILD_BANK_OFFLINE"] = "必须打开公会银行"
+L["TOOLTIP_PURCHASE_TAB"] = "购买新标签页"
+L["RIGHT_CLICK_HIDE_BAG"] = "右键点击隐藏该背包"
+L["RIGHT_CLICK_SHOW_BAG"] = "右键点击显示该背包"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "点击显示灵魂碎片"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "点击隐藏灵魂碎片"
 
 -- Korean
 local L = Locales.koKR
@@ -4780,6 +4900,21 @@ L["PROFILE_RESET_DEFAULTS"] = "기본값 복원"
 L["PROFILE_RESET_CONFIRM"] = "모든 설정을 기본값으로 되돌리시겠습니까? 되돌릴 수 없습니다."
 L["PROFILE_RESET_MSG"] = "설정이 기본값으로 복원되었습니다"
 
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "입금"
+L["WITHDRAW"] = "출금"
+L["GUILD_BANK_DEPOSIT"] = "골드 입금"
+L["GUILD_BANK_WITHDRAW"] = "골드 출금"
+L["GUILD_BANK_WITHDRAW_NONE"] = "남은 출금 한도가 없습니다"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "오늘 남은 한도: %d골드"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "출금 제한 없음"
+L["GUILD_BANK_OFFLINE"] = "길드 은행이 열려 있어야 합니다"
+L["TOOLTIP_PURCHASE_TAB"] = "새 탭 구매"
+L["RIGHT_CLICK_HIDE_BAG"] = "우클릭하여 가방 숨기기"
+L["RIGHT_CLICK_SHOW_BAG"] = "우클릭하여 가방 표시"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "클릭하여 영혼의 조각 표시"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "클릭하여 영혼의 조각 숨기기"
+
 -- Italian
 local L = Locales.itIT
 L["SETTINGS_GENERAL_DESCRIPTION"] = "GudaBags è un addon per borse leggero. Controlla la scheda |cffffd100Guida|r per funzionalità e suggerimenti."
@@ -5311,3 +5446,18 @@ L["PROFILE_NAME_PLACEHOLDER"] = "Nome del profilo..."
 L["PROFILE_RESET_DEFAULTS"] = "Ripristina predefiniti"
 L["PROFILE_RESET_CONFIRM"] = "Ripristinare tutte le impostazioni? L'operazione non può essere annullata."
 L["PROFILE_RESET_MSG"] = "Impostazioni ripristinate"
+
+-- Added: previously untranslated keys
+L["DEPOSIT"] = "Deposita"
+L["WITHDRAW"] = "Preleva"
+L["GUILD_BANK_DEPOSIT"] = "Deposita denaro"
+L["GUILD_BANK_WITHDRAW"] = "Preleva denaro"
+L["GUILD_BANK_WITHDRAW_NONE"] = "Nessun prelievo ancora disponibile"
+L["GUILD_BANK_WITHDRAW_REMAINING"] = "Rimanente oggi: %do"
+L["GUILD_BANK_WITHDRAW_UNLIMITED"] = "Prelievi illimitati"
+L["GUILD_BANK_OFFLINE"] = "La banca di gilda deve essere aperta"
+L["TOOLTIP_PURCHASE_TAB"] = "Acquista nuova scheda"
+L["RIGHT_CLICK_HIDE_BAG"] = "Clic destro per nascondere la borsa"
+L["RIGHT_CLICK_SHOW_BAG"] = "Clic destro per mostrare la borsa"
+L["CLICK_SHOW_SOUL_CATEGORY"] = "Clicca per mostrare le schegge d'anima"
+L["CLICK_HIDE_SOUL_CATEGORY"] = "Clicca per nascondere le schegge d'anima"
