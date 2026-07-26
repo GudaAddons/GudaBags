@@ -18,6 +18,7 @@ local Currency = {}
 ns:RegisterModule("Footer.Currency", Currency)
 
 local Tooltip = ns:GetModule("Tooltip")
+local L = ns.L
 
 local containerFrame = nil
 local tokenButtons = {}
@@ -84,12 +85,12 @@ local function ShowTokenTooltip(self)
         if name then
             GameTooltip:AddLine(name, 1, 1, 1)
             GameTooltip:AddLine(" ")
-            GameTooltip:AddDoubleLine("Quantity:", BreakUpLargeNumbers(quantity), 0.8, 0.8, 0.8, 1, 1, 1)
+            GameTooltip:AddDoubleLine(L["CURRENCY_QUANTITY"], BreakUpLargeNumbers(quantity), 0.8, 0.8, 0.8, 1, 1, 1)
             if maxQuantity and maxQuantity > 0 then
-                GameTooltip:AddDoubleLine("Maximum:", BreakUpLargeNumbers(maxQuantity), 0.8, 0.8, 0.8, 1, 1, 1)
+                GameTooltip:AddDoubleLine(L["CURRENCY_MAXIMUM"], BreakUpLargeNumbers(maxQuantity), 0.8, 0.8, 0.8, 1, 1, 1)
             end
             if totalEarned and totalEarned > 0 then
-                GameTooltip:AddDoubleLine("Total Earned:", BreakUpLargeNumbers(totalEarned), 0.8, 0.8, 0.8, 1, 1, 1)
+                GameTooltip:AddDoubleLine(L["CURRENCY_TOTAL_EARNED"], BreakUpLargeNumbers(totalEarned), 0.8, 0.8, 0.8, 1, 1, 1)
             end
         end
     else
@@ -97,7 +98,7 @@ local function ShowTokenTooltip(self)
         if self.currencyName then
             GameTooltip:AddLine(self.currencyName, 1, 1, 1)
             GameTooltip:AddLine(" ")
-            GameTooltip:AddDoubleLine("Quantity:", BreakUpLargeNumbers(self.currencyCount or 0), 0.8, 0.8, 0.8, 1, 1, 1)
+            GameTooltip:AddDoubleLine(L["CURRENCY_QUANTITY"], BreakUpLargeNumbers(self.currencyCount or 0), 0.8, 0.8, 0.8, 1, 1, 1)
         end
     end
 

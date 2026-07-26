@@ -4,6 +4,7 @@ local CategoryDropIndicator = {}
 ns:RegisterModule("CategoryDropIndicator", CategoryDropIndicator)
 
 local Constants = ns.Constants
+local L = ns.L
 
 -------------------------------------------------
 -- State
@@ -73,9 +74,9 @@ local function CreateIndicator()
     frame:SetScript("OnEnter", function(self)
         if currentCategoryId then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("Add item to this category", 1, 1, 1)
-            GameTooltip:AddLine("Drop here to permanently assign", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine("this item to \"" .. tostring(currentCategoryId) .. "\"", 0.5, 1, 0.5)
+            GameTooltip:SetText(L["DROP_ADD_TO_CATEGORY"], 1, 1, 1)
+            GameTooltip:AddLine(L["DROP_PERMANENTLY_ASSIGN"], 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(string.format(L["DROP_THIS_ITEM_TO"], tostring(currentCategoryId)), 0.5, 1, 0.5)
             GameTooltip:Show()
         end
     end)

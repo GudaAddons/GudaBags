@@ -65,9 +65,9 @@ local function CreateBankTypeButton(parent, bankType, name, icon, index)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(name)
         if bankType == BANK_TYPE_ACCOUNT then
-            GameTooltip:AddLine("Shared storage across all characters", 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine(ns.L["BANK_SHARED_STORAGE"], 0.8, 0.8, 0.8, true)
         else
-            GameTooltip:AddLine("Personal character bank", 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine(ns.L["BANK_PERSONAL_STORAGE"], 0.8, 0.8, 0.8, true)
         end
         GameTooltip:Show()
     end)

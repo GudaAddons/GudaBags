@@ -881,7 +881,7 @@ local function CreateButton(parent)
     Font:Apply(boeText, 10, "OUTLINE")
     boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
     boeText:SetJustifyH("LEFT")
-    boeText:SetText("BoE")
+    boeText:SetText(ns.L["ITEM_BOE_LABEL"])
     boeText:Hide()
     button.boeText = boeText
 

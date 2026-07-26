@@ -1465,7 +1465,7 @@ function SearchBar:SetNarrowMode(parent, isCompact, isNarrow)
     -- Update placeholder text (compact: < 260)
     if instance.searchBox and instance.searchBox.placeholder then
         if isCompact then
-            instance.searchBox.placeholder:SetText("Search...")
+            instance.searchBox.placeholder:SetText(L["SEARCH_PLACEHOLDER_SHORT"])
         else
             instance.searchBox.placeholder:SetText(L["SEARCH_PLACEHOLDER"])
         end
