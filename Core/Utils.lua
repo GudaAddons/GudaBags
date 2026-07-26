@@ -4,6 +4,72 @@ local Utils = {}
 ns:RegisterModule("Utils", Utils)
 
 -------------------------------------------------
+-- UTF-8 aware lowercase
+--
+-- string.lower only folds A-Z, so on a Russian client "Оружие" and a typed
+-- "оружие" never match, and the same holds for accented European letters
+-- (Épée / épée, Rüstung / rüstung). Search compares both sides through this
+-- instead.
+--
+-- Every character that needs folding for the supported locales lives in
+-- U+0080..U+07FF, which is always a 2-byte UTF-8 sequence, so the table is
+-- generated from codepoint ranges rather than written out by hand. CJK and
+-- Korean need no entries — those scripts have no case.
+-------------------------------------------------
+
+local strfind, strlower, strgsub = string.find, string.lower, string.gsub
+
+local UTF8_LOWER = {}
+do
+    -- Encode a codepoint in U+0080..U+07FF as its 2-byte UTF-8 sequence
+    local function Char2(cp)
+        return string.char(192 + math.floor(cp / 64), 128 + (cp % 64))
+    end
+
+    local function AddRange(fromCp, toCp, delta, skip)
+        for cp = fromCp, toCp do
+            if cp ~= skip then
+                UTF8_LOWER[Char2(cp)] = Char2(cp + delta)
+            end
+        end
+    end
+
+    -- Latin-1 Supplement À..Þ, skipping × (U+00D7), which is not a letter.
+    -- Covers frFR, deDE, esES, ptBR and itIT accented capitals.
+    AddRange(0x00C0, 0x00DE, 0x20, 0x00D7)
+    -- Cyrillic А..Я and the Ѐ..Џ block (ruRU)
+    AddRange(0x0410, 0x042F, 0x20)
+    AddRange(0x0400, 0x040F, 0x50)
+    -- Ÿ (U+0178) is the one frFR capital outside Latin-1 Supplement
+    UTF8_LOWER[Char2(0x0178)] = Char2(0x00FF)
+end
+
+-- A-Z folded by explicit byte range. string.lower would be shorter, but on
+-- some builds the C locale's tolower also rewrites bytes >= 0x80 and corrupts
+-- the multi-byte sequences we just folded. Lua pattern ranges are byte-based,
+-- so [A-Z] is locale-independent.
+local ASCII_LOWER = {}
+for b = 65, 90 do
+    ASCII_LOWER[string.char(b)] = string.char(b + 32)
+end
+
+-- Lowercase a string, folding the non-ASCII letters the locales above use.
+-- Pure-ASCII input (the common case) takes the plain string.lower fast path.
+function Utils:UTF8Lower(text)
+    if not text or text == "" then
+        return text
+    end
+    -- Pure ASCII: nothing multi-byte to protect, so use the fast C path
+    if not strfind(text, "[\128-\255]") then
+        return strlower(text)
+    end
+    -- Fold the multi-byte capitals, then the ASCII ones, both by byte range so
+    -- the result never depends on the C locale.
+    local folded = strgsub(text, "[\194-\211][\128-\191]", UTF8_LOWER)
+    return (strgsub(folded, "[A-Z]", ASCII_LOWER))
+end
+
+-------------------------------------------------
 -- Item Key Generation
 -- Creates a unique key for an item based on its properties
 -- Used for button reuse optimization in category view

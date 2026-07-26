@@ -713,13 +713,6 @@ Constants.VALUABLE_EQUIP_SLOTS = {
 }
 
 -------------------------------------------------
--- Fonts
--------------------------------------------------
-Constants.FONTS = {
-    DEFAULT = "Fonts\\FRIZQT__.TTF",
-}
-
--------------------------------------------------
 -- Color Thresholds (for tooltip text analysis)
 -------------------------------------------------
 Constants.COLOR_THRESHOLDS = {

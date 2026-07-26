@@ -354,6 +354,46 @@ else
 end
 
 -------------------------------------------------
+-- UTF-8 case folding: a typed lowercase query must match a capitalised name.
+-- string.lower only folds A-Z, so this is what makes search work on ruRU and
+-- the accented European locales.
+-------------------------------------------------
+print("")
+print("UTF8Lower (search case folding):")
+local CASE_CASES = {
+    {"Оружие",       "оружие",       "ruRU Cyrillic"},
+    {"ЁЖИК",         "ёжик",         "ruRU Ё block"},
+    {"Épée",         "épée",         "frFR accented"},
+    {"Rüstung",      "rüstung",      "deDE umlaut"},
+    {"Misión",       "misión",       "esES accented"},
+    {"CAMELOTE",     "camelote",     "ASCII still works"},
+    {"Sword of Ünnn","sword of ünnn","mixed ASCII + accent"},
+}
+for _, c in ipairs(CASE_CASES) do
+    local got = Utils:UTF8Lower(c[1])
+    local ok = (got == c[2])
+    if not ok then failures = failures + 1 end
+    print(string.format("  %-16s -> %-16s %s  %s",
+        c[1], got, ok and "PASS" or "<<< FAIL", c[3]))
+end
+-- Must not corrupt caseless scripts, and must be idempotent
+for _, s in ipairs({"武器", "무기", "护甲"}) do
+    local once = Utils:UTF8Lower(s)
+    if once ~= s then
+        failures = failures + 1
+        print("  <<< FAIL caseless script altered: " .. s .. " -> " .. tostring(once))
+    end
+end
+print("  caseless scripts (武器/무기/护甲) unchanged")
+-- × is not a letter: it must not fold to ÷
+if Utils:UTF8Lower("×") ~= "×" then
+    failures = failures + 1
+    print("  <<< FAIL multiplication sign was folded")
+else
+    print("  × not folded (not a letter)")
+end
+
+-------------------------------------------------
 -- Font picker must only offer fonts the client can render
 -------------------------------------------------
 print("")

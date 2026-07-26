@@ -8,6 +8,7 @@ local L = ns.L
 local SearchParser = ns:GetModule("SearchParser")
 local Database = ns:GetModule("Database")
 local Font = ns:GetModule("Font")
+local Utils = ns:GetModule("Utils")
 
 local instances = {}
 local searchOverlay = nil
@@ -1727,17 +1728,17 @@ function SearchBar:ItemMatchesSearch(itemData, searchText)
         return false
     end
 
-    local searchLower = strlower(searchText)
+    local searchLower = Utils:UTF8Lower(searchText)
 
-    if itemData.name and strfind(strlower(itemData.name), searchLower, 1, true) then
+    if itemData.name and strfind(Utils:UTF8Lower(itemData.name), searchLower, 1, true) then
         return true
     end
 
-    if itemData.itemType and strfind(strlower(itemData.itemType), searchLower, 1, true) then
+    if itemData.itemType and strfind(Utils:UTF8Lower(itemData.itemType), searchLower, 1, true) then
         return true
     end
 
-    if itemData.itemSubType and strfind(strlower(itemData.itemSubType), searchLower, 1, true) then
+    if itemData.itemSubType and strfind(Utils:UTF8Lower(itemData.itemSubType), searchLower, 1, true) then
         return true
     end
 
