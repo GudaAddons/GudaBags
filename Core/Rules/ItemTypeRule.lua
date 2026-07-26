@@ -6,7 +6,9 @@ local Constants = ns.Constants
 
 local ITEM_CLASS_BY_NAME = Constants.ITEM_CLASS_BY_NAME
 local ITEM_SUBCLASS_BY_NAME = Constants.ITEM_SUBCLASS_BY_NAME
+local TRADE_GOODS_SUBCLASS = Constants.TRADE_GOODS_SUBCLASS
 local WEAPON_CLASS = Constants.ITEM_CLASS.WEAPON
+local TRADE_GOODS_CLASS = Constants.ITEM_CLASS.TRADE_GOODS
 
 -------------------------------------------------
 -- Item Type Rule
@@ -71,9 +73,10 @@ end)
 -------------------------------------------------
 
 RuleEngine:RegisterEvaluator("isReagent", function(ruleValue, itemData, context)
-    -- Reagent = Trade Goods (classID 7) excluding Explosives (subClassID 2) and Devices (subClassID 3)
-    if itemData.classID == 7 then
-        return itemData.subClassID ~= 2 and itemData.subClassID ~= 3
+    -- Reagent = Trade Goods excluding Explosives and Devices
+    if itemData.classID == TRADE_GOODS_CLASS then
+        return itemData.subClassID ~= TRADE_GOODS_SUBCLASS.EXPLOSIVES
+            and itemData.subClassID ~= TRADE_GOODS_SUBCLASS.DEVICES
     end
     return false
 end)

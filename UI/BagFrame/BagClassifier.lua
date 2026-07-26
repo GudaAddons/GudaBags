@@ -5,6 +5,11 @@ ns:RegisterModule("BagFrame.BagClassifier", BagClassifier)
 
 local Constants = ns.Constants
 
+-- Item classes come from Constants rather than Enum.ItemClass so there is one
+-- idiom across the addon, and so this keeps working on flavors where
+-- Enum.ItemClass is absent or incomplete.
+local ITEM_CLASS = Constants.ITEM_CLASS
+
 -- Map bag container subClassID to bag type string
 local subClassToBagType = {
     [0] = "regular",
@@ -38,12 +43,12 @@ function BagClassifier:GetBagTypeFromItemID(itemID)
     end
 
     -- Quiver class items
-    if classID == Enum.ItemClass.Quiver then
+    if classID == ITEM_CLASS.QUIVER then
         return "quiver"
     end
 
     -- Only apply subclass mapping to Container class items
-    if classID == Enum.ItemClass.Container and subClassID then
+    if classID == ITEM_CLASS.CONTAINER and subClassID then
         return subClassToBagType[subClassID] or "regular"
     end
 

@@ -225,8 +225,8 @@ function Utils:IsProfessionTool(itemData)
     end
 
     -- Check fishing poles by class/subclass (locale-independent)
-    if itemData.classID == Constants.ITEM_CLASS.WEAPON
-        and itemData.subClassID == Constants.ITEM_SUBCLASS_FISHING_POLE then
+    local fishingPole = Constants.ITEM_SUBCLASS_FISHING_POLE
+    if itemData.classID == fishingPole[1] and itemData.subClassID == fishingPole[2] then
         return true
     end
 

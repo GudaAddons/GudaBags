@@ -118,7 +118,12 @@ Constants.HEARTHSTONE_ID = 6948
 -- localized, via GetItemClassInfo, which the client translates for us.
 -------------------------------------------------
 
--- Canonical English item type name -> classID
+-- SINGLE SOURCE OF TRUTH: canonical English item type name -> classID.
+-- Everything else in this section is derived from this table.
+--
+-- These are the game's own numeric item classes. They are hardcoded rather than
+-- read from Enum.ItemClass because the .toc spans five flavors (Retail through
+-- Classic Era) and Enum.ItemClass is absent or incomplete on the older ones.
 Constants.ITEM_CLASS_BY_NAME = {
     ["Consumable"]     = 0,
     ["Container"]      = 1,
@@ -136,23 +141,18 @@ Constants.ITEM_CLASS_BY_NAME = {
     ["Glyph"]          = 16,
 }
 
--- Frequently compared classIDs, named so call sites stay readable
-Constants.ITEM_CLASS = {
-    CONSUMABLE    = 0,
-    CONTAINER     = 1,
-    WEAPON        = 2,
-    ARMOR         = 4,
-    PROJECTILE    = 6,
-    TRADE_GOODS   = 7,
-    RECIPE        = 9,
-    QUIVER        = 11,
-    QUEST         = 12,
-    KEY           = 13,
-    MISCELLANEOUS = 15,
-}
+-- Derived: named constants so call sites read as WEAPON rather than 2.
+-- "Trade Goods" -> TRADE_GOODS.
+Constants.ITEM_CLASS = {}
+local ITEM_CLASS_NAME_BY_ID = {}
+for name, classID in pairs(Constants.ITEM_CLASS_BY_NAME) do
+    Constants.ITEM_CLASS[(name:upper():gsub(" ", "_"))] = classID
+    ITEM_CLASS_NAME_BY_ID[classID] = name
+end
 
--- Canonical English subtype name -> {classID, subClassID}
--- Only covers the subtypes the built-in categories and heuristics rely on.
+-- Canonical English subtype name -> {classID, subClassID}.
+-- Covers the subtypes the built-in categories and heuristics rely on, plus the
+-- ones a user is likely to type into the free-text "Item Subtype" rule.
 Constants.ITEM_SUBCLASS_BY_NAME = {
     ["Soul Bag"]      = {1, 1},
     ["Fishing Poles"] = {2, 20},
@@ -161,21 +161,25 @@ Constants.ITEM_SUBCLASS_BY_NAME = {
     ["Bullet"]        = {6, 3},
 }
 
--- Weapon subClassID for fishing poles (profession tool detection)
-Constants.ITEM_SUBCLASS_FISHING_POLE = 20
+-- Derived: {classID, subClassID} pair for fishing poles (profession tools)
+Constants.ITEM_SUBCLASS_FISHING_POLE = Constants.ITEM_SUBCLASS_BY_NAME["Fishing Poles"]
+
+-- Trade Goods subclasses that are NOT crafting reagents
+Constants.TRADE_GOODS_SUBCLASS = {
+    EXPLOSIVES = 2,
+    DEVICES    = 3,
+}
 
 -- Localized display label for an item class, falling back to the English name.
 -- GetItemClassInfo follows the game client's language, not the addon's test
 -- locale, so this returns e.g. 护甲 on a zhCN client with no locale entries.
-local ITEM_CLASS_NAME_BY_ID = {}
-for name, classID in pairs(Constants.ITEM_CLASS_BY_NAME) do
-    ITEM_CLASS_NAME_BY_ID[classID] = name
-end
-
+-- pcall'd because this runs while building the category editor's dropdown: a
+-- classID missing on an older flavor (Reagent, Glyph) must not take the whole
+-- editor down.
 function Constants.GetItemClassLabel(classID)
     if GetItemClassInfo then
-        local label = GetItemClassInfo(classID)
-        if label and label ~= "" then
+        local ok, label = pcall(GetItemClassInfo, classID)
+        if ok and label and label ~= "" then
             return label
         end
     end

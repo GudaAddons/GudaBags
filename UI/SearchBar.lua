@@ -1572,15 +1572,12 @@ function SearchBar:ItemMatchesFilters(parent, itemData)
 
     -- 2) Type chips: OR within group
     if next(state.types) then
+        -- state.types is keyed by chip key (always English), so there is no
+        -- itemType string fallback here: on a non-English client the localized
+        -- itemType could never match those keys anyway.
         local matched = false
-        local classID = itemData.classID
-        if classID then
-            local chipKey = CHIP_KEY_BY_CLASS[classID]
-            if chipKey and state.types[chipKey] then
-                matched = true
-            end
-        elseif itemData.itemType and state.types[itemData.itemType] then
-            -- No classID available (unresolved item): fall back to the string
+        local chipKey = itemData.classID and CHIP_KEY_BY_CLASS[itemData.classID]
+        if chipKey and state.types[chipKey] then
             matched = true
         end
         -- "Junk" chip matches quality 0 items

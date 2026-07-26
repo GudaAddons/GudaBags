@@ -263,7 +263,23 @@ end
 -------------------------------------------------
 -- Check if item is a tool
 -------------------------------------------------
-local function IsTool(itemType, itemSubType, itemName)
+-- Tools must never be auto-marked as junk. The itemID and class/subclass checks
+-- are locale-independent and run first; the English itemType/name heuristics are
+-- kept as a last resort (they only ever fire on an enUS client, and dropping
+-- them would change existing enUS behaviour).
+-- All inputs come from the snapshot's itemInfoCache — no API calls are added to
+-- the offline computation phase.
+local function IsTool(classID, subClassID, itemType, itemSubType, itemName, itemID)
+    if itemID and Constants.PROFESSION_TOOL_IDS
+        and Constants.PROFESSION_TOOL_IDS[itemID] then
+        return true
+    end
+
+    local fishingPole = Constants.ITEM_SUBCLASS_FISHING_POLE
+    if fishingPole and classID == fishingPole[1] and subClassID == fishingPole[2] then
+        return true
+    end
+
     if not itemType then return false end
 
     local typeLower = string_lower(itemType)
@@ -508,11 +524,13 @@ local function SnapshotSlots(bagIDs)
                         -- Don't mark items with incomplete data as junk
                         shouldBeJunk = false
                     elseif isGrayItem then
-                        shouldBeJunk = not IsTool(info.itemType, info.itemSubType, info.itemName)
+                        shouldBeJunk = not IsTool(info.classID, info.subClassID,
+                            info.itemType, info.itemSubType, info.itemName, itemID)
                     elseif (info.quality == 1) and isEquippable and whiteItemsJunk then
                         local isValuableSlot = Constants.VALUABLE_EQUIP_SLOTS and Constants.VALUABLE_EQUIP_SLOTS[info.equipLoc]
                         if not isValuableSlot then
-                            shouldBeJunk = not IsTool(info.itemType, info.itemSubType, info.itemName) and info.itemFamily == 0
+                            shouldBeJunk = not IsTool(info.classID, info.subClassID,
+                                info.itemType, info.itemSubType, info.itemName, itemID) and info.itemFamily == 0
                         end
                     end
 
