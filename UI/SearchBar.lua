@@ -823,11 +823,15 @@ local function CreateChipStrip(searchBar, parent)
     -- Types dropdown button (hidden by default, shown on overflow)
     local typesDropdown = CreateFrame("Button", nil, chipStrip)
     typesDropdown:SetHeight(Constants.FRAME.CHIP_SIZE)
-    -- Filter icon
+    -- Overflow menu icon. Deliberately the generic hamburger, not categories.png:
+    -- that texture is registered as `viewCycle` (single/category/split layout) in
+    -- UI/IconButton.lua, so reusing it here made one glyph mean two unrelated
+    -- things on screen at once. A hamburger is a generic "opens a menu"
+    -- affordance and carries no competing meaning.
     local dropIcon = typesDropdown:CreateTexture(nil, "ARTWORK")
     dropIcon:SetSize(10, 10)
     dropIcon:SetPoint("LEFT", typesDropdown, "LEFT", 4, 0)
-    dropIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\categories.png")
+    dropIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\more.png")
     dropIcon:SetVertexColor(0.55, 0.55, 0.55)
     typesDropdown.icon = dropIcon
     -- Label
