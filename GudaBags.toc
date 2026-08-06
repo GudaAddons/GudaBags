@@ -16,7 +16,7 @@
 ## SavedVariables: GudaBags_DB
 ## SavedVariablesPerCharacter: GudaBags_CharDB
 ## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png
-## OptionalDeps: Masque
+## OptionalDeps: Masque, CanIMogIt
 
 ## Category: Guda
 
@@ -46,6 +46,7 @@ Core\SlashCommands.lua
 Compatibility\API.lua
 Compatibility\Features.lua
 Compatibility\Pawn.lua
+Compatibility\CanIMogIt.lua
 
 # Category System
 DB\DefaultCategories.lua

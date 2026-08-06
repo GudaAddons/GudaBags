@@ -136,6 +136,13 @@ local SPECIAL_CHIPS = {
     {key = "learnable", localeKey = "CHIP_SPECIAL_LEARNABLE"},
 }
 
+-- The transmog chip only exists when CanIMogIt does; without it the filter
+-- could never match anything, so showing the chip would just be a dead control.
+-- GudaBags.toc lists CanIMogIt in OptionalDeps, so it has loaded by now.
+if _G.CIMI_AddToFrame then
+    SPECIAL_CHIPS[#SPECIAL_CHIPS + 1] = {key = "mog", localeKey = "CHIP_SPECIAL_MOG"}
+end
+
 -------------------------------------------------
 -- Search Overlay (shared across instances)
 -------------------------------------------------

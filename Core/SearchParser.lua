@@ -155,7 +155,8 @@ function SearchParser:ParseSearchInput(text)
         -- Check standalone keywords first
         if tokenLower == "boe" or tokenLower == "boa" or tokenLower == "bop" or tokenLower == "quest"
             or tokenLower == "new" or tokenLower == "usable" or tokenLower == "junk"
-            or tokenLower == "openable" or tokenLower == "learnable" then
+            or tokenLower == "openable" or tokenLower == "learnable"
+            or tokenLower == "mog" then
             table.insert(result.keywords, tokenLower)
             handled = true
         end
@@ -300,6 +301,16 @@ function SearchParser:MatchKeyword(keyword, itemData, context)
         -- warbound piece that has been equipped no longer matches.
         if context and context.tooltipScanner and itemData.bagID and itemData.slot then
             return context.tooltipScanner:GetBindTag(itemData.bagID, itemData.slot, itemData) == "boa"
+        end
+        return false
+
+    elseif keyword == "mog" then
+        -- Appearance not yet collected, per CanIMogIt. Served from that
+        -- module's per-itemLink cache, since this runs for every item on
+        -- every refresh. False when CanIMogIt is not installed.
+        local CanIMogItCompat = ns:GetModule("Compatibility.CanIMogIt")
+        if CanIMogItCompat then
+            return CanIMogItCompat:IsUnknownAppearance(itemData)
         end
         return false
 

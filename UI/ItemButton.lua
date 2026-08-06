@@ -81,6 +81,26 @@ local function ApplyUpgradeArrow(button)
     end
 end
 
+-- CanIMogIt transmog icon. Invisible without CanIMogIt (retail-only addon).
+-- Reads button.itemData like ApplyUpgradeArrow, so it can also be called
+-- standalone by RefreshTransmogIcons.
+local CIMICompat
+local function GetCIMICompat()
+    CIMICompat = CIMICompat or ns:GetModule("Compatibility.CanIMogIt")
+    return CIMICompat
+end
+
+local function ApplyTransmogIcon(button)
+    local compat = GetCIMICompat()
+    if compat then compat:Decorate(button) end
+end
+
+-- Clears the icon but keeps the overlay on the pooled button for reuse.
+local function HideTransmogIcon(button)
+    local compat = GetCIMICompat()
+    if compat then compat:Hide(button) end
+end
+
 -- No-op: UIErrorsFrame hooking was removed to prevent taint propagation
 -- that would break Blizzard's secure unit frame code (maxHealth comparisons, etc.)
 local function SuppressItemErrors()
@@ -378,6 +398,7 @@ local function ResetButton(pool, button)
     if button.chargesText then button.chargesText:Hide() end
     if button.boeText then button.boeText:Hide() end
     if button.upgradeArrow then button.upgradeArrow:Hide() end
+    HideTransmogIcon(button)
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.craftingQualityIcon then button.craftingQualityIcon:Hide() end
@@ -1899,6 +1920,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.chargesText then button.chargesText:Hide() end
         if button.boeText then button.boeText:Hide() end
         if button.upgradeArrow then button.upgradeArrow:Hide() end
+        HideTransmogIcon(button)
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Mark this button as empty slot handler
@@ -1942,6 +1964,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.chargesText then button.chargesText:Hide() end
         if button.boeText then button.boeText:Hide() end
         if button.upgradeArrow then button.upgradeArrow:Hide() end
+        HideTransmogIcon(button)
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Animated glow border
@@ -2302,6 +2325,11 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         ApplyUpgradeArrow(button)
         ns:ProfileStop("si.upgrade")
 
+        -- CanIMogIt transmog icon. Invisible without CanIMogIt.
+        ns:ProfileStart("si.cimi")
+        ApplyTransmogIcon(button)
+        ns:ProfileStop("si.cimi")
+
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
 
@@ -2356,6 +2384,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.upgradeArrow then
             button.upgradeArrow:Hide()
         end
+        HideTransmogIcon(button)
         if button.userLockIcon then
             button.userLockIcon:Hide()
         end
@@ -2544,6 +2573,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     if button.upgradeArrow then
         button.upgradeArrow:Hide()
     end
+    HideTransmogIcon(button)
     if button.userLockIcon then
         button.userLockIcon:Hide()
     end
@@ -2855,6 +2885,18 @@ function ItemButton:RefreshUpgradeArrows()
     for button in buttonPool:EnumerateActive() do
         if button.upgradeArrow and button.itemData then
             ApplyUpgradeArrow(button)
+        end
+    end
+end
+
+-- Re-evaluate just the transmog icon on every active button. Called by the
+-- CanIMogIt compat module when the appearance collection changes or its options
+-- are toggled -- same cheap repaint path as RefreshUpgradeArrows.
+function ItemButton:RefreshTransmogIcons()
+    if not buttonPool then return end
+    for button in buttonPool:EnumerateActive() do
+        if button.itemData then
+            ApplyTransmogIcon(button)
         end
     end
 end
