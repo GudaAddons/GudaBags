@@ -127,99 +127,49 @@ end
 -- Common Item Checks
 -------------------------------------------------
 
--- Check if item is Bind on Equip
-function TooltipScanner:IsBindOnEquip(bagID, slotID, itemData)
-    if not bagID or not slotID then return false end
-
-    -- Only weapons and armor can be BoE.
-    -- Keyed on classID: itemType is localized, so comparing it to "Weapon"/"Armor"
-    -- would reject every item on a non-English client.
-    if itemData and itemData.classID
-        and itemData.classID ~= ITEM_CLASS.WEAPON
-        and itemData.classID ~= ITEM_CLASS.ARMOR then
-        return false
-    end
-
-    if not self:SetBagItem(bagID, slotID) then
-        return false
-    end
-
-    -- Check first 6 lines for binding info
-    local isBoE = false
-    self:ScanLines(function(lineNum, text)
-        if text == ITEM_BIND_ON_EQUIP or text:find("Binds when equipped") then
-            isBoE = true
-            return true
-        end
-        if text == ITEM_SOULBOUND or text:find("Soulbound") then
-            isBoE = false
-            return true
-        end
-        if text == ITEM_BIND_ON_PICKUP or text:find("Binds when picked up") then
-            isBoE = false
-            return true
-        end
-    end, 6)
-
-    return isBoE
-end
-
--- Check if item is Warbound (account-bound in TWW)
-function TooltipScanner:IsWarbound(bagID, slotID)
-    if not bagID or not slotID then return false end
-
-    if not self:SetBagItem(bagID, slotID) then
-        return false
-    end
-
-    local isWarbound = false
-    self:ScanLines(function(lineNum, text)
-        -- Soulbound items are not warbound
-        if text == ITEM_SOULBOUND or text:find("Soulbound") then
-            isWarbound = false
-            return true
-        end
-        -- Check warbound/account-bound globals (auto-localized by game client)
-        if (ITEM_BNET_ACCOUNTBOUND_UNTIL_EQUIP and text == ITEM_BNET_ACCOUNTBOUND_UNTIL_EQUIP)
-            or (ITEM_ACCOUNTBOUND and text == ITEM_ACCOUNTBOUND)
-            or (ITEM_BNET_ACCOUNTBOUND and text == ITEM_BNET_ACCOUNTBOUND)
-            or (ITEM_BIND_TO_BNETACCOUNT and text == ITEM_BIND_TO_BNETACCOUNT) then
-            isWarbound = true
-            return true
-        end
-    end, 6)
-
-    return isWarbound
-end
-
 -------------------------------------------------
--- Bind Tag (BoE / BoA)
+-- Bind detection (shared by IsBindOnEquip / IsWarbound / GetBindTag)
 -------------------------------------------------
 
 local HEIRLOOM_QUALITY = 7
 
--- Account-bound tooltip lines, resolved once at load.
--- The global's name differs per flavor and several do not exist at all on older
--- clients, so the candidates are filtered down to what this client actually
--- defines. A set keyed by the localized text keeps the per-line check O(1)
--- instead of a chain of comparisons for every tooltip line.
-local ACCOUNT_BOUND_TEXTS = {}
-do
-    local candidates = {
-        "ITEM_ACCOUNTBOUND_UNTIL_EQUIP",    -- "Warbound until equipped" (11.0+)
-        "ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP",
-        "ITEM_ACCOUNTBOUND",                -- "Account Bound"
-        "ITEM_BNETACCOUNTBOUND",            -- "Blizzard Account Bound"
-        "ITEM_BIND_TO_ACCOUNT",             -- "Binds to account"
-        "ITEM_BIND_TO_BNETACCOUNT",         -- "Binds to Blizzard account"
-    }
-    for _, name in ipairs(candidates) do
+-- Tooltip binding lines, resolved once at load.
+--
+-- Global names differ per flavor and several do not exist at all on older
+-- clients, so each list is filtered down to what this client actually defines.
+-- Comparing against a global that does not exist silently matches nothing --
+-- which is precisely how IsWarbound shipped broken for years. Building sets also
+-- keeps the per-line check O(1) and removes the English string literals that
+-- were dead weight on 10 of the 11 supported locales.
+local function BuildTextSet(names)
+    local set = {}
+    for _, name in ipairs(names) do
         local text = _G[name]
         if type(text) == "string" and text ~= "" then
-            ACCOUNT_BOUND_TEXTS[text] = true
+            set[text] = true
         end
     end
+    return set
 end
+
+local ACCOUNT_BOUND_TEXTS = BuildTextSet({
+    "ITEM_ACCOUNTBOUND_UNTIL_EQUIP",    -- "Warbound until equipped" (11.0+)
+    "ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP",
+    "ITEM_ACCOUNTBOUND",                -- "Account Bound"
+    "ITEM_BNETACCOUNTBOUND",            -- "Blizzard Account Bound"
+    "ITEM_BIND_TO_ACCOUNT",             -- "Binds to account"
+    "ITEM_BIND_TO_BNETACCOUNT",         -- "Binds to Blizzard account"
+})
+
+local BIND_ON_EQUIP_TEXTS = BuildTextSet({
+    "ITEM_BIND_ON_EQUIP",               -- "Binds when equipped"
+})
+
+-- Already bound to this character: neither a BoE nor a BoA label applies.
+local ALREADY_BOUND_TEXTS = BuildTextSet({
+    "ITEM_SOULBOUND",                   -- "Soulbound"
+    "ITEM_BIND_ON_PICKUP",              -- "Binds when picked up"
+})
 
 -- Retail-only live check for "Warbound until equipped" (Enum.ItemBind
 -- ToBnetAccountUntilEquipped). One reusable ItemLocation is created here and
@@ -234,6 +184,47 @@ if IsBoundToAccountUntilEquip and DoesItemExist
     if not scratchItemLocation.SetBagAndSlot then
         scratchItemLocation = nil
     end
+end
+
+-- Check if item is Bind on Equip.
+--
+-- Thin wrapper over GetBindTag, which is the single bind detector: BoE and BoA
+-- can never disagree, and whichever caller asks first pays for the one scan.
+function TooltipScanner:IsBindOnEquip(bagID, slotID, itemData)
+    return self:GetBindTag(bagID, slotID, itemData) == "boe"
+end
+
+-- Check if item is account bound: "Warbound until equipped", heirlooms, or a
+-- plain BoA item. Drives the built-in Warbound category.
+--
+-- Deliberately has no weapon/armor gate, unlike GetBindTag -- account-bound
+-- mounts, pets and toys belong in that category too.
+--
+-- This previously tested ITEM_BNET_ACCOUNTBOUND_UNTIL_EQUIP and
+-- ITEM_BNET_ACCOUNTBOUND, neither of which is a real global (the real name has
+-- no underscore after BNET), and never tested the "Warbound until equipped"
+-- string at all -- so the category silently missed every warbound item.
+function TooltipScanner:IsWarbound(bagID, slotID)
+    if not bagID or not slotID then return false end
+
+    if not self:SetBagItem(bagID, slotID) then
+        return false
+    end
+
+    local isWarbound = false
+    self:ScanLines(function(lineNum, text)
+        -- Bound to this character already: not account bound.
+        if ALREADY_BOUND_TEXTS[text] then
+            isWarbound = false
+            return true
+        end
+        if ACCOUNT_BOUND_TEXTS[text] then
+            isWarbound = true
+            return true
+        end
+    end, 6)
+
+    return isWarbound
 end
 
 -- Bind tag for a slot: "boa" (account bound), "boe" (bind on equip), or nil.
@@ -276,21 +267,17 @@ function TooltipScanner:GetBindTag(bagID, slotID, itemData)
     end
 
     -- One pass over the binding block at the top of the tooltip.
-    -- The English literals mirror IsBindOnEquip: redundant where the global
-    -- matches, but kept so BoE detection is unchanged from before.
     local tag = nil
     self:ScanLines(function(lineNum, text)
         if ACCOUNT_BOUND_TEXTS[text] then
             tag = "boa"
             return true
         end
-        if text == ITEM_BIND_ON_EQUIP or text:find("Binds when equipped") then
+        if BIND_ON_EQUIP_TEXTS[text] then
             tag = "boe"
             return true
         end
-        -- Already bound to this character: neither label applies.
-        if text == ITEM_SOULBOUND or text:find("Soulbound")
-            or text == ITEM_BIND_ON_PICKUP or text:find("Binds when picked up") then
+        if ALREADY_BOUND_TEXTS[text] then
             return true
         end
     end, 6)

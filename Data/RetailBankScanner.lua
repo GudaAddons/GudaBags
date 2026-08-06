@@ -730,7 +730,6 @@ Events:OnBankOpened(function()
     RetailBankScanner:ScanBank(BANK_TYPE_CHARACTER)
     ns:Debug("Retail character bank opened and scanned, tabs:", #cachedBankTabs)
 
-    -- Also scan warband bank if available (use FetchBankLockedReason like Syndicator)
     local warbandLocked = C_Bank and C_Bank.FetchBankLockedReason and C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
     ns:Debug("Warband bank locked reason:", tostring(warbandLocked))
     if warbandLocked == nil then

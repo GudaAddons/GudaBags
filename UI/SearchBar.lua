@@ -136,6 +136,40 @@ local SPECIAL_CHIPS = {
     {key = "learnable", localeKey = "CHIP_SPECIAL_LEARNABLE"},
 }
 
+-- The transmog chip only exists when CanIMogIt does; without it the filter could
+-- never match anything, so showing it would just be a dead control.
+--
+-- The check is a predicate rather than a load-time `if`, because chip strips are
+-- built long after this file loads: probing at file scope would depend on
+-- OptionalDeps ordering and would be wrong for a load-on-demand install.
+SPECIAL_CHIPS[#SPECIAL_CHIPS + 1] = {
+    key = "mog",
+    localeKey = "CHIP_SPECIAL_MOG",
+    available = function()
+        local CanIMogItCompat = ns:GetModule("Compatibility.CanIMogIt")
+        return CanIMogItCompat ~= nil and CanIMogItCompat:IsAvailable()
+    end,
+}
+
+-- Chips with no `available` predicate are always shown.
+local function ChipAvailable(chipDef)
+    return chipDef.available == nil or chipDef.available() == true
+end
+
+-- Special chips minus any whose owning addon is absent. Rebuilt per call rather
+-- than memoised, so a load-on-demand addon appearing later is picked up. Both
+-- the inline strip and the overflow dropdown read from this, so they can never
+-- disagree about which chips exist.
+local function GetAvailableSpecialChips()
+    local list = {}
+    for _, chipDef in ipairs(SPECIAL_CHIPS) do
+        if ChipAvailable(chipDef) then
+            list[#list + 1] = chipDef
+        end
+    end
+    return list
+end
+
 -------------------------------------------------
 -- Search Overlay (shared across instances)
 -------------------------------------------------
@@ -195,6 +229,22 @@ local function HasAnyFilter(state)
     return false
 end
 
+-- Whether the search box's clear (X) button should be visible.
+--
+-- Deliberately NOT HasAnyFilter: that button's OnClick only clears the search
+-- text and the equipment-set filter, so showing it for an active chip would
+-- offer the user a control that does nothing to that chip. Chips are cleared by
+-- the chip strip's own clear-all button.
+--
+-- `text` lets OnTextChanged pass the incoming value, since it runs before
+-- searchBar.searchText has been updated. Both callers share this one predicate
+-- so they cannot drift apart.
+local function ShouldShowSearchClear(searchBar, text)
+    if text == nil then text = searchBar.searchText end
+    local hasText = text ~= nil and text ~= ""
+    return hasText or searchBar.filterState.equipSet ~= nil
+end
+
 -------------------------------------------------
 -- Chip Strip UI
 -------------------------------------------------
@@ -239,14 +289,9 @@ end
 local function NotifyFilterChanged(searchBar)
     UpdateChipStripVisibility(searchBar)
     UpdateTransferButton(searchBar)
-    -- Show/hide clear button based on any active filter
+    -- The search box's clear button tracks only what it can actually clear.
     if searchBar.clearButton then
-        local hasText = searchBar.searchText and searchBar.searchText ~= ""
-        if hasText or HasAnyFilter(searchBar.filterState) then
-            searchBar.clearButton:Show()
-        elseif not hasText then
-            searchBar.clearButton:Hide()
-        end
+        searchBar.clearButton:SetShown(ShouldShowSearchClear(searchBar))
     end
     -- Update equip set button color when active
     if searchBar.equipSetButton then
@@ -444,6 +489,12 @@ local function ClearEquipSetFilter(searchBar)
             searchBar.searchBox.placeholder:Show()
         end
     end
+    -- Re-evaluate the clear button. Clear/ClearAllFilters call SetText("")
+    -- before nilling equipSet, so the OnTextChanged that fired back then still
+    -- saw an active set and left the button shown with nothing left to clear.
+    if searchBar.clearButton then
+        searchBar.clearButton:SetShown(ShouldShowSearchClear(searchBar))
+    end
 end
 
 -------------------------------------------------
@@ -590,7 +641,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
     yOffset = yOffset - 4
 
     -- Add special chips
-    for _, chipDef in ipairs(SPECIAL_CHIPS) do
+    for _, chipDef in ipairs(GetAvailableSpecialChips()) do
         itemIndex = itemIndex + 1
         local item = typesDropdownMenu.items[itemIndex]
         if not item then
@@ -775,7 +826,7 @@ local function CreateChipStrip(searchBar, parent)
 
     -- Special chips
     searchBar.specialChips = {}
-    for _, chipDef in ipairs(SPECIAL_CHIPS) do
+    for _, chipDef in ipairs(GetAvailableSpecialChips()) do
         local chip = CreateSpecialChip(chipStrip, chipDef, searchBar)
         chip:SetPoint("LEFT", chipStrip, "LEFT", xOffset, 0)
         xOffset = xOffset + chip:GetWidth() + spacing
@@ -789,11 +840,15 @@ local function CreateChipStrip(searchBar, parent)
     -- Types dropdown button (hidden by default, shown on overflow)
     local typesDropdown = CreateFrame("Button", nil, chipStrip)
     typesDropdown:SetHeight(Constants.FRAME.CHIP_SIZE)
-    -- Filter icon
+    -- Overflow menu icon. Deliberately the generic hamburger, not categories.png:
+    -- that texture is registered as `viewCycle` (single/category/split layout) in
+    -- UI/IconButton.lua, so reusing it here made one glyph mean two unrelated
+    -- things on screen at once. A hamburger is a generic "opens a menu"
+    -- affordance and carries no competing meaning.
     local dropIcon = typesDropdown:CreateTexture(nil, "ARTWORK")
     dropIcon:SetSize(10, 10)
     dropIcon:SetPoint("LEFT", typesDropdown, "LEFT", 4, 0)
-    dropIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\categories.png")
+    dropIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\more.png")
     dropIcon:SetVertexColor(0.55, 0.55, 0.55)
     typesDropdown.icon = dropIcon
     -- Label
@@ -1239,12 +1294,12 @@ local function CreateSearchBar(parent)
         if text == "" and not hasEquipSet then
             placeholder:Show()
             searchIcon:SetVertexColor(0.6, 0.6, 0.6)
-            clearButton:Hide()
         else
             if text ~= "" then placeholder:Hide() end
             searchIcon:SetVertexColor(1, 0.82, 0)
-            clearButton:Show()
         end
+        -- Pass `text` explicitly: searchBar.searchText is still the old value here.
+        clearButton:SetShown(ShouldShowSearchClear(searchBar, text))
         searchBar.searchText = text
 
         -- Parse search input through SearchParser

@@ -8,8 +8,55 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Utils = ns:GetModule("Utils")
 
--- Track if we've already added inventory section to prevent duplicates
-local tooltipReady = true
+-- Tooltips we are allowed to write into: the ones a player actually reads.
+--
+-- Everything else is a hidden scanning tooltip (ours, Pawn's, CanIMogIt's, or
+-- any other addon's), which nobody sees and which would cost a full count pass.
+-- ShoppingTooltip1/2 ARE included -- the comparison tooltips get counts too, via
+-- the deliberate SetCompareItem hooks further down.
+--
+-- Resolved by name so a tooltip missing on a given flavor (GameTooltipTooltip on
+-- Classic Era/TBC) is simply absent. The same set drives the OnTooltipCleared
+-- hooks below, so the two can't drift apart.
+local ALLOWED_TOOLTIP_NAMES = {
+    "GameTooltip",
+    "ItemRefTooltip",
+    "ShoppingTooltip1",
+    "ShoppingTooltip2",
+    "GameTooltipTooltip",
+}
+
+local allowedTooltips = {}
+for _, name in ipairs(ALLOWED_TOOLTIP_NAMES) do
+    local tooltip = _G[name]
+    if tooltip then
+        allowedTooltips[tooltip] = true
+    end
+end
+
+local function IsAllowedTooltip(tooltip)
+    if not tooltip then return false end
+    if tooltip.IsForbidden and tooltip:IsForbidden() then return false end
+    return allowedTooltips[tooltip] == true
+end
+
+-- Duplicate suppression is PER TOOLTIP. This is the actual retail bug fix.
+--
+-- It used to be one module-wide boolean. On retail the item hook is
+-- TooltipDataProcessor.AddTooltipPostCall, which fires for every tooltip built
+-- from the data API. Hovering equippable gear in bags is exactly when Blizzard
+-- builds ShoppingTooltip1/2 for the equipped piece, nested inside the same
+-- SetBagItem call -- and its compare handler is registered at load, before our
+-- PLAYER_LOGIN registration, so the comparison tooltip was served first. It
+-- consumed the single flag, and the bag item's own tooltip then aborted. That is
+-- why retail showed counts only on equipped items while Classic (whose hook is
+-- bound to GameTooltip alone) was fine.
+--
+-- With the flag living on the tooltip itself, no tooltip can consume another's
+-- turn, and both the item and its comparison get their section. Set only after a
+-- section is actually drawn, and cleared by that tooltip's own OnTooltipCleared.
+local INVENTORY_DRAWN = "gudaBagsInventoryDrawn"
+local CURRENCY_DRAWN = "gudaBagsCurrencyDrawn"
 
 -- Tooltip for scanning item properties (hidden, used for data extraction)
 local scanTooltip = CreateFrame("GameTooltip", "GudaBags_ScanTooltip", nil, "GameTooltipTemplate")
@@ -30,9 +77,10 @@ end
 local function AddInventorySection(tooltip, itemID, skipReadyCheck)
     if not itemID then return end
 
+    if not IsAllowedTooltip(tooltip) then return end
+
     -- Prevent duplicate inventory sections on same tooltip (unless skipReadyCheck for specific hooks)
-    if not skipReadyCheck and not tooltipReady then return end
-    tooltipReady = false
+    if not skipReadyCheck and tooltip[INVENTORY_DRAWN] then return end
 
     if Database:GetSetting("showTooltipCounts") == false then return end
 
@@ -40,6 +88,11 @@ local function AddInventorySection(tooltip, itemID, skipReadyCheck)
 
     -- Don't show if no items found
     if totalCount == 0 then return end
+
+    -- Marked only now: a call that draws nothing must not claim the tooltip.
+    -- (The old code set the flag up front, so a zero-count pass blocked the
+    -- real one.)
+    tooltip[INVENTORY_DRAWN] = true
 
     tooltip:AddLine(" ")
     tooltip:AddLine(L["TOOLTIP_INVENTORY"], 1, 0.82, 0)
@@ -103,9 +156,6 @@ local function AddInventorySection(tooltip, itemID, skipReadyCheck)
     tooltip:Show()
 end
 
--- Track if we've already added the currency section to prevent duplicates
-local currencyReady = true
-
 -- Extract currencyID from a currency link (|Hcurrency:1166:...|h[name]|h)
 local function GetCurrencyIDFromLink(link)
     if not link then return nil end
@@ -117,14 +167,17 @@ end
 local function AddCurrencySection(tooltip, currencyID, skipReadyCheck)
     if not currencyID then return end
 
+    if not IsAllowedTooltip(tooltip) then return end
+
     -- Prevent duplicate sections on the same tooltip (unless an explicit caller skips it)
-    if not skipReadyCheck and not currencyReady then return end
-    currencyReady = false
+    if not skipReadyCheck and tooltip[CURRENCY_DRAWN] then return end
 
     if Database:GetSetting("showTooltipCounts") == false then return end
 
     local totalCount, characterCounts = Database:CountCurrencyAcrossCharacters(currencyID)
     if totalCount == 0 then return end
+
+    tooltip[CURRENCY_DRAWN] = true
 
     tooltip:AddLine(" ")
     tooltip:AddLine(L["TOOLTIP_CURRENCY_HEADER"], 1, 0.82, 0)
@@ -151,46 +204,81 @@ local function AddCurrencySection(tooltip, currencyID, skipReadyCheck)
     tooltip:Show()
 end
 
--- Reset ready flags when tooltip is cleared (allows the next tooltip to show our sections)
-GameTooltip:HookScript("OnTooltipCleared", function()
-    tooltipReady = true
-    currencyReady = true
-end)
+-- Clear the drawn flags when a tooltip is reset, so the next item shown in it
+-- gets our sections again. Every whitelisted tooltip needs its own hook --
+-- previously only GameTooltip was hooked, so any other tooltip that consumed
+-- the shared flag never released it.
+do
+    local function ClearDrawnFlags(self)
+        self[INVENTORY_DRAWN] = nil
+        self[CURRENCY_DRAWN] = nil
+    end
+
+    for tooltip in pairs(allowedTooltips) do
+        if tooltip.HookScript then
+            tooltip:HookScript("OnTooltipCleared", ClearDrawnFlags)
+        end
+    end
+end
+
+-- Bank bag IDs as a numeric set, built once. Membership is checked per tooltip,
+-- so a hash lookup beats re-walking three arrays every time.
+--
+-- The ranges genuinely cannot be shared between flavors: bag 5 is a BANK bag on
+-- Classic/TBC but the carried REAGENT BAG on retail (Constants.BAG_IDS is
+-- {0..5} there). The previous "5 to 12 covers both" shortcut therefore reported
+-- every retail reagent-bag item as sitting in the bank. Constants already
+-- resolves this correctly per flavor, and it is safe to read here: Expansion
+-- loads 2nd and Constants 3rd in the TOC, both long before any UI file.
+local bankSlotSet
+local function GetBankSlotSet()
+    if bankSlotSet then return bankSlotSet end
+
+    local Constants = ns.Constants
+    bankSlotSet = {}
+
+    -- The main bank container exists on every flavor, and is seeded explicitly:
+    -- on modern retail BANK_BAG_IDS is built purely from CharacterBankTab_*
+    -- indices and does NOT contain -1.
+    bankSlotSet[(Constants and Constants.BANK_MAIN_BAG) or -1] = true
+
+    -- Flavor-correct bank bag range, or the retail character bank tabs.
+    if Constants and Constants.BANK_BAG_IDS then
+        for _, bagID in ipairs(Constants.BANK_BAG_IDS) do
+            bankSlotSet[bagID] = true
+        end
+    end
+
+    if Constants then
+        for _, listName in ipairs({"WARBAND_BANK_TAB_IDS", "CHARACTER_BANK_TAB_IDS"}) do
+            local list = Constants[listName]
+            if list then
+                for _, bagID in ipairs(list) do
+                    bankSlotSet[bagID] = true
+                end
+            end
+        end
+    end
+
+    return bankSlotSet
+end
 
 -- Returns true if bagID belongs to the bank (main bank container, bank bags, or
 -- retail Warband/Character bank tabs). Single source of truth so the tooltip
 -- driver (UI/ItemButton.lua OnEnter) and ShowForItem agree on what a bank slot is.
--- Uses a simple range check that covers both Classic (5-11) and Retail (6-12) bank
--- bags rather than relying on Constants arrays (which depend on Expansion detection).
 function Tooltip:IsBankSlot(bagID)
     if bagID == nil then return false end
-    -- Main bank container (all versions)
-    if bagID == -1 then return true end
-    -- Bank bags: Classic uses 5-11, older Retail uses 6-12; cover both
-    if bagID >= 5 and bagID <= 12 then return true end
-    -- Retail only: Warband and Character bank tabs (high bag IDs)
-    if ns.IsRetail then
-        local Constants = ns.Constants
-        if Constants and Constants.WARBAND_BANK_TAB_IDS then
-            for _, warbandBagID in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
-                if bagID == warbandBagID then return true end
-            end
-        end
-        if Constants and Constants.CHARACTER_BANK_TAB_IDS then
-            for _, charBankTabID in ipairs(Constants.CHARACTER_BANK_TAB_IDS) do
-                if bagID == charBankTabID then return true end
-            end
-        end
-    end
-    return false
+    return GetBankSlotSet()[bagID] == true
 end
 
 -- Show tooltip for an item button (uses GameTooltip for addon compatibility)
 function Tooltip:ShowForItem(button)
     if not button.itemData then return end
 
-    -- Reset ready flag so inventory section will be added
-    tooltipReady = true
+    -- We are about to repopulate GameTooltip for a different item, so clear the
+    -- drawn flags: SetOwner alone does not always fire OnTooltipCleared.
+    GameTooltip[INVENTORY_DRAWN] = nil
+    GameTooltip[CURRENCY_DRAWN] = nil
 
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
 
@@ -388,9 +476,13 @@ local function InitializeHooks()
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall then
         -- Retail/modern approach
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-            if data and data.id then
-                AddInventorySection(tooltip, data.id)
-            end
+            if not data or not data.id then return end
+            -- Skip tooltips built with lines excluded -- those are addon scans
+            -- (ours, Pawn's, CanIMogIt's), not anything the player looks at.
+            -- Some odd tooltips lack processingInfo entirely; skip those too.
+            local info = tooltip.processingInfo
+            if not info or info.excludeLines then return end
+            AddInventorySection(tooltip, data.id)
         end)
     else
         -- Classic/TBC approach - use OnTooltipSetItem script
@@ -522,9 +614,11 @@ local function InitializeHooks()
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
         and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Currency then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Currency, function(tooltip, data)
-            if data and data.id then
-                AddCurrencySection(tooltip, data.id)
-            end
+            if not data or not data.id then return end
+            -- Same scan-tooltip skip as the item post-call above.
+            local info = tooltip.processingInfo
+            if not info or info.excludeLines then return end
+            AddCurrencySection(tooltip, data.id)
         end)
     end
 
