@@ -153,7 +153,7 @@ function SearchParser:ParseSearchInput(text)
         local handled = false
 
         -- Check standalone keywords first
-        if tokenLower == "boe" or tokenLower == "bop" or tokenLower == "quest"
+        if tokenLower == "boe" or tokenLower == "boa" or tokenLower == "bop" or tokenLower == "quest"
             or tokenLower == "new" or tokenLower == "usable" or tokenLower == "junk"
             or tokenLower == "openable" or tokenLower == "learnable" then
             table.insert(result.keywords, tokenLower)
@@ -291,6 +291,15 @@ function SearchParser:MatchKeyword(keyword, itemData, context)
         -- Need tooltip scanner and bag/slot info
         if context and context.tooltipScanner and itemData.bagID and itemData.slot then
             return context.tooltipScanner:IsBindOnEquip(itemData.bagID, itemData.slot, itemData)
+        end
+        return false
+
+    elseif keyword == "boa" then
+        -- Account bound: warbound-until-equipped (retail) or heirlooms/BoA.
+        -- GetBindTag returns "boa" only for items still account bound, so a
+        -- warbound piece that has been equipped no longer matches.
+        if context and context.tooltipScanner and itemData.bagID and itemData.slot then
+            return context.tooltipScanner:GetBindTag(itemData.bagID, itemData.slot, itemData) == "boa"
         end
         return false
 

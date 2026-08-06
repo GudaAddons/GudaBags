@@ -427,6 +427,7 @@ Constants.DEFAULTS = {
     showItemLevel = true,
     showCharges = true,
     showBoeLabel = true,  -- Show "BoE" text on unbound bind-on-equip items, colored by item quality
+    showBoaLabel = true,  -- Show cyan "BoA" text on account-bound items (warbound-until-equipped, heirlooms)
     reverseStackSort = false,
     sortRightToLeft = false,
     smoothSort = false,  -- Spread sort moves across frames to avoid stuttering

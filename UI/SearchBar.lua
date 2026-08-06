@@ -130,6 +130,7 @@ end
 -------------------------------------------------
 local SPECIAL_CHIPS = {
     {key = "boe", localeKey = "CHIP_SPECIAL_BOE"},
+    {key = "boa", localeKey = "CHIP_SPECIAL_BOA"},
     {key = "new", localeKey = "CHIP_SPECIAL_NEW"},
     {key = "openable", localeKey = "CHIP_SPECIAL_OPENABLE"},
     {key = "learnable", localeKey = "CHIP_SPECIAL_LEARNABLE"},

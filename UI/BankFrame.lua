@@ -3709,6 +3709,13 @@ local function ApplyItemInfoRefresh()
     local hasSearch = SearchBar:HasActiveFilters(frame)
     local bank = BankScanner:GetCachedBank() or {}
     local isReadOnly = viewingCharacter ~= nil or not BankScanner:IsBankOpen()
+    -- Repainting fixes the icon/overlay but not which section the item sits in.
+    -- An item scanned before its data resolved was categorized against a nil name
+    -- and classID 15, so now that it has loaded it may belong under a different
+    -- header — rebuild the layout, or it stays misfiled until an unrelated event.
+    local isCategoryView = (Database:GetSetting("bankViewType") or "single") == "category"
+    local CategoryManager = isCategoryView and ns:GetModule("CategoryManager") or nil
+    local needsRelayout = false
     local repainted = 0
     for _, button in ipairs(itemButtons) do
         local oldData = button.itemData
@@ -3719,6 +3726,26 @@ local function ApplyItemInfoRefresh()
                 local bagData = bank[oldData.bagID]
                 if bagData and bagData.slots then
                     bagData.slots[oldData.slot] = newData
+                end
+                if CategoryManager and not needsRelayout then
+                    local slotKey = GetSlotKey(oldData.bagID, oldData.slot)
+                    local prevCategory = cachedItemCategory[slotKey]
+                    -- Soul/Quiver items are pinned to their section by bag type,
+                    -- not by rules (see the override in IncrementalUpdate), so
+                    -- CategorizeItem would never reproduce that value — comparing
+                    -- would report a change on every arrival.
+                    if prevCategory == "Soul" or prevCategory == "Quiver" then
+                        prevCategory = nil
+                    end
+                    if prevCategory then
+                        local newCategory = CategoryManager:CategorizeItem(
+                            newData, oldData.bagID, oldData.slot, isReadOnly)
+                        if newCategory ~= prevCategory then
+                            ns:Debug("BankFrame: category changed after item info at", slotKey,
+                                tostring(prevCategory), "->", tostring(newCategory))
+                            needsRelayout = true
+                        end
+                    end
                 end
                 ItemButton:SetItem(button, newData, iconSize, isReadOnly)
                 if hasSearch then
@@ -3733,6 +3760,12 @@ local function ApplyItemInfoRefresh()
     wipe(pendingItemRefresh)
     if repainted > 0 then
         ns:Debug("BankFrame: GET_ITEM_INFO_RECEIVED repainted", repainted, "buttons")
+    end
+    -- Matches how the bank's own category path handles a structural change
+    -- (IncrementalUpdate calls Refresh directly). The 0.15s debounce above
+    -- already collapses a burst of arrivals into one pass, so this fires once.
+    if needsRelayout then
+        BankFrame:Refresh()
     end
 end
 
