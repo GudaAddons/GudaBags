@@ -136,11 +136,38 @@ local SPECIAL_CHIPS = {
     {key = "learnable", localeKey = "CHIP_SPECIAL_LEARNABLE"},
 }
 
--- The transmog chip only exists when CanIMogIt does; without it the filter
--- could never match anything, so showing the chip would just be a dead control.
--- GudaBags.toc lists CanIMogIt in OptionalDeps, so it has loaded by now.
-if _G.CIMI_AddToFrame then
-    SPECIAL_CHIPS[#SPECIAL_CHIPS + 1] = {key = "mog", localeKey = "CHIP_SPECIAL_MOG"}
+-- The transmog chip only exists when CanIMogIt does; without it the filter could
+-- never match anything, so showing it would just be a dead control.
+--
+-- The check is a predicate rather than a load-time `if`, because chip strips are
+-- built long after this file loads: probing at file scope would depend on
+-- OptionalDeps ordering and would be wrong for a load-on-demand install.
+SPECIAL_CHIPS[#SPECIAL_CHIPS + 1] = {
+    key = "mog",
+    localeKey = "CHIP_SPECIAL_MOG",
+    available = function()
+        local CanIMogItCompat = ns:GetModule("Compatibility.CanIMogIt")
+        return CanIMogItCompat ~= nil and CanIMogItCompat:IsAvailable()
+    end,
+}
+
+-- Chips with no `available` predicate are always shown.
+local function ChipAvailable(chipDef)
+    return chipDef.available == nil or chipDef.available() == true
+end
+
+-- Special chips minus any whose owning addon is absent. Rebuilt per call rather
+-- than memoised, so a load-on-demand addon appearing later is picked up. Both
+-- the inline strip and the overflow dropdown read from this, so they can never
+-- disagree about which chips exist.
+local function GetAvailableSpecialChips()
+    local list = {}
+    for _, chipDef in ipairs(SPECIAL_CHIPS) do
+        if ChipAvailable(chipDef) then
+            list[#list + 1] = chipDef
+        end
+    end
+    return list
 end
 
 -------------------------------------------------
@@ -597,7 +624,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
     yOffset = yOffset - 4
 
     -- Add special chips
-    for _, chipDef in ipairs(SPECIAL_CHIPS) do
+    for _, chipDef in ipairs(GetAvailableSpecialChips()) do
         itemIndex = itemIndex + 1
         local item = typesDropdownMenu.items[itemIndex]
         if not item then
@@ -782,7 +809,7 @@ local function CreateChipStrip(searchBar, parent)
 
     -- Special chips
     searchBar.specialChips = {}
-    for _, chipDef in ipairs(SPECIAL_CHIPS) do
+    for _, chipDef in ipairs(GetAvailableSpecialChips()) do
         local chip = CreateSpecialChip(chipStrip, chipDef, searchBar)
         chip:SetPoint("LEFT", chipStrip, "LEFT", xOffset, 0)
         xOffset = xOffset + chip:GetWidth() + spacing

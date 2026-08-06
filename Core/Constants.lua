@@ -315,7 +315,7 @@ Constants.FRAME = {
 -- The gap between BASE and RAISED must exceed the total child offset
 -- (CONTAINER + BUTTON + highest button child) so the inactive frame's
 -- content never bleeds through the active frame's background.
--- Total child depth from container: wrapper(1) + BUTTON + max(BORDER,COOLDOWN,QUEST_ICON)
+-- Total child depth from container: wrapper(1) + BUTTON + max(BORDER,COOLDOWN,QUEST_ICON,ADDON_OVERLAY)
 -- Must be strictly less than RAISED - BASE - CONTAINER so the inactive
 -- frame's content never bleeds through the active frame's background.
 Constants.FRAME_LEVELS = {
@@ -327,6 +327,7 @@ Constants.FRAME_LEVELS = {
     BORDER          = 1,   -- Quality border above its button
     COOLDOWN        = 2,   -- Cooldown sweep above border
     QUEST_ICON      = 3,   -- Quest icon above cooldown
+    ADDON_OVERLAY   = 4,   -- Third-party overlays (CanIMogIt) above all our own children
     HEADER          = 5,   -- Header above blizzardBg NineSlice
 }
 
