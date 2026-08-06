@@ -229,6 +229,22 @@ local function HasAnyFilter(state)
     return false
 end
 
+-- Whether the search box's clear (X) button should be visible.
+--
+-- Deliberately NOT HasAnyFilter: that button's OnClick only clears the search
+-- text and the equipment-set filter, so showing it for an active chip would
+-- offer the user a control that does nothing to that chip. Chips are cleared by
+-- the chip strip's own clear-all button.
+--
+-- `text` lets OnTextChanged pass the incoming value, since it runs before
+-- searchBar.searchText has been updated. Both callers share this one predicate
+-- so they cannot drift apart.
+local function ShouldShowSearchClear(searchBar, text)
+    if text == nil then text = searchBar.searchText end
+    local hasText = text ~= nil and text ~= ""
+    return hasText or searchBar.filterState.equipSet ~= nil
+end
+
 -------------------------------------------------
 -- Chip Strip UI
 -------------------------------------------------
@@ -273,14 +289,9 @@ end
 local function NotifyFilterChanged(searchBar)
     UpdateChipStripVisibility(searchBar)
     UpdateTransferButton(searchBar)
-    -- Show/hide clear button based on any active filter
+    -- The search box's clear button tracks only what it can actually clear.
     if searchBar.clearButton then
-        local hasText = searchBar.searchText and searchBar.searchText ~= ""
-        if hasText or HasAnyFilter(searchBar.filterState) then
-            searchBar.clearButton:Show()
-        elseif not hasText then
-            searchBar.clearButton:Hide()
-        end
+        searchBar.clearButton:SetShown(ShouldShowSearchClear(searchBar))
     end
     -- Update equip set button color when active
     if searchBar.equipSetButton then
@@ -477,6 +488,12 @@ local function ClearEquipSetFilter(searchBar)
         if searchBar.searchBox.placeholder then
             searchBar.searchBox.placeholder:Show()
         end
+    end
+    -- Re-evaluate the clear button. Clear/ClearAllFilters call SetText("")
+    -- before nilling equipSet, so the OnTextChanged that fired back then still
+    -- saw an active set and left the button shown with nothing left to clear.
+    if searchBar.clearButton then
+        searchBar.clearButton:SetShown(ShouldShowSearchClear(searchBar))
     end
 end
 
@@ -1277,12 +1294,12 @@ local function CreateSearchBar(parent)
         if text == "" and not hasEquipSet then
             placeholder:Show()
             searchIcon:SetVertexColor(0.6, 0.6, 0.6)
-            clearButton:Hide()
         else
             if text ~= "" then placeholder:Hide() end
             searchIcon:SetVertexColor(1, 0.82, 0)
-            clearButton:Show()
         end
+        -- Pass `text` explicitly: searchBar.searchText is still the old value here.
+        clearButton:SetShown(ShouldShowSearchClear(searchBar, text))
         searchBar.searchText = text
 
         -- Parse search input through SearchParser
