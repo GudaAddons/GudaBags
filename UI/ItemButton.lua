@@ -873,15 +873,16 @@ local function CreateButton(parent)
     chargesText:Hide()
     button.chargesText = chargesText
 
-    -- BoE label (bottom-left corner, drawn above equipment-set and pin icons
+    -- Bind label (bottom-left corner, drawn above equipment-set and pin icons
     -- which sit on the same corner — sublayer 6 puts it above those
     -- sublayer 2-5 icons. OUTLINE keeps it readable when stacked on top of them.)
-    -- Color is set per-item in SetItem() based on item quality.
+    -- Carries either "BoE" or "BoA": the two bindings are mutually exclusive, so
+    -- one fontstring serves both rather than doubling the count on every pooled
+    -- button. Text and color are both set per-item in SetItem().
     local boeText = button:CreateFontString(nil, "OVERLAY", nil, 6)
     Font:Apply(boeText, 10, "OUTLINE")
     boeText:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", 1, 1)
     boeText:SetJustifyH("LEFT")
-    boeText:SetText(ns.L["ITEM_BOE_LABEL"])
     boeText:Hide()
     button.boeText = boeText
 
@@ -1732,6 +1733,7 @@ local function GetCachedSettings()
             showItemLevel = Database:GetSetting("showItemLevel"),
             showCharges = Database:GetSetting("showCharges"),
             showBoeLabel = Database:GetSetting("showBoeLabel"),
+            showBoaLabel = Database:GetSetting("showBoaLabel"),
         }
         cachedSettingsFrame = currentFrame
     end
@@ -2249,31 +2251,46 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         ns:ProfileStop("si.charges")
 
-        -- BoE label (bottom-left corner). Only on unbound BoE weapons/armor;
-        -- TooltipScanner:IsBindOnEquip excludes soulbound, BoP, and non-gear.
-        -- The item class pre-check skips the tooltip scan for the common case
+        -- Bind label (bottom-left corner). Only on unbound gear in live slots;
+        -- TooltipScanner:GetBindTag excludes soulbound, BoP and non-gear, and
+        -- resolves BoA and BoE together so the tooltip is rendered at most once.
+        -- The item class pre-check skips the scan for the common case
         -- (consumables, reagents, etc.) so this stays cheap.
+        -- BoA wins when both could apply: account binding is the more notable
+        -- trait, and the two bindings are mutually exclusive in practice anyway.
         ns:ProfileStart("si.boe")
         if button.boeText then
-            local showBoe = settings.showBoeLabel
+            local shown = false
+            local wantBind = (settings.showBoeLabel or settings.showBoaLabel)
                 and not isReadOnly
                 and IsWeaponOrArmor(itemData)
                 and (itemData.quality or 0) > 0
                 and itemData.bagID and itemData.slot
-            if showBoe then
+            if wantBind then
                 local TooltipScanner = ns:GetModule("TooltipScanner")
-                if TooltipScanner and TooltipScanner:IsBindOnEquip(itemData.bagID, itemData.slot, itemData) then
+                local tag = TooltipScanner
+                    and TooltipScanner:GetBindTag(itemData.bagID, itemData.slot, itemData)
+                if tag == "boa" and settings.showBoaLabel then
+                    -- The game renders "Warbound until equipped" in the heirloom
+                    -- quality color; COLORS.CYAN is that same value.
+                    local c = Constants.COLORS.CYAN
+                    button.boeText:SetText(ns.L["ITEM_BOA_LABEL"])
+                    button.boeText:SetTextColor(c[1], c[2], c[3], 1)
+                    button.boeText:Show()
+                    shown = true
+                elseif tag == "boe" and settings.showBoeLabel then
                     local c = Constants.QUALITY_COLORS[itemData.quality]
+                    button.boeText:SetText(ns.L["ITEM_BOE_LABEL"])
                     if c then
                         button.boeText:SetTextColor(c[1], c[2], c[3], 1)
                     else
                         button.boeText:SetTextColor(1, 1, 1, 1)
                     end
                     button.boeText:Show()
-                else
-                    button.boeText:Hide()
+                    shown = true
                 end
-            else
+            end
+            if not shown then
                 button.boeText:Hide()
             end
         end
@@ -2872,7 +2889,7 @@ if Events then
             or key == "otherBorders" or key == "markUnusableItems"
             or key == "markEquipmentSets"
             or key == "showItemLevel" or key == "showCharges"
-            or key == "showBoeLabel" then
+            or key == "showBoeLabel" or key == "showBoaLabel" then
             ItemButton:InvalidateSettingsCache()
         end
     end, ItemButton)

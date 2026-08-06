@@ -192,6 +192,112 @@ function TooltipScanner:IsWarbound(bagID, slotID)
     return isWarbound
 end
 
+-------------------------------------------------
+-- Bind Tag (BoE / BoA)
+-------------------------------------------------
+
+local HEIRLOOM_QUALITY = 7
+
+-- Account-bound tooltip lines, resolved once at load.
+-- The global's name differs per flavor and several do not exist at all on older
+-- clients, so the candidates are filtered down to what this client actually
+-- defines. A set keyed by the localized text keeps the per-line check O(1)
+-- instead of a chain of comparisons for every tooltip line.
+local ACCOUNT_BOUND_TEXTS = {}
+do
+    local candidates = {
+        "ITEM_ACCOUNTBOUND_UNTIL_EQUIP",    -- "Warbound until equipped" (11.0+)
+        "ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP",
+        "ITEM_ACCOUNTBOUND",                -- "Account Bound"
+        "ITEM_BNETACCOUNTBOUND",            -- "Blizzard Account Bound"
+        "ITEM_BIND_TO_ACCOUNT",             -- "Binds to account"
+        "ITEM_BIND_TO_BNETACCOUNT",         -- "Binds to Blizzard account"
+    }
+    for _, name in ipairs(candidates) do
+        local text = _G[name]
+        if type(text) == "string" and text ~= "" then
+            ACCOUNT_BOUND_TEXTS[text] = true
+        end
+    end
+end
+
+-- Retail-only live check for "Warbound until equipped" (Enum.ItemBind
+-- ToBnetAccountUntilEquipped). One reusable ItemLocation is created here and
+-- re-pointed per call: CreateFromBagAndSlot would allocate a table for every
+-- gear slot on every render pass (Rule 2).
+local IsBoundToAccountUntilEquip = C_Item and C_Item.IsBoundToAccountUntilEquip
+local DoesItemExist = C_Item and C_Item.DoesItemExist
+local scratchItemLocation = nil
+if IsBoundToAccountUntilEquip and DoesItemExist
+    and ItemLocation and ItemLocation.CreateFromBagAndSlot then
+    scratchItemLocation = ItemLocation:CreateFromBagAndSlot(0, 1)
+    if not scratchItemLocation.SetBagAndSlot then
+        scratchItemLocation = nil
+    end
+end
+
+-- Bind tag for a slot: "boa" (account bound), "boe" (bind on equip), or nil.
+--
+-- The two labels share one fontstring on the item button and are mutually
+-- exclusive, so they are resolved together — and, on the fallback path, with a
+-- single tooltip render rather than one per tag. Order is cheapest-first: the
+-- heirloom shortcut and the account-bound API both answer without touching the
+-- tooltip at all.
+function TooltipScanner:GetBindTag(bagID, slotID, itemData)
+    if not bagID or not slotID then return nil end
+
+    -- Only weapons and armor carry these bindings.
+    -- Keyed on classID: itemType is localized, so comparing it to "Weapon"/"Armor"
+    -- would reject every item on a non-English client.
+    if itemData and itemData.classID
+        and itemData.classID ~= ITEM_CLASS.WEAPON
+        and itemData.classID ~= ITEM_CLASS.ARMOR then
+        return nil
+    end
+
+    -- Heirlooms are account bound by definition — no scan needed.
+    if itemData and itemData.quality == HEIRLOOM_QUALITY then
+        return "boa"
+    end
+
+    -- This is a live check, not the item's static bindType, so a
+    -- Warbound-until-equipped piece that has since been equipped (and is
+    -- therefore soulbound now) correctly reports false.
+    if scratchItemLocation then
+        scratchItemLocation:SetBagAndSlot(bagID, slotID)
+        if DoesItemExist(scratchItemLocation)
+            and IsBoundToAccountUntilEquip(scratchItemLocation) then
+            return "boa"
+        end
+    end
+
+    if not self:SetBagItem(bagID, slotID) then
+        return nil
+    end
+
+    -- One pass over the binding block at the top of the tooltip.
+    -- The English literals mirror IsBindOnEquip: redundant where the global
+    -- matches, but kept so BoE detection is unchanged from before.
+    local tag = nil
+    self:ScanLines(function(lineNum, text)
+        if ACCOUNT_BOUND_TEXTS[text] then
+            tag = "boa"
+            return true
+        end
+        if text == ITEM_BIND_ON_EQUIP or text:find("Binds when equipped") then
+            tag = "boe"
+            return true
+        end
+        -- Already bound to this character: neither label applies.
+        if text == ITEM_SOULBOUND or text:find("Soulbound")
+            or text == ITEM_BIND_ON_PICKUP or text:find("Binds when picked up") then
+            return true
+        end
+    end, 6)
+
+    return tag
+end
+
 -- Get consumable restore type (eat/drink/restore)
 function TooltipScanner:GetRestoreTag(bagID, slotID, itemData)
     if not bagID or not slotID then return nil end
