@@ -7,7 +7,7 @@ local Events = ns:GetModule("Events")
 local Theme = ns:GetModule("Theme")
 
 -- Components (loaded after this file via TOC order)
-local Slider, Checkbox, ToggleButton, Select
+local Slider, Checkbox, ToggleButton, Select, ChipToggleList
 local VerticalStack, HorizontalRow
 local TabPanel, SettingsSchema
 
@@ -79,6 +79,8 @@ local function CreateControl(parent, config)
         return ToggleButton:Create(parent, config)
     elseif config.type == "select" then
         return Select:Create(parent, config)
+    elseif config.type == "chiptoggles" then
+        return ChipToggleList:Create(parent, config)
     elseif config.type == "description" then
         -- Simple text description
         local frame = CreateFrame("Frame", nil, parent)
@@ -1511,6 +1513,15 @@ local function CreateSettingsFrame()
                 layoutContent:RefreshAll()
             end
         end
+        -- Show/hide the per-chip picker section with its master toggle. Deliberately
+        -- not "hiddenChips": rebuilding the tab from inside a chip cell's own click
+        -- would tear the control down mid-click — the picker repaints itself instead.
+        if key == "showFilterChips" then
+            local featuresContent = tabPanel:GetContent("features")
+            if featuresContent and featuresContent.RefreshAll then
+                featuresContent:RefreshAll()
+            end
+        end
         if key == "theme" then
             ApplySettingsTheme()
             -- Auto-enable retail empty slots when switching to Retail theme (Classic only)
@@ -1544,6 +1555,7 @@ local function InitComponents()
     Checkbox = ns:GetModule("Controls.Checkbox")
     ToggleButton = ns:GetModule("Controls.ToggleButton")
     Select = ns:GetModule("Controls.Select")
+    ChipToggleList = ns:GetModule("Controls.ChipToggleList")
     VerticalStack = ns:GetModule("Layout.VerticalStack")
     HorizontalRow = ns:GetModule("Layout.HorizontalRow")
     TabPanel = ns:GetModule("TabPanel")
