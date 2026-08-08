@@ -4,6 +4,9 @@
 --
 -- The click is intercepted in UI/ItemButton.lua's PreClick (same mechanism as the
 -- warband deposit intercept) and lands here via MailBulkSend:Start().
+--
+-- Blizzard blanks the Send Mail form after every successful send, so the batch puts
+-- the recipient back into the To field itself (see RestoreRecipient).
 
 local addonName, ns = ...
 
@@ -69,6 +72,18 @@ end
 
 local function GetBody()
     return _G.SendMailBodyEditBox and _G.SendMailBodyEditBox:GetText() or ""
+end
+
+-- Blizzard's SendMailFrame_Reset() blanks the To box on MAIL_SEND_SUCCESS. The batch keeps
+-- sending correctly (batchRecipient is cached), but an empty field means the next
+-- Shift+Right-Click would fall into the attach-only path, so put the name back.
+local function RestoreRecipient()
+    if batchRecipient == "" then return end
+    local box = _G.SendMailNameEditBox
+    if not box then return end
+    if box:GetText() ~= batchRecipient then
+        box:SetText(batchRecipient)
+    end
 end
 
 -------------------------------------------------
@@ -244,6 +259,11 @@ end
 
 local function OnSendSuccess()
     mailsSent = mailsSent + 1
+
+    -- Deferred by a frame: Blizzard's reset runs during this same event dispatch, and frame
+    -- handler order is not guaranteed, so restoring inline could be overwritten. Done before
+    -- the queue check so the final mail of the batch is covered too.
+    C_Timer.After(0, RestoreRecipient)
 
     if #queue == 0 then
         Finish("MAIL_BULK_SENT", attachedCount, batchItemName, batchRecipient, mailsSent)
