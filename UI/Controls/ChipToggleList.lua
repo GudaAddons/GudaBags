@@ -13,6 +13,35 @@ local ROW_SPACING = 2
 local INACTIVE_BG = {0.15, 0.15, 0.15, 0.8}
 local HIDDEN_ALPHA = 0.3
 
+-- Positions the cells, skipping any whose owning addon or expansion doesn't provide
+-- the chip. Re-run on Refresh rather than resolved once at build: a load-on-demand
+-- addon can appear later, and an unavailable chip is not always the last in its row,
+-- so its slot has to close up rather than leave a hole.
+local function LayoutCells(container, cells)
+    local rowIndex, xOffset, lastGroup = 0, 0, nil
+
+    for _, cell in ipairs(cells) do
+        local available = not cell.availableFn or cell.availableFn() == true
+        cell:SetShown(available)
+        if available then
+            -- A new row starts wherever the group changes, so a group with nothing
+            -- available leaves no blank row behind.
+            if lastGroup and cell.chipGroup ~= lastGroup then
+                rowIndex = rowIndex + 1
+                xOffset = 0
+            end
+            lastGroup = cell.chipGroup
+
+            cell:ClearAllPoints()
+            cell:SetPoint("TOPLEFT", container, "TOPLEFT", xOffset,
+                -(rowIndex * (ROW_HEIGHT + ROW_SPACING)) - 3)
+            xOffset = xOffset + cell:GetWidth() + CHIP_SPACING
+        end
+    end
+
+    container:SetHeight((rowIndex + 1) * (ROW_HEIGHT + ROW_SPACING) + 4)
+end
+
 local function ApplyChipVisual(button, hidden)
     if hidden then
         button:SetAlpha(HIDDEN_ALPHA)
@@ -61,20 +90,15 @@ function ChipToggleList:Create(parent, config)
     local catalogue = (SearchBar and SearchBar.GetChipCatalogue) and SearchBar:GetChipCatalogue() or {}
 
     -- The catalogue arrives grouped and in the order the strip lays the chips out, so
-    -- a new row starts wherever the group changes. Reading it that way means this file
-    -- never names a group, and cannot drift from SearchBar's own group constants.
-    local rowIndex, xOffset, lastGroup = 0, 0, nil
-
+    -- LayoutCells can start a new row wherever the group changes. Reading it that way
+    -- means this file never names a group, and cannot drift from SearchBar's own
+    -- group constants.
     for _, entry in ipairs(catalogue) do
-        if lastGroup and entry.group ~= lastGroup then
-            rowIndex = rowIndex + 1
-            xOffset = 0
-        end
-        lastGroup = entry.group
-
         local button = CreateFrame("Button", nil, container)
         button.settingKey = entry.settingKey
         button.chipColor = entry.color
+        button.chipGroup = entry.group
+        button.availableFn = entry.availableFn
 
         local bg = button:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
@@ -100,9 +124,6 @@ function ChipToggleList:Create(parent, config)
             button:SetSize((label:GetStringWidth() or 20) + 10, CHIP_SIZE)
         end
 
-        button:SetPoint("TOPLEFT", container, "TOPLEFT", xOffset, -(rowIndex * (ROW_HEIGHT + ROW_SPACING)) - 3)
-        xOffset = xOffset + button:GetWidth() + CHIP_SPACING
-
         -- Every entry carries the full localized name; the strip's own labels may be
         -- abbreviated, so the tooltip is the only place some locales see the real word.
         local tooltipText = entry.tooltip or entry.label
@@ -120,18 +141,11 @@ function ChipToggleList:Create(parent, config)
             ApplyChipVisual(self, nowHidden)
         end)
 
-        -- A chip whose owning addon isn't loaded has no cell on screen. The predicate
-        -- is re-run on every Refresh rather than resolved once, so a load-on-demand
-        -- addon appearing after this control was built is picked up. Such chips are
-        -- appended last in their row, so hiding one leaves no gap.
-        button.availableFn = entry.availableFn
-        button:SetShown(not entry.availableFn or entry.availableFn() == true)
-
         ApplyChipVisual(button, SearchBar and SearchBar:IsChipHidden(entry.settingKey))
         buttons[#buttons + 1] = button
     end
 
-    container:SetHeight((rowIndex + 1) * (ROW_HEIGHT + ROW_SPACING) + 4)
+    LayoutCells(container, buttons)
 
     if config and config.tooltip then
         container:EnableMouse(true)
@@ -146,8 +160,8 @@ function ChipToggleList:Create(parent, config)
     -- Public API (matches the other controls in UI/Controls/)
     container.Refresh = function()
         if not SearchBar then return end
+        LayoutCells(container, buttons)
         for _, button in ipairs(buttons) do
-            button:SetShown(not button.availableFn or button.availableFn() == true)
             ApplyChipVisual(button, SearchBar:IsChipHidden(button.settingKey))
         end
     end

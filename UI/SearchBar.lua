@@ -131,7 +131,14 @@ end
 -------------------------------------------------
 local SPECIAL_CHIPS = {
     {key = "boe", localeKey = "CHIP_SPECIAL_BOE"},
-    {key = "boa", localeKey = "CHIP_SPECIAL_BOA"},
+    -- Account-bound items only exist from WotLK on, so on Classic Era and TBC this
+    -- filter could never match anything and the chip would just be dead weight in a
+    -- width-constrained strip. Same reasoning as the transmog chip below.
+    {key = "boa", localeKey = "CHIP_SPECIAL_BOA",
+     available = function()
+        local Expansion = ns:GetModule("Expansion")
+        return not Expansion or Expansion.Features.HasAccountBoundItems == true
+     end},
     {key = "new", localeKey = "CHIP_SPECIAL_NEW"},
     {key = "openable", localeKey = "CHIP_SPECIAL_OPENABLE"},
     {key = "learnable", localeKey = "CHIP_SPECIAL_LEARNABLE"},

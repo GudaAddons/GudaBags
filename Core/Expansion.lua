@@ -46,6 +46,13 @@ Expansion.Features = {
     HasReagentBank = Expansion.IsRetail,
     HasWarbandBank = Expansion.IsRetail,
     HasCurrency = Expansion.IsRetail or Expansion.IsMoP,
+
+    -- Account-bound items (heirlooms, "Bind to Account", Warbound) arrived in
+    -- WotLK 3.2, so Classic Era and TBC have none at all. Gate on this rather than
+    -- on the ITEM_ACCOUNTBOUND* global strings: Blizzard ships those globals to
+    -- every flavor whether or not any item can carry the binding, so their
+    -- existence proves nothing.
+    HasAccountBoundItems = Expansion.IsRetail or Expansion.IsMoP,
 }
 
 -- Convenience exports to namespace root
