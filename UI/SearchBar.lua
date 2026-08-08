@@ -821,6 +821,19 @@ end
 
 local CHIP_COLLAPSE_WIDTH = 420
 
+-- The "not filtering on this" look. The same two calls are open-coded in several
+-- older spots in this file (ResetChipVisuals, the chip and dropdown OnClick handlers);
+-- new code goes through here so the colours have one home.
+local function SetChipInactive(chip)
+    chip.label:SetTextColor(0.55, 0.55, 0.55)
+    chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+end
+
+local function SetQualityDotInactive(dot)
+    dot.dot:SetAlpha(0.35)
+    dot.border:Hide()
+end
+
 -- Chip frames are created once and never destroyed, so "hidden by the user" is a
 -- render-time question, not a build-time one: bringing a chip back must never need
 -- a CreateFrame on a refresh path.
@@ -834,6 +847,46 @@ local function CountShownChips(chips)
         if ChipShown(chip) then n = n + 1 end
     end
     return n
+end
+
+-- Single owner of "what is on the strip": shows the chips the user kept, hides the
+-- rest, and applies the separator rule (a separator with nothing on one side is just
+-- a stray pixel line). LayoutChipStrip adds positioning on top of this; the expand
+-- path in UpdateChipLayout only needs to restore what the collapse path hid.
+-- Returns the three counts so callers don't walk the arrays a second time.
+local function ApplyChipVisibility(searchBar)
+    local shownDots, shownTypes, shownSpecials = 0, 0, 0
+
+    for _, dot in ipairs(searchBar.qualityDots) do
+        if ChipShown(dot) then dot:Show() shownDots = shownDots + 1 else dot:Hide() end
+    end
+    for _, chip in ipairs(searchBar.typeChips) do
+        if ChipShown(chip) then chip:Show() shownTypes = shownTypes + 1 else chip:Hide() end
+    end
+    for _, chip in ipairs(searchBar.specialChips) do
+        if ChipShown(chip) then chip:Show() shownSpecials = shownSpecials + 1 else chip:Hide() end
+    end
+
+    -- Show/Hide rather than SetShown: these two are Textures, and the surrounding code
+    -- has only ever used Show/Hide on them.
+    if searchBar.chipSep1 then
+        if shownDots > 0 and shownTypes > 0 then searchBar.chipSep1:Show() else searchBar.chipSep1:Hide() end
+    end
+    if searchBar.chipSep2 then
+        if shownTypes > 0 and shownSpecials > 0 then searchBar.chipSep2:Show() else searchBar.chipSep2:Hide() end
+    end
+
+    return shownDots, shownTypes, shownSpecials
+end
+
+-- Advances the running x-offset past a separator, but only when ApplyChipVisibility
+-- decided it earns its place.
+local function PlaceSeparator(sep, chipStrip, xOffset, spacing)
+    if not sep or not sep:IsShown() then return xOffset end
+    xOffset = xOffset + 2
+    sep:ClearAllPoints()
+    sep:SetPoint("LEFT", chipStrip, "LEFT", xOffset, 0)
+    return xOffset + 1 + spacing
 end
 
 local function UpdateChipLayout(searchBar)
@@ -870,18 +923,9 @@ local function UpdateChipLayout(searchBar)
             UpdateDropdownLabel(searchBar)
         end
     else
-        -- Normal: show the chips the user kept, hide dropdown
-        local shownTypes, shownSpecials = 0, 0
-        for _, chip in ipairs(searchBar.typeChips) do
-            if ChipShown(chip) then chip:Show() shownTypes = shownTypes + 1 else chip:Hide() end
-        end
-        for _, chip in ipairs(searchBar.specialChips) do
-            if ChipShown(chip) then chip:Show() shownSpecials = shownSpecials + 1 else chip:Hide() end
-        end
-        -- A separator with nothing on one side of it is just a stray pixel line.
-        local shownDots = CountShownChips(searchBar.qualityDots)
-        if searchBar.chipSep1 then searchBar.chipSep1:SetShown(shownDots > 0 and shownTypes > 0) end
-        if searchBar.chipSep2 then searchBar.chipSep2:SetShown(shownTypes > 0 and shownSpecials > 0) end
+        -- Normal: restore the chips the user kept, hide dropdown. Positions are already
+        -- correct — LayoutChipStrip set them and only the collapse path above hides.
+        ApplyChipVisibility(searchBar)
         if searchBar.typesDropdown then searchBar.typesDropdown:Hide() end
     end
 end
@@ -1527,17 +1571,16 @@ LayoutChipStrip = function(instance)
         -- < 220: 2-row chip strip with Types dropdown, smaller dots
         instance.chipStrip:SetHeight(28)
 
+        ApplyChipVisibility(instance)
+
         local xOffset = 4
         for _, dot in ipairs(instance.qualityDots) do
-            if ChipShown(dot) then
+            if dot:IsShown() then
                 dot:SetSize(smallChipSize, smallChipSize)
                 if dot.dot then dot.dot:SetSize(smallChipSize - 4, smallChipSize - 4) end
                 dot:ClearAllPoints()
                 dot:SetPoint("TOPLEFT", instance.chipStrip, "TOPLEFT", xOffset, -1)
-                dot:Show()
                 xOffset = xOffset + smallChipSize + spacing
-            else
-                dot:Hide()
             end
         end
 
@@ -1546,7 +1589,8 @@ LayoutChipStrip = function(instance)
             instance.chipClearButton:SetPoint("TOPRIGHT", instance.chipStrip, "TOPRIGHT", -4, -1)
         end
 
-        -- Hide inline chips, show Types dropdown on row 2
+        -- Row 2 is the Types dropdown, so no inline chips or separators here whatever
+        -- ApplyChipVisibility decided above.
         if instance.chipSep1 then instance.chipSep1:Hide() end
         if instance.chipSep2 then instance.chipSep2:Hide() end
         for _, chip in ipairs(instance.typeChips) do chip:Hide() end
@@ -1565,71 +1609,37 @@ LayoutChipStrip = function(instance)
     -- below collapses them into the Types dropdown if they still don't fit.
     instance.chipStrip:SetHeight(Constants.FRAME.CHIP_STRIP_HEIGHT)
 
-    local xOffset = 4
-    local shownDots, shownTypes, shownSpecials = 0, 0, 0
+    -- Decide visibility once; the loops below only position what is already shown.
+    ApplyChipVisibility(instance)
 
+    local xOffset = 4
     for _, dot in ipairs(instance.qualityDots) do
-        if ChipShown(dot) then
+        if dot:IsShown() then
             dot:SetSize(chipSize, chipSize)
             if dot.dot then dot.dot:SetSize(chipSize - 4, chipSize - 4) end
             dot:ClearAllPoints()
             dot:SetPoint("LEFT", instance.chipStrip, "LEFT", xOffset, 0)
-            dot:Show()
             xOffset = xOffset + chipSize + spacing
-            shownDots = shownDots + 1
-        else
-            dot:Hide()
         end
     end
 
-    -- Separator 1 — only earns its pixel when there is something on both sides of it
-    local sep1Shown = shownDots > 0 and CountShownChips(instance.typeChips) > 0
-    if instance.chipSep1 then
-        instance.chipSep1:ClearAllPoints()
-        if sep1Shown then
-            xOffset = xOffset + 2
-            instance.chipSep1:SetPoint("LEFT", instance.chipStrip, "LEFT", xOffset, 0)
-            instance.chipSep1:Show()
-            xOffset = xOffset + 1 + spacing
-        else
-            instance.chipSep1:Hide()
-        end
-    end
+    xOffset = PlaceSeparator(instance.chipSep1, instance.chipStrip, xOffset, spacing)
 
     for _, chip in ipairs(instance.typeChips) do
-        if ChipShown(chip) then
+        if chip:IsShown() then
             chip:ClearAllPoints()
             chip:SetPoint("LEFT", instance.chipStrip, "LEFT", xOffset, 0)
-            chip:Show()
             xOffset = xOffset + chip:GetWidth() + spacing
-            shownTypes = shownTypes + 1
-        else
-            chip:Hide()
         end
     end
 
-    local sep2Shown = shownTypes > 0 and CountShownChips(instance.specialChips) > 0
-    if instance.chipSep2 then
-        instance.chipSep2:ClearAllPoints()
-        if sep2Shown then
-            xOffset = xOffset + 2
-            instance.chipSep2:SetPoint("LEFT", instance.chipStrip, "LEFT", xOffset, 0)
-            instance.chipSep2:Show()
-            xOffset = xOffset + 1 + spacing
-        else
-            instance.chipSep2:Hide()
-        end
-    end
+    xOffset = PlaceSeparator(instance.chipSep2, instance.chipStrip, xOffset, spacing)
 
     for _, chip in ipairs(instance.specialChips) do
-        if ChipShown(chip) then
+        if chip:IsShown() then
             chip:ClearAllPoints()
             chip:SetPoint("LEFT", instance.chipStrip, "LEFT", xOffset, 0)
-            chip:Show()
             xOffset = xOffset + chip:GetWidth() + spacing
-            shownSpecials = shownSpecials + 1
-        else
-            chip:Hide()
         end
     end
 
@@ -1657,24 +1667,21 @@ local function PruneHiddenFilters(instance)
     for _, dot in ipairs(instance.qualityDots or {}) do
         if state.qualities[dot.qualityIndex] and not ChipShown(dot) then
             state.qualities[dot.qualityIndex] = nil
-            dot.dot:SetAlpha(0.35)
-            dot.border:Hide()
+            SetQualityDotInactive(dot)
             changed = true
         end
     end
     for _, chip in ipairs(instance.typeChips or {}) do
         if state.types[chip.chipKey] and not ChipShown(chip) then
             state.types[chip.chipKey] = nil
-            chip.label:SetTextColor(0.55, 0.55, 0.55)
-            chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+            SetChipInactive(chip)
             changed = true
         end
     end
     for _, chip in ipairs(instance.specialChips or {}) do
         if state.specials[chip.chipKey] and not ChipShown(chip) then
             state.specials[chip.chipKey] = nil
-            chip.label:SetTextColor(0.55, 0.55, 0.55)
-            chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+            SetChipInactive(chip)
             changed = true
         end
     end
@@ -1700,6 +1707,9 @@ function SearchBar:GetChipCatalogue()
         if colors then
             catalogue[#catalogue + 1] = {
                 group = CHIP_GROUP_QUALITY,
+                -- Quality chips render as a bare colour swatch, not a labelled chip.
+                -- Flagged here so consumers don't have to branch on the group name.
+                swatch = true,
                 key = q,
                 settingKey = QUALITY_SETTING_KEYS[q],
                 label = L[QUALITY_NAMES[q]] or QUALITY_NAMES[q],

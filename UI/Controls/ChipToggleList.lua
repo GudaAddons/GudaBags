@@ -13,8 +13,6 @@ local ROW_SPACING = 2
 local INACTIVE_BG = {0.15, 0.15, 0.15, 0.8}
 local HIDDEN_ALPHA = 0.3
 
-local GROUP_ORDER = { "quality", "type", "special" }
-
 local function ApplyChipVisual(button, hidden)
     if hidden then
         button:SetAlpha(HIDDEN_ALPHA)
@@ -62,83 +60,78 @@ function ChipToggleList:Create(parent, config)
 
     local catalogue = (SearchBar and SearchBar.GetChipCatalogue) and SearchBar:GetChipCatalogue() or {}
 
-    -- One row per group, in the same order the strip lays them out.
-    local rowIndex = 0
-    for _, group in ipairs(GROUP_ORDER) do
-        local xOffset = 0
-        local rowUsed = false
+    -- The catalogue arrives grouped and in the order the strip lays the chips out, so
+    -- a new row starts wherever the group changes. Reading it that way means this file
+    -- never names a group, and cannot drift from SearchBar's own group constants.
+    local rowIndex, xOffset, lastGroup = 0, 0, nil
 
-        for _, entry in ipairs(catalogue) do
-            if entry.group == group then
-                rowUsed = true
-                local button = CreateFrame("Button", nil, container)
-                button.settingKey = entry.settingKey
-                button.chipColor = entry.color
-
-                local bg = button:CreateTexture(nil, "BACKGROUND")
-                bg:SetAllPoints()
-                bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-                button.bg = bg
-
-                if group == "quality" then
-                    -- Colour swatch, matching CreateQualityDot in UI/SearchBar.lua
-                    button:SetSize(CHIP_SIZE, CHIP_SIZE)
-                    bg:SetVertexColor(0, 0, 0, 0)
-                    local dot = button:CreateTexture(nil, "ARTWORK")
-                    dot:SetSize(CHIP_SIZE - 4, CHIP_SIZE - 4)
-                    dot:SetPoint("CENTER")
-                    dot:SetTexture("Interface\\Buttons\\WHITE8x8")
-                    dot:SetVertexColor(entry.color[1], entry.color[2], entry.color[3])
-                    button.dot = dot
-                else
-                    local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    if Font then Font:Override(label) end
-                    label:SetPoint("CENTER", 0, 0)
-                    label:SetText(entry.label)
-                    button.label = label
-                    button:SetSize((label:GetStringWidth() or 20) + 10, CHIP_SIZE)
-                end
-
-                button:SetPoint("TOPLEFT", container, "TOPLEFT", xOffset, -(rowIndex * (ROW_HEIGHT + ROW_SPACING)) - 3)
-                xOffset = xOffset + button:GetWidth() + CHIP_SPACING
-
-                -- Every entry carries the full localized name; the strip's own labels
-                -- may be abbreviated, so the tooltip is the only place some locales
-                -- see the real word.
-                local tooltipText = entry.tooltip or entry.label
-                button:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                    GameTooltip:SetText(tooltipText, 1, 1, 1)
-                    GameTooltip:Show()
-                end)
-                button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-                button:SetScript("OnClick", function(self)
-                    if not SearchBar then return end
-                    local nowHidden = not SearchBar:IsChipHidden(self.settingKey)
-                    SearchBar:SetChipHidden(self.settingKey, nowHidden)
-                    ApplyChipVisual(self, nowHidden)
-                end)
-
-                -- A chip whose owning addon isn't loaded has no cell on screen. The
-                -- predicate is re-run on every Refresh rather than resolved once, so a
-                -- load-on-demand addon appearing after this control was built is picked
-                -- up. Such chips are appended last in their row, so hiding one leaves
-                -- no gap.
-                button.availableFn = entry.availableFn
-                button:SetShown(not entry.availableFn or entry.availableFn() == true)
-
-                ApplyChipVisual(button, SearchBar and SearchBar:IsChipHidden(entry.settingKey))
-                buttons[#buttons + 1] = button
-            end
-        end
-
-        if rowUsed then
+    for _, entry in ipairs(catalogue) do
+        if lastGroup and entry.group ~= lastGroup then
             rowIndex = rowIndex + 1
+            xOffset = 0
         end
+        lastGroup = entry.group
+
+        local button = CreateFrame("Button", nil, container)
+        button.settingKey = entry.settingKey
+        button.chipColor = entry.color
+
+        local bg = button:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+        button.bg = bg
+
+        if entry.swatch then
+            -- Colour swatch, matching CreateQualityDot in UI/SearchBar.lua
+            button:SetSize(CHIP_SIZE, CHIP_SIZE)
+            bg:SetVertexColor(0, 0, 0, 0)
+            local dot = button:CreateTexture(nil, "ARTWORK")
+            dot:SetSize(CHIP_SIZE - 4, CHIP_SIZE - 4)
+            dot:SetPoint("CENTER")
+            dot:SetTexture("Interface\\Buttons\\WHITE8x8")
+            dot:SetVertexColor(entry.color[1], entry.color[2], entry.color[3])
+            button.dot = dot
+        else
+            local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            if Font then Font:Override(label) end
+            label:SetPoint("CENTER", 0, 0)
+            label:SetText(entry.label)
+            button.label = label
+            button:SetSize((label:GetStringWidth() or 20) + 10, CHIP_SIZE)
+        end
+
+        button:SetPoint("TOPLEFT", container, "TOPLEFT", xOffset, -(rowIndex * (ROW_HEIGHT + ROW_SPACING)) - 3)
+        xOffset = xOffset + button:GetWidth() + CHIP_SPACING
+
+        -- Every entry carries the full localized name; the strip's own labels may be
+        -- abbreviated, so the tooltip is the only place some locales see the real word.
+        local tooltipText = entry.tooltip or entry.label
+        button:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(tooltipText, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        button:SetScript("OnClick", function(self)
+            if not SearchBar then return end
+            local nowHidden = not SearchBar:IsChipHidden(self.settingKey)
+            SearchBar:SetChipHidden(self.settingKey, nowHidden)
+            ApplyChipVisual(self, nowHidden)
+        end)
+
+        -- A chip whose owning addon isn't loaded has no cell on screen. The predicate
+        -- is re-run on every Refresh rather than resolved once, so a load-on-demand
+        -- addon appearing after this control was built is picked up. Such chips are
+        -- appended last in their row, so hiding one leaves no gap.
+        button.availableFn = entry.availableFn
+        button:SetShown(not entry.availableFn or entry.availableFn() == true)
+
+        ApplyChipVisual(button, SearchBar and SearchBar:IsChipHidden(entry.settingKey))
+        buttons[#buttons + 1] = button
     end
 
-    container:SetHeight(math.max(rowIndex, 1) * (ROW_HEIGHT + ROW_SPACING) + 4)
+    container:SetHeight((rowIndex + 1) * (ROW_HEIGHT + ROW_SPACING) + 4)
 
     if config and config.tooltip then
         container:EnableMouse(true)
