@@ -252,8 +252,10 @@ end
 -- Locate the cursor item's source slot by scanning for the locked slot.
 -- Returns bagID, slot, source ("bag"|"bank") or nil if not found.
 function BagFrame:GetCursorBagSlot()
-    -- Player bags
-    for bagID = 0, NUM_BAG_SLOTS do
+    -- Player bags. BAG_IDS, not 0..NUM_BAG_SLOTS: that stops at 4 and misses the
+    -- Retail reagent bag (5), so dragging a reagent returned no source at all and
+    -- DragFlyoutBar's `source ~= "bag"` gate silently swallowed the flyout.
+    for _, bagID in ipairs(Constants.BAG_IDS) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
@@ -2771,7 +2773,9 @@ local function AutoVendorJunk()
     local EquipSets = ns:GetModule("EquipmentSets")
     local autoLockSets = Database:GetSetting("autoLockSetItems")
 
-    for bagID = Constants.PLAYER_BAG_MIN, Constants.PLAYER_BAG_MAX do
+    -- BAG_IDS, not PLAYER_BAG_MIN..PLAYER_BAG_MAX: that range stops at 4 and so skips
+    -- the Retail reagent bag (5), which lives in its own Constants.REAGENT_BAG.
+    for _, bagID in ipairs(Constants.BAG_IDS) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)

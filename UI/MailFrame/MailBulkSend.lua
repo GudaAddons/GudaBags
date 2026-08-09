@@ -130,7 +130,11 @@ local function CollectStacks(itemID)
     local EquipSets = ns:GetModule("EquipmentSets")
     local autoLockSets = Database:GetSetting("autoLockSetItems")
 
-    for bagID = Constants.PLAYER_BAG_MIN, Constants.PLAYER_BAG_MAX do
+    -- BAG_IDS, not PLAYER_BAG_MIN..PLAYER_BAG_MAX: that range stops at 4 and so skips
+    -- the Retail reagent bag (5), which lives in its own Constants.REAGENT_BAG. The
+    -- PreClick intercept has no such limit, so a reagent-bag item used to have its
+    -- native attach suppressed and then find zero stacks here — a silent no-op.
+    for _, bagID in ipairs(Constants.BAG_IDS) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
