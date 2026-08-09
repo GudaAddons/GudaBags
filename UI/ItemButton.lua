@@ -1337,8 +1337,10 @@ local function CreateButton(parent)
     -- Helper function to find where the cursor item is coming from
     -- Returns "bag", "bank", or nil if unknown
     local function GetCursorItemSource()
-        -- Check player bags (0 to NUM_BAG_SLOTS) for locked slot
-        for bagID = 0, NUM_BAG_SLOTS do
+        -- Check player bags for locked slot. BAG_IDS, not 0..NUM_BAG_SLOTS: that
+        -- stops at 4 and misses the Retail reagent bag (5), which left the source
+        -- nil and made ShouldBlockSwap block reagent-to-bank swaps.
+        for _, bagID in ipairs(Constants.BAG_IDS) do
             local numSlots = C_Container.GetContainerNumSlots(bagID)
             for slot = 1, numSlots do
                 local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
