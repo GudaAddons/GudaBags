@@ -565,6 +565,49 @@ if IsAddOnLoaded and IsAddOnLoaded("Blizzard_GuildBankUI") then
     HookBlizzardGuildBankFrame()
 end
 
+-------------------------------------------------
+-- Keep Blizzard's guild bank UI out of the way
+-------------------------------------------------
+-- We replace that window entirely, yet the client still loads and shows it on
+-- every guild bank open -- we merely park it off-screen in the OnShow hook
+-- above, after it has been built. Blizzard_GuildBankUI is load-on-demand, so
+-- that is a whole window's worth of frames, textures and layout per session for
+-- something nobody ever sees, and on a slow client that build is a visible
+-- stall on the first open rather than merely wasted work.
+--
+-- Replacing the FrameXML loader is what keeps it from ever existing.
+-- GuildBankFrame then stays nil, and Blizzard's `ShowUIPanel(GuildBankFrame)` in
+-- UIParent's GUILDBANKFRAME_OPENED handler is a no-op (ShowUIPanel returns early
+-- on a nil frame).
+local blizzardLoadGuildBankUI = GuildBankFrame_LoadUI
+local blizzardGuildBankUIBlocked = false
+
+--- Undo the block and go back to the load-and-hook path.
+---
+--- The hook above is the ONLY way some clients notice a guild bank opening --
+--- the comment on it notes TBC has no GUILDBANKFRAME_OPENED event. Rather than
+--- keeping a list of which flavours those are, the block undoes itself the first
+--- time guild bank data arrives without that event having fired: that session is
+--- handled directly (our open path never needed Blizzard's frame), and every
+--- later session uses the original loader again.
+local function RestoreBlizzardGuildBankUI(why)
+    if not blizzardGuildBankUIBlocked then return end
+    blizzardGuildBankUIBlocked = false
+    GuildBankFrame_LoadUI = blizzardLoadGuildBankUI
+    ns:Debug("Restoring Blizzard guild bank UI loader:", why)
+    if blizzardLoadGuildBankUI then
+        pcall(blizzardLoadGuildBankUI)
+        HookBlizzardGuildBankFrame()
+    end
+end
+
+if type(GuildBankFrame_LoadUI) == "function" then
+    blizzardGuildBankUIBlocked = true
+    GuildBankFrame_LoadUI = function()
+        ns:Debug("Blocked Blizzard_GuildBankUI load (GudaBags replaces that UI)")
+    end
+end
+
 -- Debounce timer for guild bank slot changes
 local slotChangeTimer = nil
 local scanTimer = nil
@@ -572,7 +615,17 @@ local isQueryingTabs = false  -- Track when we initiated queries (to ignore resu
 local queryStartTime = 0
 
 Events:Register("GUILDBANKBAGSLOTS_CHANGED", function()
-    if not isGuildBankOpen then return end
+    -- Guild bank data with no open event means this client never fires
+    -- GUILDBANKFRAME_OPENED, so blocking Blizzard's UI just removed the only way
+    -- we would have noticed. Hand the loader back for future sessions and open
+    -- this one ourselves -- HandleGuildBankOpened has never needed that frame.
+    if not isGuildBankOpen then
+        if blizzardGuildBankUIBlocked then
+            RestoreBlizzardGuildBankUI("guild bank data arrived without GUILDBANKFRAME_OPENED")
+            HandleGuildBankOpened()
+        end
+        return
+    end
 
     local now = GetTime()
     ns:Debug("GUILDBANKBAGSLOTS_CHANGED fired, querying:", isQueryingTabs, "elapsed:", now - queryStartTime)
