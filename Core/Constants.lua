@@ -436,7 +436,14 @@ Constants.DEFAULTS = {
     reverseStackSort = false,
     sortRightToLeft = false,
     smoothSort = false,  -- Spread sort moves across frames to avoid stuttering
-    sortPriority = "default",  -- "default", "ilvl", "quality"
+    -- Physical bag order, applied by Sorting/SortEngine when the player sorts.
+    -- It has no "type" branch; that value falls back to its default branch,
+    -- which is already class-first.
+    sortPriority = "default",  -- "default", "ilvl", "quality", "type"
+    -- Category view layout order, applied by LayoutEngine when the view is
+    -- drawn. Split from sortPriority so the view can be arranged independently
+    -- of where items physically sit; migration v7 seeds it from the old value.
+    categoryPriority = "default",  -- "default", "ilvl", "quality", "type"
 
     -- Bag frame position
     framePoint = nil,
