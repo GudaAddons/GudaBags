@@ -64,6 +64,28 @@ local function IsInteractionWindowOpen()
     return false
 end
 
+-- Whether identical items are merged into a single button in the layout built
+-- right now. BuildCategorySections is the only place that acts on this, but the
+-- answer has to be readable from outside too: in a grouped layout most slots
+-- deliberately have no button of their own, so BagFrame:IncrementalUpdate cannot
+-- tell a grouped-away slot from a genuinely undrawn one without it. One function
+-- owns the question so the two can never disagree.
+function LayoutEngine:ShouldGroupItems()
+    local Database = ns:GetModule("Database")
+    if not (Database and Database:GetSetting("groupIdenticalItems")) then
+        return false
+    end
+    -- Interaction windows show items ungrouped so individual stacks stay clickable
+    if IsInteractionWindowOpen() then
+        return false
+    end
+    -- A/B suspect toggle: disable identical-item grouping to measure its cost.
+    if ns.suspectDisabled and ns.suspectDisabled.grouping then
+        return false
+    end
+    return true
+end
+
 -- Build display order from classified bags
 -- Returns array of {bagID, needsSpacing, isKeyring, isSoulBag, isQuiverBag}
 -- bags parameter is optional, used to check cached keyring data
@@ -818,15 +840,7 @@ function LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, 
     end
 
     -- Group identical items into single slots with combined count (if setting enabled)
-    -- Skip grouping when interaction windows are open (bank, trade, mail, etc.)
-    -- so users can interact with individual stacks
-    local Database = ns:GetModule("Database")
-    local groupIdenticalItems = Database and Database:GetSetting("groupIdenticalItems")
-    local shouldGroup = groupIdenticalItems and not IsInteractionWindowOpen()
-    -- A/B suspect toggle: disable identical-item grouping to measure its cost.
-    if ns.suspectDisabled and ns.suspectDisabled.grouping then
-        shouldGroup = false
-    end
+    local shouldGroup = self:ShouldGroupItems()
     if shouldGroup then
         for _, section in ipairs(sections) do
             local itemsByID = {}  -- { [itemID] = { items } }
