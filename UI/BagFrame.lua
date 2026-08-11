@@ -91,6 +91,21 @@ local dragCheckTicker = nil
 local CATEGORY_REFRESH_DELAY = 0.05
 local categoryRefreshTimer = nil
 
+-- Category view: the layout is knowingly out of date because slots were freed.
+--
+-- A removal must NOT queue the rebuild above. Ghost slots exist precisely so the
+-- layout does not reflow under the player while they vendor a bagful of greys
+-- (Rule 1), so the rebuild is owed rather than scheduled: it runs on the next bag
+-- toggle, Restack & Clean, Clean, or on any later update that actually has to
+-- draw something new. Cleared by Refresh(), ReleaseHeld() and Clean().
+local categoryLayoutStale = false
+
+-- Whether the category layout currently on screen merged identical items into one
+-- button. Recorded by RefreshCategoryView from LayoutEngine:ShouldGroupItems();
+-- read by IncrementalUpdate, which otherwise cannot tell a slot that has no
+-- button by design from one that was never drawn.
+local lastLayoutWasGrouped = false
+
 -- Helper to find a pseudo-item button by type (Empty or Soul)
 local function FindPseudoItemButton(pseudoType)
     local prefix = pseudoType .. ":"
@@ -507,11 +522,13 @@ function BagFrame:Refresh()
 
     ns:ProfileStart("Refresh")
 
-    -- A rebuild is happening now, so a queued one is redundant.
+    -- A rebuild is happening now, so a queued one is redundant — and so is the
+    -- one owed by any ghost slots this rebuild is about to collapse.
     if categoryRefreshTimer then
         categoryRefreshTimer:Cancel()
         categoryRefreshTimer = nil
     end
+    categoryLayoutStale = false
 
     local viewType = Database:GetSetting("bagViewType") or "single"
 
@@ -912,6 +929,12 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
     categoryViewItems = {}
     itemButtons = {}
 
+    -- Remember whether this render merges identical items. IncrementalUpdate has
+    -- to know: a grouped layout renders one button per item key, so most slots
+    -- legitimately have no button, and the state can flip under it at any time
+    -- (opening a vendor ungroups everything).
+    lastLayoutWasGrouped = LayoutEngine:ShouldGroupItems()
+
     -- Build category sections (include empty slot count for "Empty" and "Soul" categories)
     -- When dragging an item, also show empty categories as drop targets
     local sections = LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, nil, isDraggingItem, quiverEmptyCount, firstQuiverEmptySlot)
@@ -1206,10 +1229,16 @@ end
 -- True when the frame is hidden but still holding a valid, unchanged layout, so
 -- it can be re-shown without a scan/rebuild. Requires layoutCached (any layout
 -- invalidation clears it) and no changes accumulated while hidden.
+--
+-- categoryLayoutStale is what makes a bag toggle collapse ghost slots: reopening
+-- is the player's cue that they are done removing items, and it is the contract
+-- Rule 1 documents ("visible until toggle / Restack & Clean"). Fast reopen still
+-- applies whenever no ghosts are being held.
 function BagFrame:CanFastReopen()
     return heldHidden
         and layoutCached
         and not dirtyWhileHidden
+        and not categoryLayoutStale
         and not viewingCharacter
         and frame and not frame:IsShown()
 end
@@ -1239,6 +1268,7 @@ function BagFrame:ReleaseHeld()
     itemButtons = {}
     layoutCached = false
     lastLayoutSettings = nil
+    categoryLayoutStale = false
 end
 
 function BagFrame:Show()
@@ -1473,6 +1503,11 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         -- 1. Buttons already showing empty (cachedItemData is nil)
         -- 2. Buttons for slots that are NOW empty in currentItemsBySlot (item was removed)
         local ghostSlots = {}  -- Array of {slotKey, button} for reuse
+        -- Slots that lost their item in THIS pass. Distinct from #ghostSlots,
+        -- which also counts holes left by earlier passes; the Empty/Quiver
+        -- visibility check below needs to know whether the free slots it just
+        -- noticed are the ones about to be painted as ghosts.
+        local slotsFreedThisPass = 0
         for slotKey, button in pairs(buttonsBySlot) do
             if not cachedItemData[slotKey] then
                 -- This button is already showing empty (ghost) - available for reuse
@@ -1480,15 +1515,17 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             elseif not currentItemsBySlot[slotKey] then
                 -- This button's slot is now empty (item was removed) - will become ghost
                 table.insert(ghostSlots, {slotKey = slotKey, button = button})
+                slotsFreedThisPass = slotsFreedThisPass + 1
             end
         end
 
         -- Check if we need full refresh:
-        -- 1. If any item changed categories
-        -- 2. If more NEW items than available ghost slots
-        -- 3. If unique item count increased beyond available buttons + ghosts
+        -- 1. If unique item count increased beyond available buttons + ghosts
+        -- 2. If the Empty/Quiver pseudo-category has to disappear (or appear
+        --    without a removal behind it)
+        -- 3. If any item changed categories
+        -- 4. If any occupied slot has nothing on screen drawing it
         local needsFullRefresh = false
-        local newItemsNeedingButtons = {}  -- Items that need buttons (no existing key match)
 
         -- Count total cached buttons (excluding ghosts and slots that will become ghosts)
         local totalCachedButtons = 0
@@ -1550,19 +1587,44 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
         end
 
-        -- Check if Empty/Soul/Quiver category needs to appear or disappear (requires full refresh)
+        -- Check if the Empty/Quiver pseudo-category has to appear or disappear.
+        --
+        -- Split by direction. The section DISAPPEARING means the last free slot
+        -- just got filled — an addition, so rebuild now. The section APPEARING
+        -- because slots were freed is the vendoring case, and rebuilding there is
+        -- exactly what Rule 1 forbids: the freed slots are already on screen as
+        -- ghost holes, so the section can wait for the player (bag toggle,
+        -- Restack & Clean). Appearing with nothing freed this pass means the slots
+        -- came from somewhere else — a larger bag was equipped — and there is no
+        -- ghost standing in for them, so that still rebuilds immediately.
         local emptyButtonExists = FindPseudoItemButton("Empty") ~= nil
         local emptyNeedsButton = emptyCount > 0
 
-        if (emptyNeedsButton and not emptyButtonExists) or (not emptyNeedsButton and emptyButtonExists) then
-            ns:Debug("CategoryView REFRESH: Empty category visibility changed")
+        if emptyNeedsButton and not emptyButtonExists then
+            if slotsFreedThisPass > 0 then
+                ns:Debug("CategoryView DEFER: Empty category owed, ghosts hold the freed slots")
+                categoryLayoutStale = true
+            else
+                ns:Debug("CategoryView REFRESH: Empty category appeared without a removal")
+                needsFullRefresh = true
+            end
+        elseif not emptyNeedsButton and emptyButtonExists then
+            ns:Debug("CategoryView REFRESH: Empty category no longer needed")
             needsFullRefresh = true
         end
 
         local quiverButtonExists = FindPseudoItemButton("Quiver") ~= nil
         local quiverNeedsButton = quiverEmptyCount > 0
-        if (quiverNeedsButton and not quiverButtonExists) or (not quiverNeedsButton and quiverButtonExists) then
-            ns:Debug("CategoryView REFRESH: Quiver category visibility changed")
+        if quiverNeedsButton and not quiverButtonExists then
+            if slotsFreedThisPass > 0 then
+                ns:Debug("CategoryView DEFER: Quiver category owed, ghosts hold the freed slots")
+                categoryLayoutStale = true
+            else
+                ns:Debug("CategoryView REFRESH: Quiver category appeared without a removal")
+                needsFullRefresh = true
+            end
+        elseif not quiverNeedsButton and quiverButtonExists then
+            ns:Debug("CategoryView REFRESH: Quiver category no longer needed")
             needsFullRefresh = true
         end
 
@@ -1657,57 +1719,62 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
         end
 
-        -- Check for new item types that need buttons
+        -- An occupied slot that nothing on screen is drawing forces a full refresh.
+        --
+        -- Tested by identity, not by counting ghosts against a budget, because
+        -- ghost reuse below is identity-based: the only branch that re-fills a
+        -- ghost is the one keyed on this same slotKey ("Ghost slot getting an item
+        -- back"), and nothing re-points a ghost at a different slot. Treating
+        -- ghosts as N spare buttons lets a real case through — sell one item (one
+        -- ghost at slot Y), loot into slot X while the vendor keeps grouping
+        -- suppressed, and "1 > 1" is false, so the incremental passes run, they
+        -- only ever walk buttonsBySlot, and the looted item is never drawn at all.
+        --
+        -- What counts as "nothing is drawing it" depends on the layout on screen.
+        -- Ungrouped, every item owns a button, so a slot without one is undrawn.
+        -- Grouped, one button stands in for every slot sharing an item key, so
+        -- most slots have no button by design — demanding one there would send
+        -- every vendor sale down the full-refresh path and wipe the ghosts this
+        -- whole mechanism exists to keep.
+        --
+        -- The stand-in only counts while it survives this pass: buttonsByItemKey
+        -- still lists a button that is about to be ghosted, so the test is
+        -- "a button sitting at a slot that is still occupied", not "a button
+        -- filed under the key". Sell the one stack of linen that happens to own
+        -- the group's button and the remaining stacks would otherwise vanish.
         if not needsFullRefresh then
-            for itemKey, items in pairs(currentItemsByKey) do
-                local existingButtons = buttonsByItemKey[itemKey]
-                local hasButton = existingButtons and #existingButtons > 0
-                if not hasButton then
-                    local itemName = items[1] and items[1].itemData and items[1].itemData.name or "unknown"
-                    ns:Debug("CategoryView: new itemKey needs button:", itemName)
-                    table.insert(newItemsNeedingButtons, items[1])
-                end
-            end
-
-            -- Newly filled slots that have no button of their own. The itemKey
-            -- loop above misses these whenever the key already exists elsewhere
-            -- — splitting a stack is the common case, since GetItemKey is
-            -- link:quality:isBound and does NOT include the count, so both
-            -- halves share a key. The incremental passes below only ever touch
-            -- slots already in buttonsBySlot, so a slot with no button would
-            -- never be drawn at all; it has to go through a full refresh.
-            local newSlotsNeedingButtons = 0
-            for slotKey in pairs(currentItemsBySlot) do
+            local drawnItemKeys  -- built lazily; ungrouped layouts never need it
+            for slotKey, currentSlot in pairs(currentItemsBySlot) do
                 if not buttonsBySlot[slotKey] then
-                    newSlotsNeedingButtons = newSlotsNeedingButtons + 1
+                    local drawn = false
+                    if lastLayoutWasGrouped then
+                        if not drawnItemKeys then
+                            drawnItemKeys = {}
+                            for otherSlotKey in pairs(buttonsBySlot) do
+                                local other = currentItemsBySlot[otherSlotKey]
+                                if other then
+                                    drawnItemKeys[other.itemKey] = true
+                                end
+                            end
+                        end
+                        drawn = drawnItemKeys[currentSlot.itemKey] or false
+                    end
+                    if not drawn then
+                        ns:Debug("CategoryView REFRESH: item at undrawn slot", slotKey)
+                        needsFullRefresh = true
+                        break
+                    end
                 end
-            end
-
-            -- If more new buttons are needed than ghost slots available, need
-            -- full refresh. Counted per-slot, since that's what a button maps to
-            -- on every path that reaches here: OnBagsUpdated sends net adds to a
-            -- full Refresh while grouping is active, so incremental only runs
-            -- ungrouped (grouping off, or suppressed by an interaction window,
-            -- where LayoutEngine also renders one button per slot). In the one
-            -- mixed case — a batch that both removes and adds while grouping is
-            -- on — this over-counts, which only forces a full refresh that
-            -- renders correctly anyway.
-            local buttonsNeeded = #newItemsNeedingButtons
-            if newSlotsNeedingButtons > buttonsNeeded then
-                buttonsNeeded = newSlotsNeedingButtons
-            end
-            if buttonsNeeded > #ghostSlots then
-                ns:Debug("CategoryView REFRESH: need", buttonsNeeded, "new buttons (keys:", #newItemsNeedingButtons,
-                    "slots:", newSlotsNeedingButtons, "), only", #ghostSlots, "ghosts available")
-                needsFullRefresh = true
             end
         end
 
         if needsFullRefresh then
             ns:Debug("CategoryView: full refresh needed — creating ghosts first")
-            -- Create ghost slots for removed items BEFORE the full refresh.
-            -- The ghosts are visible immediately at the item's old position.
-            -- A deferred refresh runs after 1.5s to clean up the layout.
+            -- Clear removed items BEFORE the full refresh so a sold or moved item
+            -- doesn't linger for the frame or two until the rebuild lands. These
+            -- are short-lived, unlike the ghosts the incremental path creates:
+            -- something has to be drawn here, so ScheduleCategoryRefresh below
+            -- collapses the layout almost immediately.
             for slotKey, button in pairs(buttonsBySlot) do
                 if not button.isEmptySlotButton then
                     local currentSlot = currentItemsBySlot[slotKey]
@@ -1747,9 +1814,10 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 end
             end
             -- Deferred full refresh to update layout structure (category changes,
-            -- new items, etc.). Ghost slots stay visible until this fires, which
-            -- is a frame or two later — a looted or split item must not sit
-            -- invisible while the old layout is still on screen.
+            -- new items, etc.). Kept to a frame or two — a looted or split item
+            -- must not sit invisible while the old layout is still on screen.
+            -- Reaching here means something has to be DRAWN; a pass that only
+            -- freed slots never gets this far, it leaves ghosts standing instead.
             ScheduleCategoryRefresh()
             -- Update footer and return
             local regularTotal, regularFree, specialBags = BagScanner:GetDetailedSlotCounts()
@@ -1843,6 +1911,9 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             ItemButton:ClearSearchState(button)
                         end
                         ghostsCreated = ghostsCreated + 1
+                        -- The hole stays until the player collapses it; a reopen
+                        -- must not fast-path past the rebuild it now owes.
+                        categoryLayoutStale = true
                     end
                 end
             end
@@ -1872,6 +1943,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                                     ItemButton:ClearSearchState(button)
                                 end
                                 ghostsCreated = ghostsCreated + 1
+                                categoryLayoutStale = true
                             end
                             break
                         end
@@ -2377,6 +2449,7 @@ function BagFrame:Clean()
     pseudoItemButtons = {}
     layoutCached = false
     lastLayoutSettings = nil
+    categoryLayoutStale = false
 
     -- Rescan and refresh
     BagScanner:ScanAllBags()
@@ -2726,12 +2799,19 @@ local function RefreshForInteractionWindow()
             return
         end
         local viewType = Database:GetSetting("bagViewType") or "single"
-        if viewType == "category" then
-            -- Force full refresh since grouping state changed
-            ItemButton:ReleaseAll(frame.container)
-            buttonsByItemKey = {}
-            BagFrame:Refresh()
-        end
+        if viewType ~= "category" then return end
+        -- The rebuild exists only to flip grouping on/off, and
+        -- LayoutEngine:ShouldGroupItems() requires the setting before it looks at
+        -- interaction windows at all. With the setting off the layout is identical
+        -- either way, so rebuilding would buy nothing and cost two full renders per
+        -- vendor session — plus every ghost slot the player accumulated while
+        -- selling. Read the setting, not ShouldGroupItems(): that returns false
+        -- *because* the window is open, which is exactly when we do want to rebuild.
+        if not Database:GetSetting("groupIdenticalItems") then return end
+        -- Force full refresh since grouping state changed
+        ItemButton:ReleaseAll(frame.container)
+        buttonsByItemKey = {}
+        BagFrame:Refresh()
     end
 end
 
@@ -2906,22 +2986,17 @@ local function OnInteractionOpen()
         end
     end)
     -- Deferred refresh to unstack grouped items — interaction frame needs a frame to be fully shown
-    -- so IsInteractionWindowOpen() can detect it
-    C_Timer.After(0.05, function()
-        if frame and frame:IsShown() then
-            BagFrame:Refresh()
-        end
-    end)
+    -- so IsInteractionWindowOpen() can detect it. Routed through
+    -- RefreshForInteractionWindow so one function owns "does grouping state
+    -- actually change here?"; the MERCHANT_SHOW/MAIL_SHOW/... handlers registered
+    -- above call the same thing, so with grouping off neither one rebuilds.
+    C_Timer.After(0.05, RefreshForInteractionWindow)
 end
 
 local function OnInteractionClose()
     SmartAutoClose()
     -- Deferred refresh to re-enable grouping after interaction window fully closes
-    C_Timer.After(0.05, function()
-        if frame and frame:IsShown() then
-            BagFrame:Refresh()
-        end
-    end)
+    C_Timer.After(0.05, RefreshForInteractionWindow)
 end
 
 local function OnBankOpen()
