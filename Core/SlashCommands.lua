@@ -292,9 +292,10 @@ end
 
 local patternHandlers = {}
 
--- Count item by ID across characters
+-- Count item by ID across characters. Diagnostic dump, so it deliberately includes
+-- characters excluded from the tooltip totals.
 patternHandlers["^count%s+(%d+)$"] = function(itemID)
-    local total, chars = Database:CountItemAcrossCharacters(tonumber(itemID))
+    local total, chars = Database:CountItemAcrossCharacters(tonumber(itemID), true)
     ns:Print(string.format(L["CMD_ITEM_COUNT"], itemID, total))
     for _, c in ipairs(chars) do
         local current = c.isCurrent and " " .. L["CMD_YOU"] or ""
