@@ -1,4 +1,4 @@
-## Interface: 120007, 110207, 50504, 20506, 11509
+## Interface: 120100, 110207, 50504, 20506, 11509
 ## Title: GudaBags
 ## Notes: Clean, unified bag management for all WoW versions
 ## Notes-frFR: Gestion de sacs claire et unifiée pour toutes les versions de WoW
@@ -12,7 +12,7 @@
 ## Notes-zhCN: 适用于所有魔兽世界版本的简洁统一背包管理
 ## Notes-zhTW: 適用於所有魔獸世界版本的簡潔統一背包管理
 ## Author: Vati
-## Version: 2.1.7
+## Version: 2.1.8
 ## SavedVariables: GudaBags_DB
 ## SavedVariablesPerCharacter: GudaBags_CharDB
 ## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png
