@@ -618,31 +618,38 @@ function Database:SaveCurrencies(currencies)
     charData.currencies = currencies
 end
 
--- Count a currency across all characters. Returns: totalCount, characterCounts
+-- Count a currency across characters. Returns: totalCount, characterCounts
 -- (array of {name, class, race, sex, quantity, isCurrent}, current char first then alpha).
-function Database:CountCurrencyAcrossCharacters(currencyID)
+-- Characters the user excluded (gold blacklist) are skipped unless includeExcluded is set.
+-- The current character is always counted -- excluding yourself must never hide the
+-- currency you are actually holding.
+function Database:CountCurrencyAcrossCharacters(currencyID, includeExcluded)
     if not currencyID then return 0, {} end
 
     local currentFullName = GetPlayerFullName()
     local characterCounts = {}
     local totalCount = 0
+    local blacklist = GudaBags_DB.goldBlacklist
 
     for fullName, charData in pairs(GudaBags_DB.characters) do
-        local cur = charData.currencies
-        -- Numeric SavedVariables keys deserialize as strings after a reload, so
-        -- accept either the numeric or the string form of the currencyID.
-        local qty = cur and (cur[currencyID] or cur[tostring(currencyID)]) or 0
-        if qty > 0 then
-            table.insert(characterCounts, {
-                fullName = fullName,
-                name = charData.name,
-                class = charData.class,
-                race = charData.race,
-                sex = charData.sex,
-                quantity = qty,
-                isCurrent = (fullName == currentFullName),
-            })
-            totalCount = totalCount + qty
+        local isCurrent = (fullName == currentFullName)
+        if isCurrent or includeExcluded or not (blacklist and blacklist[fullName]) then
+            local cur = charData.currencies
+            -- Numeric SavedVariables keys deserialize as strings after a reload, so
+            -- accept either the numeric or the string form of the currencyID.
+            local qty = cur and (cur[currencyID] or cur[tostring(currencyID)]) or 0
+            if qty > 0 then
+                table.insert(characterCounts, {
+                    fullName = fullName,
+                    name = charData.name,
+                    class = charData.class,
+                    race = charData.race,
+                    sex = charData.sex,
+                    quantity = qty,
+                    isCurrent = isCurrent,
+                })
+                totalCount = totalCount + qty
+            end
         end
     end
 
@@ -744,67 +751,76 @@ local function CountItemsInContainers(containers, itemID)
     return count
 end
 
--- Count items by itemID across all characters (bags + bank + warband bank)
+-- Count items by itemID across characters (bags + bank + mail + equipped, plus the
+-- account-wide warband and guild banks).
+-- Characters the user excluded (gold blacklist) are skipped unless includeExcluded is set;
+-- the current character is always counted, so excluding yourself can never hide the item
+-- sitting in the bag you are looking at. Account-wide banks are never per-character, so
+-- they are unaffected by the exclusion.
 -- Returns: totalCount, characterCounts (table of {name, class, count, bagCount, bankCount, ...}), warbandCount
-function Database:CountItemAcrossCharacters(itemID)
+function Database:CountItemAcrossCharacters(itemID, includeExcluded)
     if not itemID then return 0, {}, 0 end
 
     local currentFullName = GetPlayerFullName()
     local characterCounts = {}
     local totalCount = 0
+    local blacklist = GudaBags_DB.goldBlacklist
 
     for fullName, charData in pairs(GudaBags_DB.characters) do
-        local bagCount = CountItemsInContainers(charData.bags, itemID)
+        local isCurrent = (fullName == currentFullName)
+        if isCurrent or includeExcluded or not (blacklist and blacklist[fullName]) then
+            local bagCount = CountItemsInContainers(charData.bags, itemID)
 
-        -- On Retail, bank data is wrapped: {containers = {...}, tabs = {...}, isRetail = true}
-        local bankContainers = charData.bank
-        if bankContainers and bankContainers.isRetail then
-            bankContainers = bankContainers.containers
-        end
-        local bankCount = CountItemsInContainers(bankContainers, itemID)
+            -- On Retail, bank data is wrapped: {containers = {...}, tabs = {...}, isRetail = true}
+            local bankContainers = charData.bank
+            if bankContainers and bankContainers.isRetail then
+                bankContainers = bankContainers.containers
+            end
+            local bankCount = CountItemsInContainers(bankContainers, itemID)
 
-        local mailCount = 0
-        if charData.mailbox then
-            for _, row in ipairs(charData.mailbox) do
-                if row.itemID == itemID then
-                    mailCount = mailCount + (row.count or 1)
+            local mailCount = 0
+            if charData.mailbox then
+                for _, row in ipairs(charData.mailbox) do
+                    if row.itemID == itemID then
+                        mailCount = mailCount + (row.count or 1)
+                    end
                 end
             end
-        end
 
-        -- Count equipped items (live scan for current char, cached for others)
-        local equippedCount = 0
-        if fullName == currentFullName then
-            for slot = 1, 19 do
-                if GetInventoryItemID("player", slot) == itemID then
-                    equippedCount = equippedCount + 1
+            -- Count equipped items (live scan for current char, cached for others)
+            local equippedCount = 0
+            if isCurrent then
+                for slot = 1, 19 do
+                    if GetInventoryItemID("player", slot) == itemID then
+                        equippedCount = equippedCount + 1
+                    end
+                end
+            elseif charData.equipped then
+                for _, equippedItemID in pairs(charData.equipped) do
+                    if equippedItemID == itemID then
+                        equippedCount = equippedCount + 1
+                    end
                 end
             end
-        elseif charData.equipped then
-            for _, equippedItemID in pairs(charData.equipped) do
-                if equippedItemID == itemID then
-                    equippedCount = equippedCount + 1
-                end
+
+            local charCount = bagCount + bankCount + mailCount + equippedCount
+
+            if charCount > 0 then
+                table.insert(characterCounts, {
+                    fullName = fullName,
+                    name = charData.name,
+                    class = charData.class,
+                    race = charData.race,
+                    sex = charData.sex,
+                    count = charCount,
+                    bagCount = bagCount,
+                    bankCount = bankCount,
+                    mailCount = mailCount,
+                    equippedCount = equippedCount,
+                    isCurrent = isCurrent,
+                })
+                totalCount = totalCount + charCount
             end
-        end
-
-        local charCount = bagCount + bankCount + mailCount + equippedCount
-
-        if charCount > 0 then
-            table.insert(characterCounts, {
-                fullName = fullName,
-                name = charData.name,
-                class = charData.class,
-                race = charData.race,
-                sex = charData.sex,
-                count = charCount,
-                bagCount = bagCount,
-                bankCount = bankCount,
-                mailCount = mailCount,
-                equippedCount = equippedCount,
-                isCurrent = (fullName == currentFullName),
-            })
-            totalCount = totalCount + charCount
         end
     end
 
