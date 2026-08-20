@@ -99,6 +99,22 @@ else
 end
 Constants.BANK_BAG_ID = -1
 
+-- Membership test for BAG_IDS, so "is this one of the player's carried bags?"
+-- has one owner.
+--
+-- Writing that test as `bagID >= 1 and bagID <= PLAYER_BAG_MAX` is the recurring
+-- bug this exists to stop: PLAYER_BAG_MAX is 4 on every flavor, and Retail's
+-- reagent bag is 5, so such a range silently excludes it and the feature just
+-- doesn't fire for reagents. Excludes the keyring, which is not in BAG_IDS.
+local BAG_ID_SET = {}
+for _, bagID in ipairs(Constants.BAG_IDS) do
+    BAG_ID_SET[bagID] = true
+end
+
+function Constants.IsPlayerBagID(bagID)
+    return bagID ~= nil and BAG_ID_SET[bagID] == true
+end
+
 -- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
 Constants.KEYRING_BAG_ID = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 

@@ -83,7 +83,7 @@ commandHandlers["profilereset"] = function()
 end
 
 -- A/B suspect toggles: list current state
-local SUSPECTS = { "tooltipscan", "glow", "masque", "upgrade", "grouping" }
+local SUSPECTS = { "tooltipscan", "glow", "masque", "upgrade", "grouping", "upgradetrack" }
 commandHandlers["toggle"] = function()
     ns:Print("Suspect toggles (disable a subsystem to isolate cost):")
     for _, name in ipairs(SUSPECTS) do

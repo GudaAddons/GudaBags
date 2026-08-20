@@ -67,7 +67,9 @@ function ScannerBase:ScanDirtyBag(bagID, cachedBags, options)
         local currentItemID = itemInfo and itemInfo.itemID
         local cachedItemID = cachedItem and cachedItem.itemID
 
-        if currentItemID ~= cachedItemID then
+        -- A record captured while the item was still loading compares equal
+        -- forever, so ask whether the record is finished before trusting that.
+        if currentItemID ~= cachedItemID or ItemScanner:IsRecordIncomplete(cachedItem) then
             -- Slot changed - update known item counts if tracking
             if knownItemIDs then
                 if cachedItemID then

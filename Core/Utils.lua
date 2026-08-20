@@ -81,7 +81,22 @@ function Utils:GetItemKey(itemData)
     if not itemData then return nil end
     -- Key based on: itemLink (or itemID), quality, bound status
     -- This matches items that are visually identical
-    local link = itemData.link or ""
+    --
+    -- An item the client hasn't resolved yet has no link, and an empty string
+    -- collapses every such item onto the single key ":0:0" -- they then share one
+    -- reuse bucket and one entry in the caller's by-key table, so several items
+    -- loading at once are accounted for as one. Fall back to whatever still
+    -- identifies this item: its itemID, or failing that its slot, which is unique
+    -- by definition. Two genuinely identical items keep matching, because once
+    -- their data lands they both key off the link again.
+    local link = itemData.link
+    if not link then
+        if itemData.itemID then
+            link = "id:" .. itemData.itemID
+        else
+            link = "slot:" .. tostring(itemData.bagID) .. ":" .. tostring(itemData.slot)
+        end
+    end
     local quality = itemData.quality or 0
     local isBound = itemData.isBound and "1" or "0"
     return link .. ":" .. quality .. ":" .. isBound

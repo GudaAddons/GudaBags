@@ -358,6 +358,70 @@ end
 -- Value = number (charges remaining), false (scanned, no charges), nil (not scanned yet)
 local chargesCache = {}
 
+-- Tooltip charge line patterns, derived from the client's own ITEM_SPELL_CHARGES.
+--
+-- This used to be a hardcoded "^(%d+) charges?$". That is an English sentence, so
+-- it matched nothing on any of the other 10 supported locales -- a zhCN client
+-- shows "%d 次充能" -- and because a miss is cached as `false` (see GetCharges),
+-- every slot was then permanently marked "no charges". The charges display simply
+-- did not exist outside enUS.
+--
+-- Blizzard localizes ITEM_SPELL_CHARGES for us, so the pattern is built from it.
+-- Two wrinkles:
+--   * the plural construct "|4Charge:Charges;" has to be expanded, and Lua
+--     patterns have no alternation, so each form becomes its own pattern. Locales
+--     with no grammatical plural (zhCN, zhTW, koKR) carry no |4 at all and
+--     collapse to a single pattern;
+--   * everything is escaped first, then the escaped "%d" is turned back into a
+--     capture -- otherwise a locale whose string contains "." or "(" would build a
+--     pattern that matches the wrong thing.
+local function EscapePattern(text)
+    return (text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
+end
+
+local function BuildChargePatterns()
+    local raw = _G.ITEM_SPELL_CHARGES
+    if type(raw) ~= "string" or raw == "" then
+        -- Guard rather than assume: comparing against a global that does not
+        -- exist is the silent-failure mode this codebase has shipped before.
+        -- Fall back to English so an enUS client is never worse off than before.
+        return { "^(%d+) [Cc]harges?$" }
+    end
+
+    -- Some locales ship a positional specifier ("%1$d") instead of a bare "%d".
+    -- Normalise before anything else: the capture substitution below looks for
+    -- "%d", so without this those locales find nothing, get skipped, and fall
+    -- back to English -- reintroducing exactly the bug this function exists to
+    -- fix, for precisely the clients most likely to hit it.
+    raw = raw:gsub("%%%d%$d", "%%d")
+
+    local forms = {}
+    forms[(raw:gsub("|4([^:;]*):([^;]*);", "%1"))] = true  -- singular
+    forms[(raw:gsub("|4([^:;]*):([^;]*);", "%2"))] = true  -- plural
+
+    local patterns = {}
+    for form in pairs(forms) do
+        local escaped = EscapePattern(form)
+        -- EscapePattern turned the literal "%d" into "%%d"; make it a capture.
+        local pattern, replaced = escaped:gsub("%%%%d", "(%%d+)")
+        -- No %d means this is not a form we can read a number out of -- a
+        -- positional "%1$d", say. Skip it rather than build a pattern that
+        -- silently matches nothing; the English fallback below then applies.
+        if replaced > 0 then
+            -- Anchored so a "Charges" line cannot be confused with prose that
+            -- merely contains it, but tolerant of stray padding at either end.
+            table.insert(patterns, "^%s*" .. pattern .. "%s*$")
+        end
+    end
+
+    if #patterns == 0 then
+        return { "^(%d+) [Cc]harges?$" }
+    end
+    return patterns
+end
+
+local CHARGE_PATTERNS = BuildChargePatterns()
+
 function TooltipScanner:GetCharges(bagID, slotID)
     if not bagID or not slotID then return nil end
     local key = bagID * 1000 + slotID
@@ -373,10 +437,15 @@ function TooltipScanner:GetCharges(bagID, slotID)
 
     local charges = nil
     self:ScanLines(function(lineNum, text)
-        local _, _, num = string.find(text:lower(), "^(%d+) charges?$")
-        if num then
-            charges = tonumber(num)
-            return true
+        -- Matched against the raw line, not a lowercased one: the patterns come
+        -- from the client's own global string, so the casing already agrees, and
+        -- :lower() is meaningless for the CJK locales this exists to support.
+        for i = 1, #CHARGE_PATTERNS do
+            local num = string.match(text, CHARGE_PATTERNS[i])
+            if num then
+                charges = tonumber(num)
+                return true
+            end
         end
     end, 10)
 

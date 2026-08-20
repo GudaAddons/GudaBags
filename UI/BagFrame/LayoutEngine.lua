@@ -5,6 +5,19 @@ ns:RegisterModule("BagFrame.LayoutEngine", LayoutEngine)
 
 local Constants = ns.Constants
 
+-- The keyring builds its item records here by hand rather than through
+-- ItemScanner:ScanSlot, so it has to resolve icons the same way or it inherits the
+-- nil-iconFileID blank slot that ScanSlot already guards against. Resolved lazily
+-- to avoid load-order coupling.
+local ItemScanner
+local function ResolveKeyringIcon(itemInfo, itemTexture)
+    ItemScanner = ItemScanner or ns:GetModule("ItemScanner")
+    if ItemScanner and ItemScanner.ResolveIcon then
+        return ItemScanner:ResolveIcon(itemInfo, itemTexture)
+    end
+    return itemInfo.iconFileID or itemTexture
+end
+
 -- Check if an interaction window is open (bank, trade, mail, merchant, auction)
 -- When these are open, items should be shown ungrouped for easier interaction
 local function IsInteractionWindowOpen()
@@ -234,12 +247,12 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                         local itemData = nil
                         if itemInfo then
                             local itemName, _, itemQuality, _, _, itemType, itemSubType,
-                                  _, _, _, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
+                                  _, _, itemTexture, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
                             itemData = {
                                 bagID = bagID,
                                 slot = slot,
                                 link = itemInfo.hyperlink,
-                                texture = itemInfo.iconFileID,
+                                texture = ResolveKeyringIcon(itemInfo, itemTexture),
                                 count = itemInfo.stackCount or 1,
                                 quality = itemInfo.quality or 0,
                                 name = itemName or "",
@@ -292,12 +305,12 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                         local itemData = nil
                         if itemInfo then
                             local itemName, _, itemQuality, _, _, itemType, itemSubType,
-                                  _, _, _, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
+                                  _, _, itemTexture, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
                             itemData = {
                                 bagID = bagID,
                                 slot = slot,
                                 link = itemInfo.hyperlink,
-                                texture = itemInfo.iconFileID,
+                                texture = ResolveKeyringIcon(itemInfo, itemTexture),
                                 count = itemInfo.stackCount or 1,
                                 quality = itemInfo.quality or 0,
                                 name = itemName or "",
@@ -505,12 +518,12 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                             -- classID/subClassID are locale-independent and drive
                             -- the itemType rules; itemType/itemSubType are localized.
                             local itemName, _, itemQuality, _, _, itemType, itemSubType,
-                                  _, _, _, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
+                                  _, _, itemTexture, _, classID, subClassID = GetItemInfo(itemInfo.hyperlink or "")
                             local itemData = {
                                 bagID = bagID,
                                 slot = slot,
                                 link = itemInfo.hyperlink,
-                                texture = itemInfo.iconFileID,
+                                texture = ResolveKeyringIcon(itemInfo, itemTexture),
                                 count = itemInfo.stackCount or 1,
                                 quality = itemInfo.quality or 0,
                                 name = itemName or "",
@@ -1284,8 +1297,11 @@ function LayoutEngine:GetBagDisplayInfo(bagID, bagData, isViewingCached)
 
         -- Fallback: try inventory slot for live bags
         if not name and not isViewingCached then
+            -- IsPlayerBagID, not 1..PLAYER_BAG_MAX: that range stops at 4 and so
+            -- skips Retail's reagent bag, leaving invSlot nil and this fallback
+            -- silently unable to name it.
             local invSlot = nil
-            if (bagID >= 1 and bagID <= Constants.PLAYER_BAG_MAX) or
+            if (bagID >= 1 and Constants.IsPlayerBagID(bagID)) or
                (bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX) then
                 invSlot = C_Container.ContainerIDToInventoryID(bagID)
             end

@@ -12,11 +12,11 @@
 ## Notes-zhCN: 适用于所有魔兽世界版本的简洁统一背包管理
 ## Notes-zhTW: 適用於所有魔獸世界版本的簡潔統一背包管理
 ## Author: Vati
-## Version: 2.1.8
+## Version: 2.1.9
 ## SavedVariables: GudaBags_DB
 ## SavedVariablesPerCharacter: GudaBags_CharDB
 ## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png
-## OptionalDeps: Masque, CanIMogIt
+## OptionalDeps: Masque, CanIMogIt, ItemUpgradeQualityIcons
 
 ## Category: Guda
 
@@ -47,6 +47,7 @@ Compatibility\API.lua
 Compatibility\Features.lua
 Compatibility\Pawn.lua
 Compatibility\CanIMogIt.lua
+Compatibility\ItemUpgradeQualityIcons.lua
 
 # Category System
 DB\DefaultCategories.lua
