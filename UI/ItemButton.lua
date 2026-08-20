@@ -101,6 +101,54 @@ local function HideTransmogIcon(button)
     if compat then compat:Hide(button) end
 end
 
+-- Item Upgrade Quality Icons: same shape as the CanIMogIt pair above. That addon
+-- only ever finds Blizzard's own container frames, so its icons have to be driven
+-- from here or they never appear on our buttons at all.
+local IUQICompat
+local function GetIUQICompat()
+    IUQICompat = IUQICompat or ns:GetModule("Compatibility.ItemUpgradeQualityIcons")
+    return IUQICompat
+end
+
+local function ApplyUpgradeTrackIcon(button)
+    local compat = GetIUQICompat()
+    if compat then compat:Decorate(button) end
+end
+
+local function HideUpgradeTrackIcon(button)
+    local compat = GetIUQICompat()
+    if compat then compat:Hide(button) end
+end
+
+-- Last line of defence for a missing icon.
+--
+-- ItemScanner already falls back through every source it has when it builds the
+-- record, so a nil here means the item was still loading at scan time. Passing
+-- that nil to SetItemButtonTexture hides the icon outright and clears hasItem --
+-- a button that is present and clickable but looks like an empty slot. Try the
+-- icon-only lookup (which answers for items whose full data hasn't arrived), then
+-- ask the client to load the item so the GET_ITEM_INFO_RECEIVED repaint has
+-- something to fire on, and show the question mark meanwhile so the slot at least
+-- reads as occupied.
+local UNRESOLVED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+
+local function ResolveButtonIcon(itemData)
+    if itemData.texture then return itemData.texture end
+
+    local itemID = itemData.itemID
+    if itemID then
+        if C_Item and C_Item.GetItemIconByID then
+            local icon = C_Item.GetItemIconByID(itemID)
+            if icon then return icon end
+        end
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(itemID)
+        end
+    end
+
+    return UNRESOLVED_ICON
+end
+
 -- No-op: UIErrorsFrame hooking was removed to prevent taint propagation
 -- that would break Blizzard's secure unit frame code (maxHealth comparisons, etc.)
 local function SuppressItemErrors()
@@ -399,6 +447,7 @@ local function ResetButton(pool, button)
     if button.boeText then button.boeText:Hide() end
     if button.upgradeArrow then button.upgradeArrow:Hide() end
     HideTransmogIcon(button)
+    HideUpgradeTrackIcon(button)
     if button.questIcon then button.questIcon:Hide() end
     if button.questStarterIcon then button.questStarterIcon:Hide() end
     if button.craftingQualityIcon then button.craftingQualityIcon:Hide() end
@@ -1942,6 +1991,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.boeText then button.boeText:Hide() end
         if button.upgradeArrow then button.upgradeArrow:Hide() end
         HideTransmogIcon(button)
+        HideUpgradeTrackIcon(button)
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Mark this button as empty slot handler
@@ -1986,6 +2036,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.boeText then button.boeText:Hide() end
         if button.upgradeArrow then button.upgradeArrow:Hide() end
         HideTransmogIcon(button)
+        HideUpgradeTrackIcon(button)
         if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 
         -- Animated glow border
@@ -2022,7 +2073,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
 
         -- Use template's built-in functions for icon and count
-        SetItemButtonTexture(button, itemData.texture)
+        SetItemButtonTexture(button, ResolveButtonIcon(itemData))
         SetItemButtonCount(button, itemData.count)
 
         -- Keep template's visual elements hidden (we use our own)
@@ -2351,6 +2402,11 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         ApplyTransmogIcon(button)
         ns:ProfileStop("si.cimi")
 
+        -- Item Upgrade Quality Icons upgrade track. Invisible without that addon.
+        ns:ProfileStart("si.iuqi")
+        ApplyUpgradeTrackIcon(button)
+        ns:ProfileStop("si.iuqi")
+
         -- Pin icon (bottom-right corner)
         ItemButton:UpdatePinIcon(button)
 
@@ -2406,6 +2462,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             button.upgradeArrow:Hide()
         end
         HideTransmogIcon(button)
+        HideUpgradeTrackIcon(button)
         if button.userLockIcon then
             button.userLockIcon:Hide()
         end
@@ -2595,6 +2652,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
         button.upgradeArrow:Hide()
     end
     HideTransmogIcon(button)
+    HideUpgradeTrackIcon(button)
     if button.userLockIcon then
         button.userLockIcon:Hide()
     end
@@ -2918,6 +2976,18 @@ function ItemButton:RefreshTransmogIcons()
     for button in buttonPool:EnumerateActive() do
         if button.itemData then
             ApplyTransmogIcon(button)
+        end
+    end
+end
+
+-- Re-evaluate just the upgrade-track icon on every active button. Called by the
+-- Item Upgrade Quality Icons compat module when that addon repaints everything,
+-- and after combat ends to fill in overlays whose creation was skipped.
+function ItemButton:RefreshUpgradeTrackIcons()
+    if not buttonPool then return end
+    for button in buttonPool:EnumerateActive() do
+        if button.itemData then
+            ApplyUpgradeTrackIcon(button)
         end
     end
 end

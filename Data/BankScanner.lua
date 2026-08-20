@@ -85,7 +85,10 @@ function BankScanner:ScanDirtyBags(bagIDs)
                     local currentItemID = itemInfo and itemInfo.itemID
                     local cachedItemID = cachedItem and cachedItem.itemID
 
-                    if currentItemID ~= cachedItemID then
+                    -- A record captured while the item was still loading compares
+                    -- equal forever, so ask whether it is finished before
+                    -- trusting "unchanged".
+                    if currentItemID ~= cachedItemID or ItemScanner:IsRecordIncomplete(cachedItem) then
                         -- Slot changed
                         if itemInfo then
                             -- Try fast path first (uses cached tooltip data)

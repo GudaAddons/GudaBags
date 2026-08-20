@@ -16,7 +16,7 @@
 ## SavedVariables: GudaBags_DB
 ## SavedVariablesPerCharacter: GudaBags_CharDB
 ## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png
-## OptionalDeps: Masque, CanIMogIt
+## OptionalDeps: Masque, CanIMogIt, ItemUpgradeQualityIcons
 
 ## Category: Guda
 
@@ -47,6 +47,7 @@ Compatibility\API.lua
 Compatibility\Features.lua
 Compatibility\Pawn.lua
 Compatibility\CanIMogIt.lua
+Compatibility\ItemUpgradeQualityIcons.lua
 
 # Category System
 DB\DefaultCategories.lua

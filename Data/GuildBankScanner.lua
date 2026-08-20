@@ -12,6 +12,7 @@ ns:RegisterModule("GuildBankScanner", GuildBankScanner)
 local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
+local Expansion = ns:GetModule("Expansion")
 
 
 -- Cache for scanned guild bank data
@@ -442,6 +443,29 @@ end
 -- Event Handlers
 -------------------------------------------------
 
+-- Whether the player is actually standing at a guild banker right now.
+--
+-- Guild bank data reaches the client for reasons that have nothing to do with
+-- visiting one: withdraw-limit refreshes, the Communities guild-bank tab, and
+-- other addons querying tabs all produce the same events a real open does. Any
+-- open path that infers "the bank opened" from frame or data traffic rather than
+-- from an explicit open event has to clear this first, or the window appears on
+-- its own.
+--
+-- The interaction manager is the authority where it exists. Where it does not
+-- (TBC), fall back to "does the client know of any tabs at all" -- weaker, but it
+-- rejects the case that matters, since GetNumGuildBankTabs() is 0 away from a
+-- banker for a guild that has purchased none.
+local function IsAtGuildBanker()
+    if C_PlayerInteractionManager and C_PlayerInteractionManager.IsInteractingWithNpcOfType
+        and Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.GuildBanker then
+        return C_PlayerInteractionManager.IsInteractingWithNpcOfType(
+            Enum.PlayerInteractionType.GuildBanker)
+    end
+
+    return (GetNumGuildBankTabs and GetNumGuildBankTabs() or 0) > 0
+end
+
 -- Common handler for guild bank opened (used by multiple detection methods)
 local function HandleGuildBankOpened()
     if isGuildBankOpen then
@@ -535,6 +559,17 @@ local function HookBlizzardGuildBankFrame()
         self:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, 10000)
         self:EnableMouse(false)  -- Prevent mouse interaction
 
+        -- Where an interaction manager exists it outranks this hook: Blizzard's
+        -- panel can be shown by a UIParent panel restore or by another addon with
+        -- the player nowhere near a banker, and our window must not follow it
+        -- there. Flavors without one have nothing better to go on -- the frame
+        -- showing IS the signal, which is the whole reason this hook exists.
+        if Expansion and Expansion.Features.HasInteractionManager
+            and not IsAtGuildBanker() then
+            ns:Debug("Blizzard GuildBankFrame shown without a banker interaction, ignoring")
+            return
+        end
+
         -- Now handle our guild bank open
         HandleGuildBankOpened()
     end)
@@ -608,6 +643,16 @@ if type(GuildBankFrame_LoadUI) == "function" then
     end
 end
 
+-- Whether "guild bank data arrived while we thought the bank was shut" is allowed
+-- to be read as an open.
+--
+-- It is a guess, and only worth making on a flavor that has no better signal.
+-- With an interaction manager we already have two authoritative open paths
+-- (GUILDBANKFRAME_OPENED and PLAYER_INTERACTION_MANAGER_FRAME_SHOW), so the
+-- guess buys nothing and costs a window that opens by itself: the event fires for
+-- ordinary guild traffic the player had no part in.
+local slotChangeCanImplyOpen = not (Expansion and Expansion.Features.HasInteractionManager)
+
 -- Debounce timer for guild bank slot changes
 local slotChangeTimer = nil
 local scanTimer = nil
@@ -615,12 +660,17 @@ local isQueryingTabs = false  -- Track when we initiated queries (to ignore resu
 local queryStartTime = 0
 
 Events:Register("GUILDBANKBAGSLOTS_CHANGED", function()
-    -- Guild bank data with no open event means this client never fires
-    -- GUILDBANKFRAME_OPENED, so blocking Blizzard's UI just removed the only way
-    -- we would have noticed. Hand the loader back for future sessions and open
-    -- this one ourselves -- HandleGuildBankOpened has never needed that frame.
+    -- Guild bank data with no open event *may* mean this client never fires
+    -- GUILDBANKFRAME_OPENED, so blocking Blizzard's UI removed the only way we
+    -- would have noticed. Hand the loader back for future sessions and open this
+    -- one ourselves -- HandleGuildBankOpened has never needed that frame.
+    --
+    -- Both extra conditions matter. This event also fires for guild traffic the
+    -- player had no part in, so on a flavor with a real open signal the inference
+    -- is wrong and used to pop the window open unprompted; and even where it is
+    -- the best signal available, it still has to survive the banker check.
     if not isGuildBankOpen then
-        if blizzardGuildBankUIBlocked then
+        if blizzardGuildBankUIBlocked and slotChangeCanImplyOpen and IsAtGuildBanker() then
             RestoreBlizzardGuildBankUI("guild bank data arrived without GUILDBANKFRAME_OPENED")
             HandleGuildBankOpened()
         end
@@ -784,7 +834,6 @@ end, GuildBankScanner)
 
 -- PLAYER_INTERACTION_MANAGER for modern WoW (MoP Remix+, Retail, TWW)
 -- This fires BEFORE Blizzard's frame shows, allowing preemptive hiding
-local Expansion = ns:GetModule("Expansion")
 if Expansion and Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 50000 then
     -- Check if the enum exists (modern WoW only)
     if Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.GuildBanker then

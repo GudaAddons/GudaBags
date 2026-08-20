@@ -15,6 +15,10 @@ local knownItemIDs = {}  -- { [itemID] = count }
 
 -- Event batching: collect dirty bags and process after delay
 local dirtyBags = {}           -- Set of bagIDs that need scanning
+-- Bags touched since the last BAG_UPDATE_DELAYED. Separate from dirtyBags, which
+-- ProcessBatchedUpdates empties on the very next frame -- this one has to survive
+-- until the server says the batch has settled.
+local recentlyUpdatedBags = {}
 local pendingUpdate = false    -- True when OnUpdate is scheduled
 local saveTimer = nil          -- Timer handle for deferred database save
 local SAVE_DELAY = 1.0         -- Seconds to wait before saving to database
@@ -126,7 +130,12 @@ function BagScanner:ScanDirtyBags(bagIDs)
                     local currentLink = itemInfo and itemInfo.hyperlink
                     local cachedLink = cachedItem and cachedItem.link
 
-                    if currentItemID ~= cachedItemID or currentLink ~= cachedLink then
+                    -- A record captured while the item was still loading compares
+                    -- equal on both fields forever, so ask the scanner whether the
+                    -- record is actually finished before trusting "unchanged".
+                    local incomplete = ItemScanner:IsRecordIncomplete(cachedItem)
+
+                    if currentItemID ~= cachedItemID or currentLink ~= cachedLink or incomplete then
                         -- Slot changed - update known item counts. Recent
                         -- emission is handled by the post-loop diff so that
                         -- items merely moving between slots (sort, restack,
@@ -364,6 +373,7 @@ local function OnBagUpdate(event, bagID)
     ns:ProfileBump("event.BAG_UPDATE")
     ns:Debug("BagScanner: BAG_UPDATE for bag", bagID, "pending:", pendingUpdate)
     dirtyBags[bagID] = true
+    recentlyUpdatedBags[bagID] = true
 
     -- Schedule OnUpdate processing if not already pending
     if not pendingUpdate then
@@ -379,6 +389,30 @@ Events:OnPlayerLogin(function()
 end, BagScanner)
 
 Events:OnBagUpdate(OnBagUpdate, BagScanner)
+
+-- Re-check the batch once the server has finished with it.
+--
+-- BAG_UPDATE fires as each slot changes and we scan on the following frame, which
+-- on retail is routinely before the client has resolved a just-looted item -- the
+-- scan then records a placeholder (see ItemScanner.IsRecordIncomplete) or the
+-- icon alone comes back nil. BAG_UPDATE_DELAYED is the client saying the batch has
+-- settled, which is why Blizzard's own container UI redraws on it rather than on
+-- BAG_UPDATE. Re-marking the same bags dirty reuses the existing dirty-set and
+-- OnUpdate drain, so this adds an event, not a poll, and the change detection
+-- above makes the second pass a no-op for every slot that did land complete.
+Events:Register("BAG_UPDATE_DELAYED", function()
+    if not next(recentlyUpdatedBags) then return end
+
+    for bagID in pairs(recentlyUpdatedBags) do
+        dirtyBags[bagID] = true
+        recentlyUpdatedBags[bagID] = nil
+    end
+
+    if not pendingUpdate then
+        pendingUpdate = true
+        updateFrame:Show()
+    end
+end, BagScanner)
 
 -- Handle BAGS_UPDATED event (fired after sort completes)
 -- This ensures bags are rescanned and UI refreshed after sorting

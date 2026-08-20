@@ -347,6 +347,41 @@ local function GetCraftingQualityAtlas(itemLink)
     return (chatAtlas:gsub("Professions%-ChatIcon%-Quality%-", "Professions-Icon-Quality-"))
 end
 
+-- Resolve a slot's icon, in decreasing order of freshness.
+--
+-- The container-slot record and GetItemInfo are separate client caches, and the
+-- first can report a nil iconFileID for an item the second already knows the icon
+-- for -- routinely so for a just-looted item on retail. Storing that nil paints a
+-- slot with no icon at all, and nothing repairs it: change detection compares
+-- itemID and link, both of which already match, so the blank survives every
+-- repaint until the item moves or the bags are rescanned from scratch.
+--
+-- One function owns the question so no scan path can disagree with another --
+-- including the keyring's live scans in LayoutEngine, which build records of the
+-- same shape without going through ScanSlot.
+function ItemScanner:ResolveIcon(itemInfo, itemTexture)
+    if itemInfo.iconFileID then return itemInfo.iconFileID end
+    if itemTexture then return itemTexture end
+    if C_Item and C_Item.GetItemIconByID and itemInfo.itemID then
+        return C_Item.GetItemIconByID(itemInfo.itemID)
+    end
+    return nil
+end
+
+-- Whether a cached slot record was built before the client had the item, and so
+-- has to be re-scanned even though the slot's itemID and link look unchanged.
+--
+-- Scanners decide "did this slot change?" by comparing itemID and link. Both
+-- already match for a record that was captured mid-load, so without this a
+-- placeholder record is never revisited: the missing icon survives every
+-- BAG_UPDATE and every repaint, and only reopening the bags (a full rescan) or
+-- moving the item clears it. ItemScanner owns the record shape, so it owns the
+-- question of whether one is finished.
+function ItemScanner:IsRecordIncomplete(cachedItem)
+    if not cachedItem then return false end
+    return cachedItem.dataPending == true or cachedItem.texture == nil
+end
+
 -- Fast scan using cached tooltip data
 -- Used when item moved slots - properties don't change, skip tooltip scan
 function ItemScanner:ScanSlotFast(bagID, slot)
@@ -356,13 +391,20 @@ function ItemScanner:ScanSlotFast(bagID, slot)
         return nil
     end
 
+    -- No hyperlink means the item hasn't resolved, so there is nothing for the
+    -- fast path to reuse and GetItemInfo below would have nothing to look up.
+    -- Fall through to the full scan, which knows how to record a pending item.
     local itemLink = itemInfo.hyperlink
+    if not itemLink then
+        return nil
+    end
+
     local cacheKey = GetCacheKey(itemLink, itemInfo.itemID)
     local cached = GetCachedTooltipResult(cacheKey)
 
     -- If we have cached tooltip data, use it (item moved, properties unchanged)
     if cached then
-        local itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, maxStack, equipSlot, _, _, classID, subClassID = GetItemInfo(itemLink)
+        local itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, maxStack, equipSlot, itemTexture, _, classID, subClassID = GetItemInfo(itemLink)
 
         return {
             slot = slot,
@@ -370,7 +412,7 @@ function ItemScanner:ScanSlotFast(bagID, slot)
             itemID = itemInfo.itemID,
             link = itemLink,
             name = itemName or "",
-            texture = itemInfo.iconFileID,
+            texture = self:ResolveIcon(itemInfo, itemTexture),
             count = itemInfo.stackCount or 1,
             quality = itemQuality or itemInfo.quality or itemInfo.itemQuality or 0,
             locked = itemInfo.isLocked or false,
@@ -403,12 +445,24 @@ function ItemScanner:ScanSlot(bagID, slot)
         return nil
     end
 
+    -- A slot holding an item the client has not resolved yet reports no
+    -- hyperlink. Returning nil here is indistinguishable from "empty slot" to
+    -- every caller -- the bag scanner stores nil, ScanContainer counts the slot as
+    -- free, and the frame paints it with SetEmpty. The item then has no itemID on
+    -- its button, so the GET_ITEM_INFO_RECEIVED repaint (which looks items up by
+    -- itemID) can never find it either, and the slot stays blank until the whole
+    -- bag is rescanned. Carry on with what the container API does give us and mark
+    -- the record pending so the scanners know to look again.
     local itemLink = itemInfo.hyperlink
-    if not itemLink then
-        return nil
+    local dataPending = not itemLink
+    if dataPending and C_Item and C_Item.RequestLoadItemDataByID and itemInfo.itemID then
+        C_Item.RequestLoadItemDataByID(itemInfo.itemID)
     end
 
-    local itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, maxStack, equipSlot, itemTexture, sellPrice, classID, subClassID = GetItemInfo(itemLink)
+    local itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, maxStack, equipSlot, itemTexture, sellPrice, classID, subClassID
+    if itemLink then
+        itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, maxStack, equipSlot, itemTexture, sellPrice, classID, subClassID = GetItemInfo(itemLink)
+    end
     -- Capture load state before the fallback overwrites itemName below: a nil
     -- name means the item hasn't resolved, so the usability scan can't be trusted.
     local itemLoaded = itemName ~= nil
@@ -440,7 +494,11 @@ function ItemScanner:ScanSlot(bagID, slot)
         itemID = itemInfo.itemID,
         link = itemLink,
         name = itemName or "",
-        texture = itemInfo.iconFileID,
+        texture = self:ResolveIcon(itemInfo, itemTexture),
+        -- Everything below the container API's own fields is a placeholder until
+        -- the item resolves. Scanners re-scan a pending slot instead of trusting
+        -- the itemID/link comparison, which would report "unchanged" forever.
+        dataPending = dataPending or nil,
         count = itemInfo.stackCount or 1,
         quality = itemQuality or itemInfo.quality or itemInfo.itemQuality or 0,
         locked = itemInfo.isLocked or false,

@@ -1850,8 +1850,16 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 -- compare the displayed link so a same-name/different-ilvl swap
                 -- isn't treated as "unchanged".
                 local linkChanged = button.itemData and newItemData.link ~= button.itemData.link
+                -- A button painted from a record captured mid-load has an icon
+                -- that never arrived. Both links are nil in that case, so
+                -- linkChanged is false and this pass would skip SetItem and leave
+                -- the slot blank for good. Repaint until the record is finished --
+                -- this only ever adds SetItem calls, it never releases a button or
+                -- changes which slots have one.
+                local wasIncomplete = button.itemData
+                    and (button.itemData.dataPending or button.itemData.texture == nil)
 
-                if oldItemID == newItemID and not linkChanged then
+                if oldItemID == newItemID and not linkChanged and not wasIncomplete then
                     -- Same item - just check count
                     local oldCount = cachedItemCount[slotKey]
                     if oldCount ~= newItemData.count then
@@ -1977,8 +1985,13 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 -- compare the displayed link too so an equip-swap of same-name,
                 -- different-ilvl items repaints instead of being skipped.
                 local linkChanged = newItemData and button.itemData and newItemData.link ~= button.itemData.link
+                -- A button painted from a record captured mid-load has an icon
+                -- that never arrived, and both links are nil, so neither test
+                -- above fires and the slot would stay blank for good.
+                local wasIncomplete = newItemData and button.itemData
+                    and (button.itemData.dataPending or button.itemData.texture == nil)
 
-                if oldItemID ~= newItemID or linkChanged then
+                if oldItemID ~= newItemID or linkChanged or wasIncomplete then
                     if newItemData then
                         ItemButton:SetItem(button, newItemData, iconSize, false)
                         cachedItemData[slotKey] = newItemID
@@ -2028,8 +2041,13 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     -- same-name, different-ilvl items repaints instead of being
                     -- skipped as "unchanged".
                     local linkChanged = newItemData and button.itemData and newItemData.link ~= button.itemData.link
+                    -- A button painted from a record captured mid-load has an
+                    -- icon that never arrived, and both links are nil, so neither
+                    -- test above fires and the slot would stay blank for good.
+                    local wasIncomplete = newItemData and button.itemData
+                        and (button.itemData.dataPending or button.itemData.texture == nil)
 
-                    if oldItemID ~= newItemID or linkChanged then
+                    if oldItemID ~= newItemID or linkChanged or wasIncomplete then
                         -- Item actually changed - update button
                         if newItemData then
                             ItemButton:SetItem(button, newItemData, iconSize, false)
@@ -2604,13 +2622,30 @@ end
 -- hasSpecialProperties) becomes reliable; repaint any open buttons that show
 -- it so the false-positive red overlay clears.
 local pendingItemRefresh = {}
+-- Items whose repaint this pass could not perform because they moved slots inside
+-- the debounce window. Carried into the next pass exactly once: entries carried
+-- over are marked RETRIED so a slot that keeps disagreeing cannot re-arm the timer
+-- forever and turn this into a 0.15s poll.
+local retryItemRefresh = {}
+local RETRIED = "retry"
+local ITEM_REFRESH_MAX = 200
+local pendingItemRefreshCount = 0
 local itemRefreshTimer
 local itemRefreshDeferred = false
+local ScheduleItemRefresh  -- defined below; ApplyItemInfoRefresh re-arms through it
+
+-- One owner for "empty the pending set", so the count can never drift from the
+-- table it is counting.
+local function ResetPendingItemRefresh()
+    wipe(pendingItemRefresh)
+    pendingItemRefreshCount = 0
+end
 
 local function ApplyItemInfoRefresh()
     itemRefreshTimer = nil
     if not (frame and frame:IsShown()) or viewingCharacter then
-        wipe(pendingItemRefresh)
+        ResetPendingItemRefresh()
+        wipe(retryItemRefresh)
         return
     end
     if InCombatLockdown() then
@@ -2623,7 +2658,7 @@ local function ApplyItemInfoRefresh()
 
     local ItemScanner = ns:GetModule("ItemScanner")
     if not ItemScanner then
-        wipe(pendingItemRefresh)
+        ResetPendingItemRefresh()
         return
     end
 
@@ -2643,7 +2678,16 @@ local function ApplyItemInfoRefresh()
         if oldData and oldData.itemID and pendingItemRefresh[oldData.itemID]
             and oldData.bagID and oldData.slot then
             local newData = ItemScanner:ScanSlot(oldData.bagID, oldData.slot)
-            if newData and newData.itemID == oldData.itemID then
+            if not (newData and newData.itemID == oldData.itemID) then
+                -- The item left this slot inside the debounce window, so its
+                -- button is elsewhere and this pass can't repaint it. Keep the
+                -- itemID for one more pass instead of losing it to the wipe below,
+                -- or the arrival of its data is never applied anywhere. Only once:
+                -- an entry that is already a retry is dropped.
+                if pendingItemRefresh[oldData.itemID] ~= RETRIED then
+                    retryItemRefresh[oldData.itemID] = true
+                end
+            else
                 local bagData = bags[oldData.bagID]
                 if bagData and bagData.slots then
                     bagData.slots[oldData.slot] = newData
@@ -2678,7 +2722,20 @@ local function ApplyItemInfoRefresh()
             end
         end
     end
-    wipe(pendingItemRefresh)
+    ResetPendingItemRefresh()
+    -- Carry the skipped ones over exactly once. Bounded by ITEM_REFRESH_MAX, and
+    -- marked RETRIED so the next pass drops rather than re-carries them.
+    local carried = 0
+    for itemID in pairs(retryItemRefresh) do
+        if carried >= ITEM_REFRESH_MAX then break end
+        pendingItemRefresh[itemID] = RETRIED
+        carried = carried + 1
+    end
+    pendingItemRefreshCount = carried
+    wipe(retryItemRefresh)
+    if carried > 0 then
+        ScheduleItemRefresh()
+    end
     if repainted > 0 then
         ns:Debug("BagFrame: GET_ITEM_INFO_RECEIVED repainted", repainted, "buttons")
     end
@@ -2687,7 +2744,7 @@ local function ApplyItemInfoRefresh()
     end
 end
 
-local function ScheduleItemRefresh()
+function ScheduleItemRefresh()
     if itemRefreshTimer then return end
     itemRefreshTimer = C_Timer.NewTimer(0.15, ApplyItemInfoRefresh)
 end
@@ -2695,6 +2752,14 @@ end
 Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
     if not success or not itemID then return end
     if not (frame and frame:IsShown()) or viewingCharacter then return end
+    -- This arrives in bursts at login and most of it is for items that aren't in
+    -- the bags at all, so cap the set rather than let one burst size it. Anything
+    -- dropped here is still picked up by the scan that a bag update or a reopen
+    -- performs; the repaint is an optimisation, not the only path.
+    if pendingItemRefresh[itemID] == nil then
+        if pendingItemRefreshCount >= ITEM_REFRESH_MAX then return end
+        pendingItemRefreshCount = pendingItemRefreshCount + 1
+    end
     pendingItemRefresh[itemID] = true
     ScheduleItemRefresh()
 end, BagFrame)

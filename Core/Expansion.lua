@@ -41,6 +41,14 @@ Expansion.Features = {
     HasGemBags = Expansion.IsMoP,
     HasInscriptionBags = Expansion.IsMoP,
 
+    -- PLAYER_INTERACTION_MANAGER_FRAME_SHOW/HIDE with Enum.PlayerInteractionType
+    -- arrived in MoP. Where it exists it authoritatively answers "is the player
+    -- at this NPC right now"; where it does not, detecting an NPC window means
+    -- inferring it from frame or data traffic, which can fire with no NPC
+    -- involved at all. Anything that opens a window off such an inference must
+    -- gate on this.
+    HasInteractionManager = Expansion.IsRetail or Expansion.IsMoP,
+
     -- Retail-specific features
     HasNativeBagSort = Expansion.IsRetail,  -- C_Container.SortBags() available
     HasReagentBank = Expansion.IsRetail,
