@@ -127,6 +127,33 @@ end
 -- Common Item Checks
 -------------------------------------------------
 
+-- Make a localized global safe to pass to find()/match(), which treat their
+-- argument as a Lua pattern. A locale whose string contains "." or "(" would
+-- otherwise build a pattern that matches the wrong lines, or none.
+local function EscapePattern(text)
+    return (text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
+end
+
+-- Resolve global-string names to escaped patterns, dropping any this client does
+-- not define. Same reasoning as BuildTextSet below, but for lines that merely
+-- CONTAIN the string ("Use: Restores 500 health") rather than equal it, so the
+-- result is a list for find() rather than a set for equality.
+local function BuildPatternList(names, englishFallback)
+    local list = {}
+    for _, name in ipairs(names) do
+        local text = _G[name]
+        if type(text) == "string" and text ~= "" then
+            table.insert(list, EscapePattern(text))
+        end
+    end
+    -- A client that defines none of them would otherwise silently match nothing.
+    -- Fall back to English so enUS is never worse off than before.
+    if #list == 0 then
+        return englishFallback
+    end
+    return list
+end
+
 -------------------------------------------------
 -- Bind detection (shared by IsBindOnEquip / IsWarbound / GetBindTag)
 -------------------------------------------------
@@ -339,7 +366,25 @@ function TooltipScanner:GetRestoreTag(bagID, slotID, itemData)
     return nil
 end
 
--- Check if item has special properties (Use:, Equip:, Chance on hit)
+-- Tooltip effect-trigger prefixes, resolved once at load.
+--
+-- These were hardcoded as {"Use:", "Equip:", "Chance on hit"} -- English, so on
+-- the other 10 supported locales this returned false for every item. The junk
+-- rule that calls it (Core/Rules/TooltipRule.lua) then classified every white
+-- equippable as junk regardless of whether it carried a Use or Equip effect,
+-- because "has no special properties" was the only answer it could ever get.
+--
+-- Data/ItemScanner.lua already resolved the same two globals correctly for the
+-- item-button junk overlay, which is why the bug shows up in category rules but
+-- not on the buttons themselves. Same globals, same English fallback, so the two
+-- now agree.
+local SPECIAL_PROPERTY_PATTERNS = BuildPatternList({
+    "ITEM_SPELL_TRIGGER_ONUSE",     -- "Use:"
+    "ITEM_SPELL_TRIGGER_ONEQUIP",   -- "Equip:"
+    "ITEM_SPELL_TRIGGER_ONPROC",    -- "Chance on hit:"
+}, { "Use:", "Equip:", "Chance on hit" })
+
+-- Check if item has an on-use, on-equip or on-hit effect.
 function TooltipScanner:HasSpecialProperties(bagID, slotID)
     if not bagID or not slotID then return false end
 
@@ -347,7 +392,7 @@ function TooltipScanner:HasSpecialProperties(bagID, slotID)
         return false
     end
 
-    return self:HasText({"Use:", "Equip:", "Chance on hit"})
+    return self:HasText(SPECIAL_PROPERTY_PATTERNS)
 end
 
 -------------------------------------------------
@@ -374,11 +419,7 @@ local chargesCache = {}
 --     collapse to a single pattern;
 --   * everything is escaped first, then the escaped "%d" is turned back into a
 --     capture -- otherwise a locale whose string contains "." or "(" would build a
---     pattern that matches the wrong thing.
-local function EscapePattern(text)
-    return (text:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
-end
-
+--     pattern that matches the wrong thing (EscapePattern, near the top).
 local function BuildChargePatterns()
     local raw = _G.ITEM_SPELL_CHARGES
     if type(raw) ~= "string" or raw == "" then
