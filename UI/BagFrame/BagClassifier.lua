@@ -87,8 +87,11 @@ function BagClassifier:GetBagType(bagID)
 
     -- Fallback: try using item info (for when container isn't open)
     -- Use C_Container.ContainerIDToInventoryID which works for both player bags and bank bags in all versions
+    -- IsPlayerBagID, not 1..PLAYER_BAG_MAX: that range stops at 4 and so skips
+    -- Retail's reagent bag, leaving invSlot nil and this fallback silently unable
+    -- to identify it.
     local invSlot = nil
-    if (bagID >= 1 and bagID <= Constants.PLAYER_BAG_MAX) or
+    if (bagID >= 1 and Constants.IsPlayerBagID(bagID)) or
        (bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX) then
         invSlot = C_Container.ContainerIDToInventoryID(bagID)
     end

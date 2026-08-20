@@ -550,7 +550,12 @@ function ItemScanner:ScanContainer(bagID)
 
     local containerItemID = nil
     local containerTexture = nil
-    if bagID > 0 and bagID <= 4 then
+    -- The reagent bag has to be tested for explicitly. It is bagID 5 on Retail,
+    -- which the bank branch below also claims -- so without this it resolves
+    -- through GetBankBagInvSlot(1) and comes back wearing the first BANK bag's
+    -- item and icon. Constants.REAGENT_BAG is nil on Classic, where 5 really is a
+    -- bank bag, so that flavor keeps falling through as before.
+    if bagID > 0 and (bagID <= Constants.PLAYER_BAG_MAX or bagID == Constants.REAGENT_BAG) then
         local invSlot = C_Container.ContainerIDToInventoryID(bagID)
         if invSlot then
             containerItemID = GetInventoryItemID("player", invSlot)

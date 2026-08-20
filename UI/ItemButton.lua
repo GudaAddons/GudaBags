@@ -120,6 +120,58 @@ local function HideUpgradeTrackIcon(button)
     if compat then compat:Hide(button) end
 end
 
+-- Our crafting-quality icon and IUQI's upgrade-track icon are both
+-- Professions-Quality dot atlases, so where they share the top-left corner they
+-- stack into two near-identical icons meaning different things and one has to
+-- yield -- IUQI's, being the more specific statement about that item, wins.
+--
+-- Crafting quality icon (Retail profession items).
+-- itemData.craftingQualityAtlas is the exact bag-overlay atlas extracted from the
+-- item link (see Data/ItemScanner.lua GetCraftingQualityAtlas) — this guarantees
+-- the icon matches the tooltip, including War Within's new
+-- "Professions-Icon-Quality-12-Tier{N}" family.
+--
+-- Lifted out of SetItem so it can be repainted on its own: where this icon sits,
+-- how big it is and whether it shows at all can change with IUQI's options, none
+-- of which involve any item changing.
+--
+-- With IUQI drawing, this icon follows IUQI's position and scale so every
+-- quality dot in the bag lands in the same place, and yields outright on the
+-- items IUQI itself decorates, since the two would otherwise be stacked. Without
+-- IUQI -- or with its icons switched off -- nothing here changes: our own
+-- top-left placement and our own sizing, exactly as before.
+local function ApplyCraftingQualityIcon(button, size)
+    local icon = button.craftingQualityIcon
+    if not icon then return end
+
+    local itemData = button.itemData
+    local atlas = itemData and itemData.craftingQualityAtlas
+    if not atlas then
+        icon:Hide()
+        return
+    end
+
+    local compat = GetIUQICompat()
+    local followsIUQI = compat ~= nil and compat:IconsEnabled()
+
+    -- Same spot, same atlas family: the upgrade track is the more specific
+    -- statement about the item, so it wins and the craft tier stands down.
+    if followsIUQI and compat:IsDecorating(itemData) then
+        icon:Hide()
+        return
+    end
+
+    local base = size or button.currentSize or 32
+    icon:ClearAllPoints()
+    if not (followsIUQI and compat:ApplyIconGeometry(icon, button, base)) then
+        local cqSize = math.max(20, math.floor(base * 0.54))
+        icon:SetSize(cqSize, cqSize)
+        icon:SetPoint("TOPLEFT", button, "TOPLEFT", -5, 5)
+    end
+    icon:SetAtlas(atlas, false)
+    icon:Show()
+end
+
 -- Last line of defence for a missing icon.
 --
 -- ItemScanner already falls back through every source it has when it builds the
@@ -2226,21 +2278,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             end
         end
 
-        -- Crafting quality icon (Retail profession items).
-        -- itemData.craftingQualityAtlas is the exact bag-overlay atlas extracted
-        -- from the item link (see Data/ItemScanner.lua GetCraftingQualityAtlas) —
-        -- this guarantees the icon matches the tooltip, including War Within's
-        -- new "Professions-Icon-Quality-12-Tier{N}" family.
-        if button.craftingQualityIcon then
-            if itemData.craftingQualityAtlas then
-                local cqSize = math.max(20, math.floor(size * 0.54))
-                button.craftingQualityIcon:SetSize(cqSize, cqSize)
-                button.craftingQualityIcon:SetAtlas(itemData.craftingQualityAtlas, false)
-                button.craftingQualityIcon:Show()
-            else
-                button.craftingQualityIcon:Hide()
-            end
-        end
+        ApplyCraftingQualityIcon(button, size)
 
         -- Tracked item icon
         if button.trackedIcon then
@@ -2988,6 +3026,10 @@ function ItemButton:RefreshUpgradeTrackIcons()
     for button in buttonPool:EnumerateActive() do
         if button.itemData then
             ApplyUpgradeTrackIcon(button)
+            -- Paired: whether our crafting-quality icon yields to IUQI's track
+            -- icon is decided by the same IUQI options that just changed, so the
+            -- two have to be re-evaluated together or one of them strands.
+            ApplyCraftingQualityIcon(button, button.currentSize)
         end
     end
 end

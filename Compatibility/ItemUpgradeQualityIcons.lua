@@ -23,12 +23,14 @@ local addonName, ns = ...
 --     set -- its "no location" option (10) is already the user's off switch;
 --   * gate on gear before asking: only equippable items carry an upgrade track,
 --     so nothing else pays for a lookup;
---   * cache only whether a link has a track at all. That is encoded in the link's
---     bonus IDs and so never needs invalidating, while the icon STRING also varies
---     with IUQI's theme options -- which are not hookable, because its settings
---     callback captures a file-local RefreshAll rather than IUQI_API.RefreshAll.
---     Recomputing the string live for the few gear pieces in a bag keeps a theme
---     change instant with no invalidation story to get wrong;
+--   * cache ONLY whether a link has a track at all -- that is encoded in the
+--     link's bonus IDs and never needs invalidating. The icon STRING must not be
+--     cached: it also varies with IUQI's theme and hideOutOfSeasonIcons options,
+--     which an itemLink key cannot express, so caching it would freeze a setting
+--     in place until reload. It is recomputed on every paint instead;
+--   * repaint when the settings panel closes. Every function in IUQI's own
+--     settings->refresh chain is a file-local, so there is nothing inside it to
+--     hook -- the panel closing is the only signal available from out here;
 --   * one overlay Frame per pooled button, created lazily and never in combat.
 -------------------------------------------------
 local IUQI = {}
@@ -61,31 +63,102 @@ local function CanHaveTrack(itemData)
     return classID == ITEM_CLASS.WEAPON or classID == ITEM_CLASS.ARMOR
 end
 
--- Whether this link has a track, memoised. Asking IUQI rather than calling
--- C_Item.GetItemUpgradeInfo ourselves keeps one owner for the question, so we
--- cannot drift from what its tooltip shows.
+-- Whether this link has an upgrade track at all, memoised.
+--
+-- Deliberately NOT memoising GetIconForLink's answer, even though that would be
+-- the tidier "ask IUQI for everything" shape: that function folds in IUQI's
+-- hideOutOfSeasonIcons option and returns nil for a below-minimum-level item, so
+-- caching it stores a setting under a key that only names the link. Turning the
+-- option back off then cannot restore the icon, because the false is already
+-- cached. The raw track presence is the part that really is static per link --
+-- it lives in the link's bonus IDs -- so that is the only part cached here, and
+-- the icon string itself is recomputed live on every paint.
 local function HasTrack(link)
     local cached = hasTrackCache[link]
     if cached ~= nil then return cached end
 
-    local ok, iconString = pcall(_G.IUQI_API.GetIconForLink, link, 16)
+    if not (C_Item and C_Item.GetItemUpgradeInfo) then return false end
+    local ok, upgradeInfo = pcall(C_Item.GetItemUpgradeInfo, link)
     -- A failed call is not an answer -- don't memoise it, or one bad moment
     -- disables the icon for that item until reload.
     if not ok then return false end
 
-    local result = iconString ~= nil
+    local result = upgradeInfo ~= nil and upgradeInfo.trackStringID ~= nil
     hasTrackCache[link] = result
     return result
 end
 
--- IUQI renders its icon as an atlas escape inside a FontString and sizes it in
--- the format string, so the size has to be baked in per call. It hardcodes 18,
--- which is wrong at both ends of our 22-64px icon slider; scale with the button
--- as craftingQualityIcon and the CanIMogIt overlay do.
-local function IconSizeFor(button)
-    local size = button.currentSize
-    if not size then return 16 end
-    return math.max(8, math.floor(size * 0.42))
+-- IUQI's "no location" option. Its IconLocation clears all points and returns for
+-- this value, leaving an unanchored FontString -- the user's off switch.
+local IUQI_LOCATION_NONE = 10
+
+-- IUQI renders its icon as an atlas escape inside a FontString and bakes the size
+-- into the format string, so a pixel size has to be computed per call. It hardcodes
+-- 18, which is wrong at both ends of our 22-64px icon slider; scale with the button
+-- as craftingQualityIcon and the CanIMogIt overlay do. One owner, because our
+-- crafting-quality icon is sized from this too when it follows IUQI's placement.
+local ICON_SIZE_FACTOR = 0.42
+
+local function IconSizeFor(baseSize)
+    if not baseSize then return 16 end
+    return math.max(8, math.floor(baseSize * ICON_SIZE_FACTOR))
+end
+
+-- Whether IUQI is drawing item-button icons at all right now.
+--
+-- Item-independent, unlike IsDecorating: this is the question "is IUQI the thing
+-- placing quality dots in this UI", which decides whether our own crafting-quality
+-- icon adopts IUQI's geometry or keeps its native top-left placement. With the
+-- icons switched off there is nothing to line up with, so we go back to our own.
+function IUQI:IconsEnabled()
+    if not self:IsAvailable() then return false end
+    if ns.suspectDisabled and ns.suspectDisabled.upgradetrack then return false end
+
+    local db = _G.IUQI_DB
+    return not (db and db.iconLocation == IUQI_LOCATION_NONE)
+end
+
+-- Place and size one of OUR regions the way IUQI places its own, so a bag does not
+-- show quality dots in two different corners at two different sizes depending on
+-- which addon happens to own each item's icon. Returns false if it could not, and
+-- the caller keeps its native placement.
+--
+-- IconLocation is reused rather than reimplemented so the user's position and
+-- offset sliders keep working for both. IconScale is NOT: it calls SetScale, which
+-- textures do not have, so the scale slider is applied to the size instead. Both
+-- are read through pcall -- IconLocation indexes IUQI_DB with no nil guard on some
+-- paths, and this runs inside SetItem.
+function IUQI:ApplyIconGeometry(region, button, baseSize)
+    if not self:IconsEnabled() then return false end
+
+    -- IUQI skips ClearAllPoints on its no-DB path, which would leave our existing
+    -- anchor in place alongside the new one. The caller has already cleared.
+    local ok = pcall(_G.IUQI_API.IconLocation, region, button)
+    if not ok then return false end
+
+    local db = _G.IUQI_DB
+    local scale = tonumber(db and db.iconScale) or 1
+    -- Same base size we hand IUQI's own icon, then its scale slider on top --
+    -- IconScale would have applied that, but it calls SetScale, which textures
+    -- do not have. This way the two match for different items in the same bag.
+    local px = math.max(8, math.floor(IconSizeFor(baseSize) * scale))
+    region:SetSize(px, px)
+    return true
+end
+
+-- Whether IUQI is actually going to draw a track icon on THIS item.
+--
+-- Narrower than IconsEnabled, and the pair have to stay distinct: IconsEnabled
+-- decides whether our crafting-quality icon adopts IUQI's geometry at all, while
+-- this decides whether it has to stand down entirely because IUQI is about to put
+-- its own icon on that exact spot. Gear with no upgrade track answers false here
+-- and true there -- our icon moves to IUQI's position and still shows.
+function IUQI:IsDecorating(itemData)
+    if not self:IconsEnabled() then return false end
+    if not itemData or not CanHaveTrack(itemData) then return false end
+
+    local link = itemData.link or itemData.itemLink
+    return link ~= nil and HasTrack(link)
 end
 
 -- Clear the icon without destroying the overlay, so the pooled button keeps it
@@ -98,23 +171,16 @@ end
 
 -- Apply or clear the upgrade-track icon for the button's current item.
 function IUQI:Decorate(button)
-    if not self:IsAvailable() then return end
-    if ns.suspectDisabled and ns.suspectDisabled.upgradetrack then
-        self:Hide(button)
-        return
-    end
-
+    -- IsDecorating is the single owner of "should there be a track icon here".
+    -- ItemButton asks it the same question to decide whether its crafting-quality
+    -- icon stands down, so the two can never disagree about what is on screen.
     local itemData = button.itemData
-    if not itemData or not CanHaveTrack(itemData) then
+    if not self:IsDecorating(itemData) then
         self:Hide(button)
         return
     end
 
     local link = itemData.link or itemData.itemLink
-    if not link or not HasTrack(link) then
-        self:Hide(button)
-        return
-    end
 
     local overlay = button.GudaIUQIOverlay
     if not overlay then
@@ -133,7 +199,7 @@ function IUQI:Decorate(button)
     -- SyncFrameLevels only re-levels children it knows about, so re-assert.
     overlay:SetFrameLevel(button:GetFrameLevel() + Constants.FRAME_LEVELS.ADDON_OVERLAY)
 
-    local ok, iconString = pcall(_G.IUQI_API.GetIconForLink, link, IconSizeFor(button))
+    local ok, iconString = pcall(_G.IUQI_API.GetIconForLink, link, IconSizeFor(button.currentSize))
     if not ok or not iconString then
         overlay.text:SetText("")
         return
@@ -171,6 +237,21 @@ Events:OnPlayerLogin(function()
             pcall(originalRefreshAll, ...)
             RefreshIcons()
         end
+    end
+
+    -- Repaint after the user has been in the options.
+    --
+    -- IUQI wires Settings.SetOnValueChangedCallback to its file-local RefreshAll,
+    -- which repaints Blizzard's container frames -- ours are not among them, and
+    -- there is no seam inside IUQI to hook, since every function in that chain is
+    -- a local. Registering our own callback for its variables would replace its,
+    -- breaking its tooltip refresh. The settings panel closing is the one signal
+    -- available from outside: one hook, no polling, and it covers changing an
+    -- option and going back to the bags. The icon string is recomputed on every
+    -- paint, so a repaint is all that is needed -- there is no cache to clear.
+    local panel = _G.SettingsPanel
+    if panel and panel.HookScript then
+        panel:HookScript("OnHide", RefreshIcons)
     end
 
     -- Overlay creation is skipped during combat; catch up once it ends so buttons

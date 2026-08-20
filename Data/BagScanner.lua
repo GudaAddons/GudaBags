@@ -227,9 +227,11 @@ function BagScanner:GetTotalSlots()
     local total = 0
     local free = 0
 
-    -- Only count regular bags, not keyring
+    -- Only count carried bags, not the keyring. IsPlayerBagID rather than a
+    -- PLAYER_BAG_MIN..PLAYER_BAG_MAX range: that range stops at 4 and so leaves
+    -- Retail's reagent bag out of the totals entirely.
     for bagID, bagData in pairs(cachedBags) do
-        if bagID >= Constants.PLAYER_BAG_MIN and bagID <= Constants.PLAYER_BAG_MAX then
+        if Constants.IsPlayerBagID(bagID) then
             total = total + bagData.numSlots
             free = free + bagData.freeSlots
         end
@@ -246,8 +248,11 @@ function BagScanner:GetDetailedSlotCounts()
     local regularFree = 0
     local specialBags = {}
 
+    -- IsPlayerBagID rather than a PLAYER_BAG_MIN..PLAYER_BAG_MAX range: that range
+    -- stops at 4, so Retail's reagent bag never reached the family check below and
+    -- was missing from the footer's special-bag tooltip altogether.
     for bagID, bagData in pairs(cachedBags) do
-        if bagID >= Constants.PLAYER_BAG_MIN and bagID <= Constants.PLAYER_BAG_MAX then
+        if Constants.IsPlayerBagID(bagID) then
             local numSlots = bagData.numSlots or 0
             local freeSlots = bagData.freeSlots or 0
 
