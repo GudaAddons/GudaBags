@@ -63,6 +63,18 @@ local function CanHaveTrack(itemData)
     return classID == ITEM_CLASS.WEAPON or classID == ITEM_CLASS.ARMOR
 end
 
+-- Whether IUQI participates in this item's button at all.
+--
+-- Public because ItemButton needs the same answer for a different reason: its
+-- crafting-quality icon only adopts IUQI's placement on items IUQI could put an
+-- icon on. A reagent or consumable has nothing to line up with, so it keeps our
+-- own corner and sizing. One owner for the question, so "does IUQI draw here" and
+-- "should we defer to IUQI's geometry here" can never disagree about the same
+-- item.
+function IUQI:AppliesTo(itemData)
+    return itemData ~= nil and CanHaveTrack(itemData)
+end
+
 -- Whether this link has an upgrade track at all, memoised.
 --
 -- Deliberately NOT memoising GetIconForLink's answer, even though that would be
@@ -155,7 +167,7 @@ end
 -- and true there -- our icon moves to IUQI's position and still shows.
 function IUQI:IsDecorating(itemData)
     if not self:IconsEnabled() then return false end
-    if not itemData or not CanHaveTrack(itemData) then return false end
+    if not self:AppliesTo(itemData) then return false end
 
     local link = itemData.link or itemData.itemLink
     return link ~= nil and HasTrack(link)

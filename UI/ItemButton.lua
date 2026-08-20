@@ -120,11 +120,6 @@ local function HideUpgradeTrackIcon(button)
     if compat then compat:Hide(button) end
 end
 
--- Our crafting-quality icon and IUQI's upgrade-track icon are both
--- Professions-Quality dot atlases, so where they share the top-left corner they
--- stack into two near-identical icons meaning different things and one has to
--- yield -- IUQI's, being the more specific statement about that item, wins.
---
 -- Crafting quality icon (Retail profession items).
 -- itemData.craftingQualityAtlas is the exact bag-overlay atlas extracted from the
 -- item link (see Data/ItemScanner.lua GetCraftingQualityAtlas) — this guarantees
@@ -135,11 +130,17 @@ end
 -- how big it is and whether it shows at all can change with IUQI's options, none
 -- of which involve any item changing.
 --
--- With IUQI drawing, this icon follows IUQI's position and scale so every
--- quality dot in the bag lands in the same place, and yields outright on the
--- items IUQI itself decorates, since the two would otherwise be stacked. Without
--- IUQI -- or with its icons switched off -- nothing here changes: our own
--- top-left placement and our own sizing, exactly as before.
+-- Where IUQI is in play, this icon adopts IUQI's position and scale so the two
+-- do not sit in different corners at different sizes, and yields outright on the
+-- items IUQI itself decorates, since both are Professions-Quality dot atlases and
+-- would otherwise stack -- the upgrade track being the more specific statement
+-- about that item.
+--
+-- "In play" means equippable gear, and only that. IUQI never draws on a reagent
+-- or a consumable, so there is nothing there to line up with, and inheriting a
+-- position and size chosen for gear would move our icon for no reason. Those keep
+-- our own top-left placement and our own sizing -- as does everything, when IUQI
+-- is absent or its icons are switched off.
 local function ApplyCraftingQualityIcon(button, size)
     local icon = button.craftingQualityIcon
     if not icon then return end
@@ -152,7 +153,9 @@ local function ApplyCraftingQualityIcon(button, size)
     end
 
     local compat = GetIUQICompat()
-    local followsIUQI = compat ~= nil and compat:IconsEnabled()
+    local followsIUQI = compat ~= nil
+        and compat:IconsEnabled()
+        and compat:AppliesTo(itemData)
 
     -- Same spot, same atlas family: the upgrade track is the more specific
     -- statement about the item, so it wins and the craft tier stands down.
