@@ -2738,6 +2738,25 @@ function ItemButton:GetActiveButtons()
     return buttonPool:EnumerateActive()
 end
 
+-- Free (inactive) buttons currently sitting in the pool.
+--
+-- Callers use this to decide whether a relayout is safe to run during combat:
+-- Acquire() falls back to CreateButton() when the pool is dry, and the
+-- ContainerFrameItemButtonTemplate frames it creates cannot be made while locked
+-- down (see PreWarm). Repositioning buttons that already exist is fine, so a
+-- rebuild the free list can cover outright never reaches CreateFrame.
+function ItemButton:GetFreeCount()
+    if not buttonPool then return 0 end
+    -- Two spellings across flavors: newer ObjectPoolMixin exposes GetNumInactive(),
+    -- older ones only the inactiveObjects free list. Reading just one would return 0
+    -- on the other, silently pinning every caller to its "pool is dry" branch.
+    if buttonPool.GetNumInactive then
+        return buttonPool:GetNumInactive() or 0
+    end
+    local inactive = buttonPool.inactiveObjects
+    return inactive and #inactive or 0
+end
+
 function ItemButton:HighlightBagSlots(bagID, owner)
     if not buttonPool then return end
     local bgAlpha = Database:GetSetting("bgAlpha") / 100
