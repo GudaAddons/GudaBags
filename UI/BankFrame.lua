@@ -31,6 +31,12 @@ local viewingCharacter = nil
 local pendingAction = nil  -- "show" or nil
 local combatLockdownRegistered = false
 
+-- Headroom added to the current layout size when sizing the in-combat pool check
+-- (see ApplyItemInfoRefresh). Covers the pseudo slots a rebuild can add on top of
+-- the real items. Being generous only costs a deferral, while being short would let
+-- Refresh reach CreateFrame mid-combat — the failure the check exists to prevent.
+local PSEUDO_SLOT_MARGIN = 32
+
 -- Layout caching for incremental updates (same pattern as BagFrame)
 local buttonsBySlot = {}  -- Key: "bagID:slot" -> button reference
 local buttonsByBag = {}   -- Key: bagID -> { slot -> button } for fast bag-specific lookups
@@ -3696,7 +3702,6 @@ local RETRIED = "retry"
 local ITEM_REFRESH_MAX = 200
 local pendingItemRefreshCount = 0
 local itemRefreshTimer
-local itemRefreshDeferred = false
 local ScheduleItemRefresh  -- defined below; ApplyItemInfoRefresh re-arms through it
 
 -- One owner for "empty the pending set", so the count can never drift from the
@@ -3713,11 +3718,11 @@ local function ApplyItemInfoRefresh()
         wipe(retryItemRefresh)
         return
     end
-    if InCombatLockdown() then
-        itemRefreshDeferred = true
-        return
-    end
-    itemRefreshDeferred = false
+    -- No combat guard on the repaint itself: it only touches buttons that are already
+    -- active, through the same ItemButton:SetItem the incremental pass calls in combat
+    -- already, and it never acquires — so Rule 3 does not apply here. Deferring it left
+    -- an item the client had never cached sitting as a blank/placeholder slot for the
+    -- whole fight. The relayout it can trigger DOES acquire; that is gated below.
 
     local ItemScanner = ns:GetModule("ItemScanner")
     if not ItemScanner then
@@ -3807,6 +3812,23 @@ local function ApplyItemInfoRefresh()
     -- (IncrementalUpdate calls Refresh directly). The 0.15s debounce above
     -- already collapses a burst of arrivals into one pass, so this fires once.
     if needsRelayout then
+        -- Rule 3 covers *creating* the secure buttons, not repositioning ones that
+        -- exist: Acquire only reaches CreateFrame once the pool runs dry, and Refresh
+        -- hands its current buttons back (release or bankRecycle) before acquiring
+        -- any. So a free list that already covers the layout outright cannot create.
+        -- #itemButtons is what the layout on screen needed, and this relayout is a
+        -- recategorisation of the same items, so it is the right size to check —
+        -- ignoring the buttons Refresh gives back only errs toward deferring.
+        if InCombatLockdown() then
+            local free = ItemButton:GetFreeCount()
+            local needed = #itemButtons + PSEUDO_SLOT_MARGIN
+            if free < needed then
+                ns:Debug("BankFrame: relayout deferred to combat end, pool free", free, "needed", needed)
+                RegisterCombatEndCallback()
+                return
+            end
+            ns:Debug("BankFrame: relayout in combat, pool free", free, "needed", needed)
+        end
         BankFrame:Refresh()
     end
 end
@@ -3830,12 +3852,6 @@ Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
     pendingItemRefresh[itemID] = true
     ScheduleItemRefresh()
 end, BankFrame)
-
-Events:Register("PLAYER_REGEN_ENABLED", function()
-    if itemRefreshDeferred and next(pendingItemRefresh) then
-        ScheduleItemRefresh()
-    end
-end, "BankFrame.ItemInfoRefresh")
 
 -- Combat start: release the bank's retained (held-while-hidden) buttons so an
 -- in-combat bag open can reuse the shared ItemButton pool without creating new

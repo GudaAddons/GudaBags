@@ -67,7 +67,15 @@ local buttonPositions = {}   -- Key: button -> {x, y, index} for reflow detectio
 local categoryViewItems = {} -- Array of {itemKey, bagID, slot, categoryId, count} for current layout
 local lastCategoryLayout = nil -- Previous categoryViewItems for comparison
 local lastButtonByCategory = {} -- Key: categoryId -> last item button (for drop indicator anchor)
-local lastTotalItemCount = 0 -- Track item count to detect Empty/Soul category changes
+-- Occupied bag slots as of the last category layout or incremental pass.
+--
+-- The unit matters and used to be wrong: its only reader compares it against
+-- CountBaggedItems(), which counts SLOTS, while RefreshCategoryView filled it
+-- with #categoryViewItems -- BUTTONS, pseudo slots included and identical stacks
+-- merged into one. The two sides were different quantities, so which branch a
+-- bag update took depended on which function had last written this, not on what
+-- happened to the bags. Every writer now stores occupied slots.
+local lastOccupiedSlotCount = 0
 local pseudoItemButtons = {} -- Track Empty/Soul/DropTarget pseudo-item buttons for proper release
                              -- Keys are "Empty:<categoryId>", "Soul:<categoryId>", or "DropTarget:<categoryId>"
 
@@ -91,6 +99,14 @@ local dragCheckTicker = nil
 local CATEGORY_REFRESH_DELAY = 0.05
 local categoryRefreshTimer = nil
 
+-- Headroom added to the item count when sizing the in-combat pool check below.
+-- A layout needs at most one button per carried item plus its pseudo slots: Empty,
+-- Soul and Quiver are one each, but a drag adds a DropTarget per empty category, so
+-- the margin is sized for that worst case rather than the three fixed ones. Being
+-- generous only costs a deferral, while being short would let Refresh reach
+-- CreateFrame mid-combat — the failure this check exists to prevent.
+local PSEUDO_SLOT_MARGIN = 32
+
 -- Category view: the layout is knowingly out of date because slots were freed.
 --
 -- A removal must NOT queue the rebuild above. Ghost slots exist precisely so the
@@ -105,6 +121,26 @@ local categoryLayoutStale = false
 -- read by IncrementalUpdate, which otherwise cannot tell a slot that has no
 -- button by design from one that was never drawn.
 local lastLayoutWasGrouped = false
+
+-- How many real items the player is currently carrying, from the scanner cache.
+--
+-- Constants.BAG_IDS, not NUM_BAG_SLOTS/PLAYER_BAG_MAX: those stop at 4 and so skip
+-- the Retail reagent bag. Single owner for the question so the two callers
+-- (OnBagsUpdated's removal check, ScheduleCategoryRefresh's pool check) cannot drift.
+local function CountBaggedItems()
+    local bags = BagScanner:GetCachedBags()
+    if not bags then return 0 end
+    local count = 0
+    for _, bagID in ipairs(Constants.BAG_IDS) do
+        local bagData = bags[bagID]
+        if bagData and bagData.slots then
+            for _, itemData in pairs(bagData.slots) do
+                if itemData then count = count + 1 end
+            end
+        end
+    end
+    return count
+end
 
 -- Helper to find a pseudo-item button by type (Empty or Soul)
 local function FindPseudoItemButton(pseudoType)
@@ -201,11 +237,25 @@ local function ScheduleCategoryRefresh()
         categoryRefreshTimer = nil
         if not frame or not frame:IsShown() then return end
         if viewingCharacter then return end
-        -- Refresh rebuilds secure item buttons; never touch them mid-combat.
-        -- PLAYER_REGEN_ENABLED refreshes open bags once combat ends (Rule 3).
+        -- Rule 3 applies to *creating* the secure buttons, not to moving ones that
+        -- already exist: Acquire only reaches CreateFrame when the pool runs dry.
+        -- RefreshCategoryView releases its old buttons before it acquires any, so a
+        -- free list that already covers the whole layout guarantees no creation.
+        --
+        -- Blanket-deferring here instead is what made looted items invisible for the
+        -- rest of a fight: this is the only structural rebuild category view has, and
+        -- IncrementalUpdate returns before its own repaint pass once it has decided a
+        -- rebuild is needed. When the pool cannot cover it we still fall back to
+        -- PLAYER_REGEN_ENABLED, which refreshes open bags once combat ends.
         if InCombatLockdown() then
-            RegisterCombatEndCallback()
-            return
+            local free = ItemButton:GetFreeCount()
+            local needed = CountBaggedItems() + PSEUDO_SLOT_MARGIN
+            if free < needed then
+                ns:Debug("CategoryRefresh: deferred to combat end, pool free", free, "needed", needed)
+                RegisterCombatEndCallback()
+                return
+            end
+            ns:Debug("CategoryRefresh: rebuilding in combat, pool free", free, "needed", needed)
         end
         BagFrame:Refresh()
     end)
@@ -565,7 +615,7 @@ function BagFrame:Refresh()
     buttonPositions = {}
     categoryViewItems = {}
     lastCategoryLayout = nil
-    lastTotalItemCount = 0
+    lastOccupiedSlotCount = 0
     pseudoItemButtons = {}
     layoutCached = false
     -- Note: lastLayoutSettings is preserved until end of Refresh to detect view type changes
@@ -1183,8 +1233,9 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
 
     -- Save current layout for next incremental update comparison
     lastCategoryLayout = categoryViewItems
-    -- Track item count to detect Empty/Soul category changes in incremental updates
-    lastTotalItemCount = #categoryViewItems
+    -- Occupied slots, NOT #categoryViewItems: see the declaration. Read from the
+    -- same scanner cache this layout was built from, so the two agree.
+    lastOccupiedSlotCount = CountBaggedItems()
 
     layoutCached = true
 end
@@ -1263,7 +1314,7 @@ function BagFrame:ReleaseHeld()
     buttonPositions = {}
     categoryViewItems = {}
     lastCategoryLayout = nil
-    lastTotalItemCount = 0
+    lastOccupiedSlotCount = 0
     pseudoItemButtons = {}
     itemButtons = {}
     layoutCached = false
@@ -1498,6 +1549,52 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
         end
 
+        -- The number a button draws, for the layout that is actually on screen.
+        --
+        -- Grouped, one button stands in for every slot in a category sharing an
+        -- itemID, and the number it draws is the SUM across those slots
+        -- (LayoutEngine builds a consolidated record whose count is that sum, and
+        -- RefreshCategoryView caches that total). buttonsBySlot holds only the
+        -- group's first slot, so reading one slot's count here either does
+        -- nothing or repaints a grouped stack with a single stack's number --
+        -- which is why crafting from a non-owning stack left the pre-craft total
+        -- on screen until Restack & Clean dropped layoutCached.
+        --
+        -- Partitioned by (category, itemID) because that is exactly how
+        -- BuildCategorySections groups: per section, keyed on itemData.itemID.
+        -- Not by itemKey -- that is link:quality:isBound, which is both finer than
+        -- itemID (two stacks of one itemID with different links would undercount)
+        -- and blind to the section split, so the same itemID sitting in a soul or
+        -- quiver bag -- which gets its own pseudo-category above -- would hand both
+        -- of its buttons the combined total.
+        --
+        -- Built once on first use in a single O(slots) pass; a 200-slot bag must
+        -- not re-walk a group once per member. Ungrouped layouts never build it.
+        local groupTotals  -- category -> itemID -> summed count
+        local function CountForSlot(currentSlot)
+            local itemData = currentSlot.itemData
+            if not lastLayoutWasGrouped then return itemData.count end
+            local itemID = itemData.itemID
+            if not itemID then return itemData.count end
+            if not groupTotals then
+                groupTotals = {}
+                for _, slotInfo in pairs(currentItemsBySlot) do
+                    local d = slotInfo.itemData
+                    local id = d.itemID
+                    if id then
+                        local byID = groupTotals[slotInfo.category]
+                        if not byID then
+                            byID = {}
+                            groupTotals[slotInfo.category] = byID
+                        end
+                        byID[id] = (byID[id] or 0) + (d.count or 1)
+                    end
+                end
+            end
+            local byID = groupTotals[currentSlot.category]
+            return (byID and byID[itemID]) or itemData.count
+        end
+
         -- Count available ghost slots (buttons that are or will become empty)
         -- This includes:
         -- 1. Buttons already showing empty (cachedItemData is nil)
@@ -1702,8 +1799,9 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
         end
 
-        -- Update lastTotalItemCount for tracking
-        lastTotalItemCount = totalCurrentItems
+        -- totalCurrentItems is already an occupied-slot count, matching what
+        -- RefreshCategoryView stores.
+        lastOccupiedSlotCount = totalCurrentItems
 
         -- Check for category changes in existing items
         if not needsFullRefresh and lastCategoryLayout then
@@ -1860,11 +1958,14 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                     and (button.itemData.dataPending or button.itemData.texture == nil)
 
                 if oldItemID == newItemID and not linkChanged and not wasIncomplete then
-                    -- Same item - just check count
+                    -- Same item - just check count. CountForSlot, not
+                    -- newItemData.count: grouped, the cached value is the whole
+                    -- group's total and one slot's count would never match it.
                     local oldCount = cachedItemCount[slotKey]
-                    if oldCount ~= newItemData.count then
-                        SetItemButtonCount(button, newItemData.count)
-                        cachedItemCount[slotKey] = newItemData.count
+                    local newCount = CountForSlot(currentSlot)
+                    if oldCount ~= newCount then
+                        SetItemButtonCount(button, newCount)
+                        cachedItemCount[slotKey] = newCount
                         countUpdates = countUpdates + 1
                     end
                     -- Item identity unchanged but charges may have decremented
@@ -1874,8 +1975,17 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 elseif oldItemID == nil then
                     -- Ghost slot getting an item back - update it
                     ItemButton:SetItem(button, newItemData, iconSize, false)
+                    -- SetItem paints itemData.count, which is this slot's count.
+                    -- Grouped, the button stands in for the whole group, so
+                    -- repaint the total. newItemData is BagScanner's live
+                    -- record -- never write .count on it, the scanner and the
+                    -- saved DB read the same table.
+                    local newCount = CountForSlot(currentSlot)
+                    if newCount ~= newItemData.count then
+                        SetItemButtonCount(button, newCount)
+                    end
                     cachedItemData[slotKey] = newItemID
-                    cachedItemCount[slotKey] = newItemData.count
+                    cachedItemCount[slotKey] = newCount
                     cachedItemCategory[slotKey] = currentSlot.category
                     CacheChargesForSlot(slotKey, newItemData.bagID, newItemData.slot)
                     ghostsReused = ghostsReused + 1
@@ -1888,8 +1998,14 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 else
                     -- Different item - update button
                     ItemButton:SetItem(button, newItemData, iconSize, false)
+                    -- Same reason as the ghost branch above: SetItem paints this
+                    -- slot's count, a grouped button owes the group total.
+                    local newCount = CountForSlot(currentSlot)
+                    if newCount ~= newItemData.count then
+                        SetItemButtonCount(button, newCount)
+                    end
                     cachedItemData[slotKey] = newItemID
-                    cachedItemCount[slotKey] = newItemData.count
+                    cachedItemCount[slotKey] = newCount
                     cachedItemCategory[slotKey] = currentSlot.category
                     CacheChargesForSlot(slotKey, newItemData.bagID, newItemData.slot)
                     buttonsUpdated = buttonsUpdated + 1
@@ -2164,18 +2280,8 @@ ns.OnBagsUpdated = function(dirtyBags)
             end
             -- Simple removals (equip/sell/delete) don't need regrouping — allow
             -- incremental update to preserve ghost slots even with grouping active
-            if groupingActive and layoutCached and lastTotalItemCount > 0 then
-                local bags = BagScanner:GetCachedBags()
-                local currentCount = 0
-                for _, bagID in ipairs(Constants.BAG_IDS) do
-                    local bagData = bags[bagID]
-                    if bagData and bagData.slots then
-                        for _, itemData in pairs(bagData.slots) do
-                            if itemData then currentCount = currentCount + 1 end
-                        end
-                    end
-                end
-                if currentCount < lastTotalItemCount then
+            if groupingActive and layoutCached and lastOccupiedSlotCount > 0 then
+                if CountBaggedItems() < lastOccupiedSlotCount then
                     groupingActive = false  -- Removal only, incremental is safe
                 end
             end
@@ -2427,7 +2533,7 @@ function BagFrame:RestackAndClean()
                     buttonPositions = {}
                     categoryViewItems = {}
                     lastCategoryLayout = nil
-                    lastTotalItemCount = 0
+                    lastOccupiedSlotCount = 0
                     pseudoItemButtons = {}
                     layoutCached = false
                     lastLayoutSettings = nil
@@ -2463,7 +2569,7 @@ function BagFrame:Clean()
     buttonPositions = {}
     categoryViewItems = {}
     lastCategoryLayout = nil
-    lastTotalItemCount = 0
+    lastOccupiedSlotCount = 0
     pseudoItemButtons = {}
     layoutCached = false
     lastLayoutSettings = nil
@@ -2631,7 +2737,6 @@ local RETRIED = "retry"
 local ITEM_REFRESH_MAX = 200
 local pendingItemRefreshCount = 0
 local itemRefreshTimer
-local itemRefreshDeferred = false
 local ScheduleItemRefresh  -- defined below; ApplyItemInfoRefresh re-arms through it
 
 -- One owner for "empty the pending set", so the count can never drift from the
@@ -2648,13 +2753,12 @@ local function ApplyItemInfoRefresh()
         wipe(retryItemRefresh)
         return
     end
-    if InCombatLockdown() then
-        -- PLAYER_REGEN_ENABLED already triggers a Refresh of open bags
-        -- (see RegisterCombatEndCallback). Let it pick this up.
-        itemRefreshDeferred = true
-        return
-    end
-    itemRefreshDeferred = false
+    -- No combat guard: this only repaints buttons that are already active, through
+    -- the same ItemButton:SetItem that single view's incremental pass calls in combat
+    -- already. It never acquires, so Rule 3 does not apply. Deferring it meant
+    -- an item the client had never cached — a first-time boss drop, exactly the case
+    -- this handler exists for — stayed a blank/placeholder slot for the whole fight.
+    -- The 0.15s debounce and ITEM_REFRESH_MAX still bound the work per pass.
 
     local ItemScanner = ns:GetModule("ItemScanner")
     if not ItemScanner then
@@ -2763,15 +2867,6 @@ Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
     pendingItemRefresh[itemID] = true
     ScheduleItemRefresh()
 end, BagFrame)
-
--- Drain any deferred-during-combat refresh once combat ends. (PLAYER_REGEN_ENABLED
--- already does a broader Refresh, but only if pendingAction is set; piggyback so
--- the targeted repaint still runs when bags were already open during combat.)
-Events:Register("PLAYER_REGEN_ENABLED", function()
-    if itemRefreshDeferred and next(pendingItemRefresh) then
-        ScheduleItemRefresh()
-    end
-end, "BagFrame.ItemInfoRefresh")
 
 -- Update item lock state (when picking up/putting down items)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)

@@ -73,7 +73,14 @@ end
 -- vanishes) emit a marker. The per-slot path used to fire MarkRecent for any
 -- item that landed in a previously-empty slot, which produced false positives
 -- whenever a sort moved items between slots.
+--
+-- Returns cachedBags, changed. `changed` is true when this pass actually moved
+-- something -- a slot gained or lost an item, a stack count moved, a lock flipped,
+-- a bag appeared or went away. Only the verification passes below read it, to tell
+-- "the game never told us about this" from "nothing happened"; every other caller
+-- ignores the second value and behaves exactly as before.
 function BagScanner:ScanDirtyBags(bagIDs)
+    local changed = false
     -- Snapshot for the post-loop Recent diff. Shallow copy is enough because
     -- knownItemIDs values are numbers.
     local prevKnown = {}
@@ -96,6 +103,7 @@ function BagScanner:ScanDirtyBags(bagIDs)
                 end
             end
             cachedBags[bagID] = nil
+            changed = true
         else
             local existingBag = cachedBags[bagID]
             if not existingBag then
@@ -104,6 +112,7 @@ function BagScanner:ScanDirtyBags(bagIDs)
                 local bagData = ItemScanner:ScanContainer(bagID)
                 if bagData then
                     cachedBags[bagID] = bagData
+                    changed = true
                     if bagData.slots then
                         for slot, itemData in pairs(bagData.slots) do
                             if itemData and itemData.itemID then
@@ -136,6 +145,7 @@ function BagScanner:ScanDirtyBags(bagIDs)
                     local incomplete = ItemScanner:IsRecordIncomplete(cachedItem)
 
                     if currentItemID ~= cachedItemID or currentLink ~= cachedLink or incomplete then
+                        changed = true
                         -- Slot changed - update known item counts. Recent
                         -- emission is handled by the post-loop diff so that
                         -- items merely moving between slots (sort, restack,
@@ -167,10 +177,12 @@ function BagScanner:ScanDirtyBags(bagIDs)
                         -- Same item, but check if count changed (for stacks)
                         if itemInfo.stackCount ~= cachedItem.count then
                             cachedItem.count = itemInfo.stackCount
+                            changed = true
                         end
                         -- Check if locked state changed
                         if itemInfo.isLocked ~= cachedItem.locked then
                             cachedItem.locked = itemInfo.isLocked
+                            changed = true
                         end
                     end
 
@@ -212,7 +224,7 @@ function BagScanner:ScanDirtyBags(bagIDs)
         end
     end
 
-    return cachedBags
+    return cachedBags, changed
 end
 
 function BagScanner:GetCachedBags()
@@ -327,6 +339,10 @@ local function ScheduleDeferredSave()
     end)
 end
 
+-- True when the only reason this drain was armed is a verification pass (see
+-- RunVerifyPass). Set by the pass, consumed by the very next drain.
+local verifyOnlyDrain = false
+
 -- Process batched bag updates (called from OnUpdate)
 local function ProcessBatchedUpdates()
     if not pendingUpdate then return end
@@ -337,13 +353,29 @@ local function ProcessBatchedUpdates()
     local bagsToScan = dirtyBags
     dirtyBags = {}
     pendingUpdate = false
+    local wasVerifyOnly = verifyOnlyDrain
+    verifyOnlyDrain = false
     updateFrame:Hide()
 
     ns:ProfileBump("event.batch")
     ns:ProfileStart("event.batchwork")
 
     -- Scan only the dirty bags
-    BagScanner:ScanDirtyBags(bagsToScan)
+    local _, changed = BagScanner:ScanDirtyBags(bagsToScan)
+
+    -- A verification pass that found nothing must stop here.
+    --
+    -- It dirties every bag by design, so ns.OnBagsUpdated would see a change in
+    -- all of them and -- in grouped category view, where an addition cannot be
+    -- reconciled incrementally -- take the full ~80ms rebuild. That would put a
+    -- redundant rebuild after every looting window purely because we chose to
+    -- look. A real BAG_UPDATE landing in the same window still sets `changed`,
+    -- so this can only ever suppress a pass that genuinely did nothing.
+    if wasVerifyOnly and not changed then
+        ns:Debug("BagScanner: verify pass found nothing, skipping notify")
+        ns:ProfileStop("event.batchwork")
+        return
+    end
 
     -- Schedule deferred save instead of immediate save
     ScheduleDeferredSave()
@@ -368,6 +400,14 @@ local function IsPlayerBag(bagID)
     return false
 end
 
+-- Arm the OnUpdate drain for whatever is currently in dirtyBags. One owner, so the
+-- pendingUpdate flag and the frame's shown state can never disagree.
+local function ScheduleDirtyDrain()
+    if pendingUpdate then return end
+    pendingUpdate = true
+    updateFrame:Show()
+end
+
 -- Mark a bag as dirty and schedule batched processing
 local function OnBagUpdate(event, bagID)
     -- Only handle player bags, not bank bags (bank has its own scanner)
@@ -380,11 +420,7 @@ local function OnBagUpdate(event, bagID)
     dirtyBags[bagID] = true
     recentlyUpdatedBags[bagID] = true
 
-    -- Schedule OnUpdate processing if not already pending
-    if not pendingUpdate then
-        pendingUpdate = true
-        updateFrame:Show()
-    end
+    ScheduleDirtyDrain()
 end
 
 Events:OnPlayerLogin(function()
@@ -413,11 +449,74 @@ Events:Register("BAG_UPDATE_DELAYED", function()
         recentlyUpdatedBags[bagID] = nil
     end
 
-    if not pendingUpdate then
-        pendingUpdate = true
-        updateFrame:Show()
-    end
+    ScheduleDirtyDrain()
 end, BagScanner)
+
+-- Force one verification scan of every player bag.
+--
+-- Some inventory changes reach the client without a per-bag BAG_UPDATE we can rely
+-- on. BAG_UPDATE_DELAYED cannot cover those: its recentlyUpdatedBags guard has
+-- nothing to re-dirty, so with no BAG_UPDATE the whole pipeline never runs and the
+-- stale slots stay on screen until BagFrame:Show() rescans -- the "close and reopen
+-- the bags" workaround.
+--
+-- Marking every player bag dirty reuses the existing dirty-set and OnUpdate drain,
+-- so this is one extra scan, not a poll, and ScanDirtyBags' per-slot diff makes it
+-- free for every slot that already landed. Constants.BAG_IDS rather than a
+-- NUM_BAG_SLOTS range: that range stops at 4 and would skip Retail's reagent bag.
+local function RunVerifyPass(reason)
+    for _, bagID in ipairs(Constants.BAG_IDS) do
+        dirtyBags[bagID] = true
+    end
+    ns:Debug("BagScanner: verify pass -", reason)
+    -- Only a hint: a real BAG_UPDATE arriving before the drain still reports a
+    -- change and the notify goes out as normal.
+    verifyOnlyDrain = true
+    ScheduleDirtyDrain()
+end
+
+-- Verify the bags once after every trade. Completing a trade consumes the
+-- enchanter's reagents (and moves the traded items) with no BAG_UPDATE we can rely
+-- on. Also fires on a cancelled trade, where the pass is a no-op. The delay lets
+-- the server-side transfer settle first.
+local TRADE_VERIFY_DELAY = 0.5
+Events:Register("TRADE_CLOSED", function()
+    C_Timer.After(TRADE_VERIFY_DELAY, function()
+        RunVerifyPass("trade")
+    end)
+end, BagScanner)
+
+-- Verify the bags once after a looting spree.
+--
+-- lootVerifyPending is the "the bags owe us a look" flag: loot sets it, the
+-- debounced pass clears it. Trailing-edge NewTimer restarted on every loot, so an
+-- AoE pull, a mailbox or a mass-disenchant coalesces into ONE pass a second after
+-- the last loot instead of one per item.
+--
+-- LOOT_CLOSED rather than LOOT_OPENED: it is the point where the transfer is done,
+-- and it fires for autoloot too. It is the only loot event registered -- it exists
+-- in every flavor the TOC targets, while LOOT_READY does not, and RegisterEvent
+-- raises on a name the client does not know.
+--
+-- Note this is a safety net for events WoW does not report cleanly, NOT a fix for
+-- a stale bag display: the pass feeds the same ns.OnBagsUpdated as any BAG_UPDATE,
+-- so whatever that path does with the result, it does here too.
+local LOOT_VERIFY_DELAY = 1.0
+local lootVerifyPending = false
+local lootVerifyTimer = nil
+
+local function ScheduleLootVerify()
+    lootVerifyPending = true
+    if lootVerifyTimer then lootVerifyTimer:Cancel() end
+    lootVerifyTimer = C_Timer.NewTimer(LOOT_VERIFY_DELAY, function()
+        lootVerifyTimer = nil
+        if not lootVerifyPending then return end
+        lootVerifyPending = false
+        RunVerifyPass("loot")
+    end)
+end
+
+Events:Register("LOOT_CLOSED", ScheduleLootVerify, BagScanner)
 
 -- Handle BAGS_UPDATED event (fired after sort completes)
 -- This ensures bags are rescanned and UI refreshed after sorting
