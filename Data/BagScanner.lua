@@ -363,6 +363,17 @@ local function ProcessBatchedUpdates()
     -- Scan only the dirty bags
     local _, changed = BagScanner:ScanDirtyBags(bagsToScan)
 
+    -- A Recent mark re-categorises an item without touching a slot, so the per-slot
+    -- diff above cannot see it and the suppression below would skip the redraw --
+    -- leaving a looted item in its old category. CHAT_MSG_LOOT often lands after the
+    -- BAG_UPDATE drain has already redrawn, so the loot verify pass a second later is
+    -- exactly the pass that has to carry it. Consumed unconditionally (not only on a
+    -- verify pass) so the flag can never survive a notify it already rode along with.
+    local RecentItems = ns:GetModule("RecentItems")
+    if RecentItems and RecentItems:ConsumeSetChanged() then
+        changed = true
+    end
+
     -- A verification pass that found nothing must stop here.
     --
     -- It dirties every bag by design, so ns.OnBagsUpdated would see a change in
@@ -536,9 +547,13 @@ Events:Register("BAGS_UPDATED", function()
 
     ns:Debug(string.format("Post-sort refresh: %d dirty bags", bagCount))
 
-    -- Clear state
+    -- Clear state. verifyOnlyDrain too: this handler consumes the pending drain's
+    -- dirty set and cancels the drain, so a verify pass that never got to run must
+    -- not leave its flag behind for the next, unrelated drain to consume -- that
+    -- drain would then skip its own notify whenever its scan reported no change.
     dirtyBags = {}
     pendingUpdate = false
+    verifyOnlyDrain = false
     updateFrame:Hide()
 
     -- Scan only the dirty bags (faster than full rescan)

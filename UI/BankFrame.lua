@@ -3814,20 +3814,26 @@ local function ApplyItemInfoRefresh()
     if needsRelayout then
         -- Rule 3 covers *creating* the secure buttons, not repositioning ones that
         -- exist: Acquire only reaches CreateFrame once the pool runs dry, and Refresh
-        -- hands its current buttons back (release or bankRecycle) before acquiring
-        -- any. So a free list that already covers the layout outright cannot create.
-        -- #itemButtons is what the layout on screen needed, and this relayout is a
-        -- recategorisation of the same items, so it is the right size to check —
-        -- ignoring the buttons Refresh gives back only errs toward deferring.
+        -- hands its current buttons back before acquiring any — bankRecycle plus
+        -- bankParked in single/split, ItemButton:ReleaseAll(frame.container) (which
+        -- owns both) in category and on a view change. So capacity is the free list
+        -- PLUS those, not the free list alone: ignoring them does not merely "err
+        -- toward deferring", it demands free >= #itemButtons + margin when the real
+        -- requirement is free >= margin, and so defers every large relayout.
+        -- #itemButtons is the right size to need, since this relayout is a
+        -- recategorisation of the same items.
         if InCombatLockdown() then
-            local free = ItemButton:GetFreeCount()
+            local held = #itemButtons + #bankParked
             local needed = #itemButtons + PSEUDO_SLOT_MARGIN
-            if free < needed then
-                ns:Debug("BankFrame: relayout deferred to combat end, pool free", free, "needed", needed)
+            local canRebuild, free = ItemButton:CanCoverRelayout(needed, held)
+            if not canRebuild then
+                ns:Debug("BankFrame: relayout deferred to combat end, pool free", free,
+                    "held", held, "needed", needed)
                 RegisterCombatEndCallback()
                 return
             end
-            ns:Debug("BankFrame: relayout in combat, pool free", free, "needed", needed)
+            ns:Debug("BankFrame: relayout in combat, pool free", free,
+                "held", held, "needed", needed)
         end
         BankFrame:Refresh()
     end

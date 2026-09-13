@@ -100,6 +100,43 @@ commandHandlers["debugitem"] = function()
     ns:Print("Debug item hover: " .. (ns.debugItemMode and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
 end
 
+-- Report the shared ItemButton pool: size, who is holding buttons, and any that
+-- can never be reclaimed. Run it right after login and again later to see the
+-- pool drain, which is what identifies the holder.
+commandHandlers["pool"] = function()
+    local ItemButton = ns:GetModule("ItemButton")
+    if not ItemButton then return end
+    local stats = ItemButton:GetPoolStats()
+    ns:Print(string.format("Pool: total %d, free %d, active %d, orphaned %d",
+        stats.total, stats.inactive, stats.active, stats.orphaned))
+    if stats.orphaned > 0 then
+        ns:Print("  |cffff0000orphaned > 0|r - acquired without an owner, ReleaseAll can never reclaim these")
+    end
+
+    -- Active buttons grouped by the frame that owns them. Named frames report
+    -- their name; the bag/bank/guild-bank containers are anonymous, so fall back
+    -- to the parent's name, which is the one that identifies the consumer.
+    local byOwner, order = {}, {}
+    for button in ItemButton:GetActiveButtons() do
+        local owner = button.owner
+        local label = "(no owner)"
+        if owner then
+            label = (owner.GetName and owner:GetName())
+                or (owner.GetParent and owner:GetParent() and owner:GetParent().GetName
+                    and owner:GetParent():GetName())
+                or tostring(owner)
+        end
+        if not byOwner[label] then
+            byOwner[label] = 0
+            order[#order + 1] = label
+        end
+        byOwner[label] = byOwner[label] + 1
+    end
+    for _, label in ipairs(order) do
+        ns:Print(string.format("  %s: %d", label, byOwner[label]))
+    end
+end
+
 -- Debug item button frames (for retail overlay issues)
 commandHandlers["debugbutton"] = function()
     local ItemButton = ns:GetModule("ItemButton")
@@ -282,6 +319,7 @@ commandHandlers["help"] = function()
     ns:Print("  /guda status - Show expansion/feature detection")
     ns:Print("  /guda profile - Toggle performance profiler")
     ns:Print("  /guda profiledump - Print profiler timings")
+    ns:Print("  /guda pool - Show item button pool usage by owner")
     ns:Print("  /guda profilereset - Clear profiler timings")
     ns:Print("  /guda toggle <name> - A/B toggle a subsystem (tooltipscan|glow|masque|upgrade|grouping)")
 end
