@@ -1,6 +1,9 @@
 local addonName, ns = ...
 
 local RuleEngine = ns:GetModule("RuleEngine")
+local Utils = ns:GetModule("Utils")
+
+local strfind = string.find
 
 -------------------------------------------------
 -- Name Pattern Rule
@@ -33,28 +36,22 @@ RuleEngine:RegisterEvaluator("tooltipPattern", function(ruleValue, itemData, con
         return false
     end
 
-    -- Prefer hyperlink (also works for cached/cross-character views). Fall back
-    -- to the bag slot when link isn't yet populated during initial scans.
-    local loaded = false
-    local link = itemData.link or itemData.itemLink
-    if link then
-        loaded = TooltipScanner:SetHyperlink(link)
-    elseif context and context.bagID ~= nil and context.slotID then
-        loaded = TooltipScanner:SetBagItem(context.bagID, context.slotID)
-    end
-    if not loaded then
+    -- Shares the cached blob with the tt: search prefix, so a category rule and a
+    -- search never render the same tooltip twice, and the two can never drift
+    -- into answering "does this tooltip contain X" differently. The accessor
+    -- prefers the hyperlink (which also works for cached/cross-character views)
+    -- and falls back to the bag slot exactly as this used to.
+    local text = TooltipScanner:GetSearchText(itemData,
+        context and context.bagID, context and context.slotID)
+    if not text then
         return false
     end
 
-    local needle = ruleValue:lower()
-    local match = false
-    TooltipScanner:ScanLines(function(_, text)
-        if text and text:lower():find(needle, 1, true) then
-            match = true
-            return true  -- stop scan
-        end
-    end)
-    return match
+    -- UTF8Lower, not :lower(): string.lower folds only A-Z, so a Cyrillic or
+    -- accented rule value silently matched nothing unless the case happened to
+    -- agree. ASCII input takes UTF8Lower's fast path, so English rules are
+    -- byte-identical to before.
+    return strfind(text, Utils:UTF8Lower(ruleValue), 1, true) ~= nil
 end)
 
 -------------------------------------------------

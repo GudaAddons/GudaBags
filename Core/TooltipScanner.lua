@@ -6,6 +6,18 @@ ns:RegisterModule("TooltipScanner", TooltipScanner)
 -- Numeric item classes: itemType/itemSubType from GetItemInfo are localized
 local ITEM_CLASS = ns.Constants.ITEM_CLASS
 
+-- Utils loads at TOC 36, this file at 54, so file-scope resolution is safe.
+local Utils = ns:GetModule("Utils")
+
+local strfind = string.find
+local tconcat = table.concat
+
+-- Blizzard's placeholder while an item is still round-tripping from the server.
+-- Cached as a local, and only ever compared for equality: if the global does not
+-- exist on some flavor the compare simply never fires, which degrades to "cache
+-- nothing extra" rather than to a wrong answer.
+local RETRIEVING = RETRIEVING_ITEM_INFO
+
 -------------------------------------------------
 -- Tooltip Management
 -------------------------------------------------
@@ -71,6 +83,118 @@ end
 function TooltipScanner:GetNumLines()
     local tooltip = self:GetTooltip()
     return tooltip:NumLines() or 0
+end
+
+-------------------------------------------------
+-- Searchable Tooltip Text
+-------------------------------------------------
+
+-- The whole tooltip as one lowercased string, cached per item link.
+--
+-- Backs the `tt:` search prefix and the tooltipPattern category rule, which ask
+-- the same question and must not answer it two different ways.
+--
+-- Rendered from the HYPERLINK, never from the slot, and that is the load-bearing
+-- decision: the cache key is the link, so anything that varies by slot -- charge
+-- count, post-equip Soulbound, durability -- must not be in the value, or the
+-- second stack of an item would inherit whatever the first one rendered. The
+-- trade is that `tt:` matches the item's tooltip, not the slot's, which is also
+-- why BAG_UPDATE is deliberately NOT an invalidator here (see below).
+--
+-- A slot render is still used as a fallback for items whose link has not arrived
+-- yet, but that result is returned WITHOUT caching, for the same reason.
+--
+-- Left column only -- the exact line set tooltipPattern has always scanned, so
+-- folding that rule onto this accessor cannot silently widen existing user
+-- categories. Adding TextRight would make `tt:cloth` work but is a behaviour
+-- change that should ship as one, not as a side effect.
+local searchTextCache = {}
+local searchTextCount = 0
+
+-- Strings run ~400-1500 bytes, and bags + bank + guild bank + cached characters
+-- can all feed this. Whole-table drop rather than an LRU: an LRU needs ordering
+-- touched on every hit, which is per-item work, and the refill is lazy anyway.
+local MAX_SEARCH_TEXT_ENTRIES = 600
+
+-- Reused across calls so a 35-line tooltip does not allocate an array per item.
+local lineBuf = {}
+
+function TooltipScanner:InvalidateSearchText()
+    searchTextCache = {}
+    searchTextCount = 0
+end
+
+function TooltipScanner:GetSearchText(itemData, bagID, slotID)
+    if not itemData then return nil end
+
+    -- GuildBankScanner stores the link as `itemLink`; every other scanner uses
+    -- `link`. Reading only one silently returns nothing for a whole frame.
+    local link = itemData.link or itemData.itemLink
+    local key = link or (itemData.itemID and ("id:" .. itemData.itemID)) or nil
+    if not key then return nil end
+
+    local cached = searchTextCache[key]
+    if cached ~= nil then
+        ns:ProfileBump("ttsearch.hit")
+        return cached
+    end
+
+    -- Item still loading: its tooltip is a placeholder. Answer "no match" for
+    -- this pass and cache nothing -- the bag/bank frames re-match on
+    -- GET_ITEM_INFO_RECEIVED, so it resolves itself.
+    if itemData.dataPending then return nil end
+
+    local rendered, fromLink = false, false
+    if link then
+        rendered = self:SetHyperlink(link)
+        fromLink = rendered
+    end
+    if not rendered and bagID and slotID then
+        rendered = self:SetBagItem(bagID, slotID)
+    end
+    if not rendered then return nil end
+
+    ns:ProfileStart("ttsearch.build")
+    local numLines = self:GetNumLines()
+    local count, incomplete = 0, false
+    for i = 1, numLines do
+        local text = self:GetLineText(i)
+        if text then
+            if RETRIEVING and text == RETRIEVING then
+                incomplete = true
+                break
+            end
+            count = count + 1
+            lineBuf[count] = text
+        end
+    end
+
+    if incomplete or count == 0 then
+        ns:ProfileStop("ttsearch.build")
+        return nil
+    end
+
+    -- "\n", not " ": a needle can never contain a newline, so joining this way
+    -- makes a match across two tooltip lines impossible -- which keeps the result
+    -- identical to the per-line scan tooltipPattern used to do.
+    local blob = Utils:UTF8Lower(tconcat(lineBuf, "\n", 1, count))
+    ns:ProfileStop("ttsearch.build")
+
+    -- Cacheable only when the render came from the link (a slot render is not
+    -- reproducible from this key -- see the note above) AND the tooltip has more
+    -- than a bare name. A name-only render is how a not-yet-resolved item looks
+    -- on a client where RETRIEVING_ITEM_INFO is missing, and caching that would
+    -- pin the item to a wrong answer for the session. Still returned, so a
+    -- genuinely minimal item matches; it just pays for its render each time.
+    if fromLink and count > 1 then
+        if searchTextCount >= MAX_SEARCH_TEXT_ENTRIES then
+            self:InvalidateSearchText()
+        end
+        searchTextCache[key] = blob
+        searchTextCount = searchTextCount + 1
+    end
+
+    return blob
 end
 
 -------------------------------------------------
@@ -521,4 +645,51 @@ if Events then
         if unit ~= "player" then return end
         TooltipScanner:InvalidateCharges()
     end, "TooltipScanner_Charges_Cast")
+
+    -- Search-text invalidation.
+    --
+    -- Note what is NOT here. BAG_UPDATE is not an invalidator: the cached value
+    -- is rendered from the link, so moving, splitting or using an item cannot
+    -- change it -- and BAG_UPDATE arrives in bursts, so wiping on it would
+    -- destroy the cache in the middle of a search. GET_ITEM_INFO_RECEIVED is not
+    -- here either: an unresolved item is never cached in the first place, so
+    -- there is nothing to purge, and sweeping every entry for a substring on a
+    -- login-time burst is exactly the cost that guard avoids.
+
+    -- Heirlooms and level-scaled gear render different numbers per level.
+    Events:Register("PLAYER_LEVEL_UP", function()
+        TooltipScanner:InvalidateSearchText()
+    end, "TooltipScanner_SearchText_Level")
+
+    -- Set-bonus lines ("(2/5) pieces equipped") are tooltip text and move as you
+    -- swap gear. In combat this fires on every weapon/trinket swap, and wiping
+    -- then would make the next hover-out sweep re-render every tooltip mid-fight,
+    -- so defer exactly the way ItemScanner does for its own tooltip cache.
+    local searchTextDirty = false
+    Events:Register("PLAYER_EQUIPMENT_CHANGED", function()
+        if InCombatLockdown() then
+            searchTextDirty = true
+            return
+        end
+        TooltipScanner:InvalidateSearchText()
+    end, "TooltipScanner_SearchText_Equip")
+
+    Events:Register("PLAYER_REGEN_ENABLED", function()
+        if searchTextDirty then
+            searchTextDirty = false
+            TooltipScanner:InvalidateSearchText()
+        end
+    end, "TooltipScanner_SearchText_Regen")
+
+    -- Cheap safety valve across reload/zone/instance: one table drop.
+    Events:Register("PLAYER_ENTERING_WORLD", function()
+        TooltipScanner:InvalidateSearchText()
+    end, "TooltipScanner_SearchText_World")
+
+    -- The scanning tooltip is created lazily, and this feature makes that path
+    -- far more reachable from a render. Warm it at login so no search is ever the
+    -- first thing to call CreateFrame.
+    Events:OnPlayerLogin(function()
+        TooltipScanner:GetTooltip()
+    end, "TooltipScanner_Warm")
 end

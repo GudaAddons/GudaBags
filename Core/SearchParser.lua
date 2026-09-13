@@ -86,6 +86,57 @@ local Utils = ns:GetModule("Utils")
 local function utf8lower(s) return Utils:UTF8Lower(s) end
 local strsub = string.sub
 local tonumber = tonumber
+local tinsert = table.insert
+local tconcat = table.concat
+
+-- TooltipScanner loads at TOC 54, this file at 65, so file-scope is safe. Used
+-- only as a fallback -- the search path supplies the same module on `context`.
+local TooltipScannerFallback = ns:GetModule("TooltipScanner")
+
+-- Split on whitespace, but keep a double-quoted run together as one token and
+-- strip the quotes.
+--
+-- Without this, `tt:chance on hit` splits into three tokens: the prefix takes
+-- "chance" and "on hit" falls through to free text, which is matched against the
+-- item NAME -- so the query returns nothing at all. The parser has no error
+-- channel, so a phrase either works or the user just sees an empty bag.
+--
+-- An unterminated quote runs to end of input on purpose: the user is mid-phrase,
+-- and dropping the token would make results flicker until they type the closer.
+--
+-- Queries with no quote character take the original gmatch path, byte for byte,
+-- so the overwhelmingly common case is untouched.
+local function EachToken(text)
+    if not strfind(text, '"', 1, true) then
+        return text:gmatch("%S+")
+    end
+
+    local tokens = {}
+    local buf = {}
+    local inQuotes = false
+    for i = 1, #text do
+        local c = strsub(text, i, i)
+        if c == '"' then
+            inQuotes = not inQuotes
+        elseif not inQuotes and strfind(c, "%s") then
+            if #buf > 0 then
+                tinsert(tokens, tconcat(buf))
+                buf = {}
+            end
+        else
+            buf[#buf + 1] = c
+        end
+    end
+    if #buf > 0 then
+        tinsert(tokens, tconcat(buf))
+    end
+
+    local idx = 0
+    return function()
+        idx = idx + 1
+        return tokens[idx]
+    end
+end
 
 -- Parse a quality value (name or number) → quality integer or nil
 local function ParseQuality(val)
@@ -143,12 +194,13 @@ function SearchParser:ParseSearchInput(text)
         textSearch = nil,     -- remaining plain text for substring matching
         operators = {},       -- array of {type, op, value} parsed operators
         keywords = {},        -- array of keyword strings (boe, quest, new, usable, junk)
+        tooltipText = nil,    -- array of tt:/tooltip: needles; nil unless used
     }
 
     local textParts = {}
 
-    -- Tokenize: split by spaces, process each token
-    for token in text:gmatch("%S+") do
+    -- Tokenize: split by spaces (quoted runs stay whole), process each token
+    for token in EachToken(text) do
         local tokenLower = strlower(token)
         local handled = false
 
@@ -217,6 +269,19 @@ function SearchParser:ParseSearchInput(text)
                     elseif key == "n" or key == "name" then
                         table.insert(result.operators, {type = "name", op = "=", value = valLower})
                         handled = true
+                    elseif key == "tt" or key == "tooltip" then
+                        -- Deliberately NOT an operator. Operators are evaluated in
+                        -- the order the user typed them, so as one of them
+                        -- `tt:oil q:common` would render a tooltip for every item
+                        -- in the bag before the quality test ever ran. Held in its
+                        -- own list and evaluated last instead, so every cheap term
+                        -- acts as a free gate and only survivors pay for a render.
+                        --
+                        -- Lazy (nil until used), so a search without tt: allocates
+                        -- nothing extra and costs one nil test at match time.
+                        result.tooltipText = result.tooltipText or {}
+                        table.insert(result.tooltipText, valLower)
+                        handled = true
                     end
                 end
             end
@@ -232,8 +297,10 @@ function SearchParser:ParseSearchInput(text)
         result.textSearch = utf8lower(table.concat(textParts, " "))
     end
 
-    -- Return nil if nothing was parsed
-    if not result.textSearch and #result.operators == 0 and #result.keywords == 0 then
+    -- Return nil if nothing was parsed. tooltipText counts: without it a search
+    -- of only `tt:foo` would look empty here and silently filter nothing.
+    if not result.textSearch and #result.operators == 0 and #result.keywords == 0
+        and not result.tooltipText then
         return nil
     end
 
@@ -382,6 +449,29 @@ end
 -- MatchesParsed(parsed, itemData, context) → boolean
 -- Check all operators + keywords + text against one item
 -------------------------------------------------
+-- Every tt: needle must appear somewhere in the item's tooltip (AND, matching
+-- how every other term in this parser combines).
+--
+-- The expensive one: a cache miss renders a tooltip. MatchesParsed only reaches
+-- it for items that already passed every cheap test, which is the whole reason
+-- tooltipText is kept out of the operators list.
+function SearchParser:MatchesTooltipText(itemData, needles, context)
+    if not itemData then return false end
+
+    local scanner = (context and context.tooltipScanner) or TooltipScannerFallback
+    if not scanner or not scanner.GetSearchText then return false end
+
+    local text = scanner:GetSearchText(itemData, itemData.bagID, itemData.slot)
+    if not text then return false end
+
+    for i = 1, #needles do
+        if not strfind(text, needles[i], 1, true) then
+            return false
+        end
+    end
+    return true
+end
+
 function SearchParser:MatchesParsed(parsed, itemData, context)
     if not parsed then return true end
     if not itemData then return false end
@@ -402,6 +492,13 @@ function SearchParser:MatchesParsed(parsed, itemData, context)
 
     -- Text search must match
     if not self:MatchesTextSearch(itemData, parsed.textSearch) then
+        return false
+    end
+
+    -- Last, and only for items that survived everything above: a miss here can
+    -- render a tooltip, so every term before it is acting as a gate.
+    if parsed.tooltipText
+        and not self:MatchesTooltipText(itemData, parsed.tooltipText, context) then
         return false
     end
 
