@@ -16,6 +16,19 @@ local JUNK_RULE = { type = "isJunk", value = true }
 -- Flag to indicate Recent items were removed (for triggering full refresh)
 local recentItemsRemoved = false
 
+-- Set whenever the Recent set changes, cleared by the bag scanner's drain.
+--
+-- Marking an item Recent moves it to another category without touching a single
+-- bag slot, so BagScanner's per-slot diff reports no change and the drain's
+-- verify-pass suppression skips the notify -- the layout then keeps the item in
+-- its old category until something else happens to redraw. Out of combat that is
+-- quickly hidden by the next bag event; with the bags pinned open in combat there
+-- IS nothing else, so the item sat in the wrong category until the fight ended.
+--
+-- Separate from recentItemsRemoved above: that one is consumed by BagFrame's
+-- incremental pass, and sharing it would let either consumer eat the other's flag.
+local recentSetChanged = false
+
 local function GetRecentItems()
     if recentItems == nil then
         -- Load from character DB
@@ -118,17 +131,22 @@ local function MarkItemRecent(itemID)
     if CategoryManager then
         local categories = CategoryManager:GetCategories()
         if categories.itemOverrides and categories.itemOverrides[itemID] then
+            ns:Debug("Recent: skip", itemID, "- manual category override")
             return  -- Item was manually assigned, don't mark as recent
         end
     end
 
     if IsItemCurrentlyJunk(itemID) then
+        ns:Debug("Recent: skip", itemID, "- evaluates as junk")
         return
     end
+
+    ns:Debug("Recent: marked", itemID, "inCombat", InCombatLockdown() and "yes" or "no")
 
     local items = GetRecentItems()
     items[itemID] = time()
     SaveRecentItems()
+    recentSetChanged = true
 
     -- Invalidate category cache so item moves to Recent
     if CategoryManager then
@@ -147,6 +165,7 @@ local function RemoveItemFromRecent(itemID)
 
         -- Set flag to trigger full refresh in BagFrame
         recentItemsRemoved = true
+        recentSetChanged = true
 
         -- Invalidate category cache so item moves to proper category
         local CategoryManager = ns:GetModule("CategoryManager")
@@ -297,6 +316,18 @@ function RecentItems:WasItemRemoved()
     return removed
 end
 
+-- Has the Recent set changed since the last time anyone asked? Clears the flag.
+--
+-- BagScanner's drain calls this so a Recent mark counts as a reason to notify the
+-- UI: the mark re-categorises an item without changing any slot, which the per-slot
+-- diff cannot see. CleanupExpiredItems deliberately does not set the flag -- it
+-- fires CATEGORIES_UPDATED and so already redraws on its own.
+function RecentItems:ConsumeSetChanged()
+    local changed = recentSetChanged
+    recentSetChanged = false
+    return changed
+end
+
 -------------------------------------------------
 -- Loot Detection (only track actually looted items)
 -------------------------------------------------
@@ -322,6 +353,12 @@ local function OnLootReceived(event, msg, ...)
 
     if ok and itemID then
         MarkItemRecent(tonumber(itemID))
+    else
+        -- Two very different failures share this branch, so name which one: a
+        -- tainted/erroring msg (ok == false), or a message the prefix test rejected.
+        -- That test is English-only ("^You receive" / "^You won"), so on any other
+        -- client every loot lands here and nothing is ever marked Recent.
+        ns:Debug("Recent: CHAT_MSG_LOOT not marked -", ok and "no prefix/link match" or "pcall failed")
     end
 end
 

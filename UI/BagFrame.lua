@@ -126,7 +126,8 @@ local lastLayoutWasGrouped = false
 --
 -- Constants.BAG_IDS, not NUM_BAG_SLOTS/PLAYER_BAG_MAX: those stop at 4 and so skip
 -- the Retail reagent bag. Single owner for the question so the two callers
--- (OnBagsUpdated's removal check, ScheduleCategoryRefresh's pool check) cannot drift.
+-- (OnBagsUpdated's removal check and rebuild gate, ScheduleCategoryRefresh's pool
+-- check) cannot drift.
 local function CountBaggedItems()
     local bags = BagScanner:GetCachedBags()
     if not bags then return 0 end
@@ -140,6 +141,29 @@ local function CountBaggedItems()
         end
     end
     return count
+end
+
+-- Can the category layout be rebuilt right now without creating secure buttons?
+--
+-- True whenever we are not locked down, so callers read as a single test. One owner
+-- for the question, so ScheduleCategoryRefresh and OnBagsUpdated's grouped branch --
+-- which guard the same BagFrame:Refresh -- cannot drift.
+--
+-- #itemButtons is the whole set the frame is holding, pseudo slots included (they go
+-- into the array unconditionally). Every one of them comes back to the rebuild:
+-- Refresh releases the pseudo buttons and RefreshCategoryView releases-or-keeps each
+-- real one by item key, all before the first Acquire. IncrementalUpdate neither
+-- acquires nor releases, so the count stays exact between rebuilds.
+--
+-- CountBaggedItems is an upper bound on the real buttons the next layout needs --
+-- grouping only ever merges slots into fewer buttons -- plus the pseudo margin.
+--
+-- Returns free/needed as well, only so the debug lines can report them.
+local function CanRebuildCategoryInCombat()
+    if not InCombatLockdown() then return true end
+    local needed = CountBaggedItems() + PSEUDO_SLOT_MARGIN
+    local ok, free = ItemButton:CanCoverRelayout(needed, #itemButtons)
+    return ok, free, needed
 end
 
 -- Helper to find a pseudo-item button by type (Empty or Soul)
@@ -239,23 +263,30 @@ local function ScheduleCategoryRefresh()
         if viewingCharacter then return end
         -- Rule 3 applies to *creating* the secure buttons, not to moving ones that
         -- already exist: Acquire only reaches CreateFrame when the pool runs dry.
-        -- RefreshCategoryView releases its old buttons before it acquires any, so a
-        -- free list that already covers the whole layout guarantees no creation.
+        -- RefreshCategoryView hands its old buttons back before it acquires any, so
+        -- the capacity is the free list PLUS what the frame is already holding --
+        -- which is what CanRebuildCategoryInCombat counts. Comparing the free list
+        -- alone (as this first shipped) demanded a pool twice the size of the bag
+        -- contents and so deferred nearly every rebuild past ~83 carried items.
         --
         -- Blanket-deferring here instead is what made looted items invisible for the
         -- rest of a fight: this is the only structural rebuild category view has, and
         -- IncrementalUpdate returns before its own repaint pass once it has decided a
         -- rebuild is needed. When the pool cannot cover it we still fall back to
         -- PLAYER_REGEN_ENABLED, which refreshes open bags once combat ends.
+        local canRebuild, free, needed = CanRebuildCategoryInCombat()
+        if not canRebuild then
+            local stats = ItemButton:GetPoolStats()
+            ns:Debug("CategoryRefresh: deferred to combat end, pool free", free,
+                "held", #itemButtons, "needed", needed,
+                "| pool active", stats.active, "total", stats.total,
+                "orphaned", stats.orphaned)
+            RegisterCombatEndCallback()
+            return
+        end
         if InCombatLockdown() then
-            local free = ItemButton:GetFreeCount()
-            local needed = CountBaggedItems() + PSEUDO_SLOT_MARGIN
-            if free < needed then
-                ns:Debug("CategoryRefresh: deferred to combat end, pool free", free, "needed", needed)
-                RegisterCombatEndCallback()
-                return
-            end
-            ns:Debug("CategoryRefresh: rebuilding in combat, pool free", free, "needed", needed)
+            ns:Debug("CategoryRefresh: rebuilding in combat, pool free", free,
+                "held", #itemButtons, "needed", needed)
         end
         BagFrame:Refresh()
     end)
@@ -2286,9 +2317,34 @@ ns.OnBagsUpdated = function(dirtyBags)
                 end
             end
             if layoutCached and not groupingActive then
+                ns:Debug("OnBagsUpdated: incremental")
+                BagFrame:IncrementalUpdate(dirtyBags)
+            elseif viewType ~= "category" or CanRebuildCategoryInCombat() then
+                -- Rule 3: Refresh acquires, and Acquire reaches CreateFrame on a
+                -- secure template once the pool runs dry, so a grouped rebuild must
+                -- pass the same capacity test ScheduleCategoryRefresh applies. This
+                -- branch used to call Refresh outright, with no combat guard at all.
+                --
+                -- Only category view is gated: the sizing above is a category-layout
+                -- question, and single/split reach here only for a first build, which
+                -- behaves exactly as before.
+                ns:Debug("OnBagsUpdated: full rebuild")
+                BagFrame:Refresh()
+            elseif layoutCached then
+                -- Grouped, locked down, and the pool cannot cover a rebuild. Do NOT
+                -- just defer -- that is the "looted item invisible for the rest of the
+                -- fight" bug. Refresh is the only thing that can regroup, but
+                -- IncrementalUpdate paints a grouped button's whole-group total via
+                -- CountForSlot, so the common loot case (another stack joining one
+                -- already on screen) lands now. Anything structural re-queues through
+                -- ScheduleCategoryRefresh, which owns the single deferral to
+                -- PLAYER_REGEN_ENABLED -- no second queue.
+                ns:Debug("OnBagsUpdated: pool short in combat, incremental only")
                 BagFrame:IncrementalUpdate(dirtyBags)
             else
-                BagFrame:Refresh()
+                -- No cached layout, so there is nothing to update incrementally.
+                ns:Debug("OnBagsUpdated: pool short in combat, deferred to combat end")
+                RegisterCombatEndCallback()
             end
         end
     end

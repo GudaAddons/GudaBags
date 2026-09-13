@@ -2747,14 +2747,43 @@ end
 -- rebuild the free list can cover outright never reaches CreateFrame.
 function ItemButton:GetFreeCount()
     if not buttonPool then return 0 end
-    -- Two spellings across flavors: newer ObjectPoolMixin exposes GetNumInactive(),
-    -- older ones only the inactiveObjects free list. Reading just one would return 0
-    -- on the other, silently pinning every caller to its "pool is dry" branch.
-    if buttonPool.GetNumInactive then
-        return buttonPool:GetNumInactive() or 0
+    -- Derived from our own creation counter, NOT from the pool's inactive list.
+    --
+    -- Asking the pool how many buttons are free is not portable, and getting it wrong
+    -- fails silently in the worst direction. This first shipped reading
+    -- GetNumInactive() with a fallback to #inactiveObjects; on TBC/Classic Era both
+    -- read 0 no matter how many buttons were actually free, so every caller was pinned
+    -- to its "pool is dry" branch -- which deferred every in-combat category rebuild
+    -- and left looted items invisible until the fight ended. (The older GetPoolStats
+    -- reached for a third spelling, EnumerateInactive, and returned 0 for the same
+    -- reason. Three readings of one question, all of them wrong here.)
+    --
+    -- buttonIndex is incremented once per CreateButton, and CreateButton is the pool's
+    -- creation function, so every button that exists belongs to this pool:
+    -- free = created - active. Active is the one thing the pool reports reliably.
+    local active = 0
+    if buttonPool.GetNumActive then
+        active = buttonPool:GetNumActive() or 0
+    else
+        for _ in buttonPool:EnumerateActive() do active = active + 1 end
     end
-    local inactive = buttonPool.inactiveObjects
-    return inactive and #inactive or 0
+    local free = buttonIndex - active
+    return free > 0 and free or 0
+end
+
+-- Whether a relayout of `needed` buttons can run without Acquire reaching CreateFrame.
+--
+-- The free list is only half the answer, and reading it alone is what left looted items
+-- invisible for a whole fight: a frame's Refresh hands its current buttons back --
+-- released, or reused in place -- before it acquires any, so those count toward the
+-- rebuild too. `held` is that number. Free alone against a whole layout demands a pool
+-- twice the size of the contents (free = P - held, so `free >= needed` means
+-- P >= needed + held), which PreWarm's 200 only covers for small bags.
+--
+-- Returns the free count as the second value so callers can log what they decided on.
+function ItemButton:CanCoverRelayout(needed, held)
+    local free = self:GetFreeCount()
+    return (free + (held or 0)) >= (needed or 0), free
 end
 
 function ItemButton:HighlightBagSlots(bagID, owner)
@@ -3097,24 +3126,32 @@ if Events then
 end
 
 -- Debug: Get pool statistics
+--
+-- `inactive` comes from GetFreeCount, not a second count of its own: this used to
+-- walk EnumerateInactive, which does not exist on every flavor, so the field silently
+-- read 0 wherever it was missing -- a different answer to the same question
+-- GetFreeCount already owns.
+--
+-- `orphaned` is how many active buttons carry no owner. ItemButton:Acquire always
+-- stamps one, so an ownerless active button was taken straight from buttonPool
+-- (BackgroundGrowPool does exactly that) and can never be handed back by
+-- ReleaseAll(owner), which matches on owner. A non-zero count is a leak.
 function ItemButton:GetPoolStats()
     if not buttonPool then
-        return { active = 0, inactive = 0 }
+        return { active = 0, inactive = 0, total = 0, orphaned = 0 }
     end
 
-    local active = buttonPool:GetNumActive() or 0
-    local inactive = 0
-
-    -- Count inactive objects if available
-    if buttonPool.EnumerateInactive then
-        for _ in buttonPool:EnumerateInactive() do
-            inactive = inactive + 1
-        end
+    local inactive = self:GetFreeCount()
+    local active, orphaned = 0, 0
+    for button in buttonPool:EnumerateActive() do
+        active = active + 1
+        if button.owner == nil then orphaned = orphaned + 1 end
     end
 
     return {
         active = active,
         inactive = inactive,
         total = active + inactive,
+        orphaned = orphaned,
     }
 end
