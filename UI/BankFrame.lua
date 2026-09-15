@@ -68,6 +68,7 @@ local lastRefreshViewType = nil  -- force a full release when the view type chan
 local bankHeld = false             -- frame hidden but buttons/layout retained
 local bankDirtyWhileHidden = false -- view/settings changed since being hidden
 local lastRenderSig = nil          -- view signature (viewType:bankType:tab) last rendered
+local lastCapacitySig = nil        -- container capacity fingerprint last rendered (nil = rendered away from the banker)
 
 -- Signature of the currently-intended view: a retained layout is only reusable
 -- when the view type, bank type (character/warband) and selected tab all match
@@ -78,6 +79,25 @@ local function ComputeBankRenderSig()
     local bankType = (BankFooter and BankFooter:GetCurrentBankType()) or "character"
     local selectedTab = (ns.IsRetail and RetailBankScanner and RetailBankScanner:GetSelectedTab()) or 0
     return viewType .. ":" .. bankType .. ":" .. tostring(selectedTab)
+end
+
+-- Capacity fingerprint of the live bank containers. Buying a bank bag slot and putting a
+-- bag into it changes slot COUNTS, not slot contents, so no content event can reveal it:
+-- IncrementalUpdate walks the layout it already rendered and finds nothing to do (a bag
+-- with no buttons yet has no buttonsByBag entry, and PLAYERBANKBAGSLOTS_CHANGED fires on
+-- purchase, while the slot is still empty — see BankFooter's BAG_UPDATE note).
+--
+-- Counts SLOTS, never buttons, on purpose. In category view most slots own no button of
+-- their own (empties collapse into a single pseudo button, search hides more), so a
+-- button-count comparison reads "changed" on every update — that is why the earlier
+-- guard (b64715c) had to be reverted in 7181ba1. Capacity is view-independent.
+local function ComputeBankCapacitySig()
+    local sig = 0
+    local ids = Constants.BANK_BAG_IDS
+    for i = 1, #ids do
+        sig = sig * 37 + (C_Container.GetContainerNumSlots(ids[i]) or 0)
+    end
+    return sig
 end
 
 -- Category View: Item-key-based button tracking
@@ -1664,6 +1684,15 @@ bankRenderDriver:SetScript("OnUpdate", ProcessBankRenderChunk)
 function BankFrame:Refresh()
     if not frame then return end
 
+    -- Record the capacity this rebuild renders from, up here rather than at the end:
+    -- Refresh has early returns below (purchase prompt active, bank empty), and any path
+    -- that left this stale would make IncrementalUpdate's capacity guard fire again on
+    -- the next bank event, refreshing in a loop. The purchase prompt in particular is up
+    -- during the exact flow this guard exists for.
+    -- Bank bag slot counts only read true at the banker; away from it they are all 0, so
+    -- store nil there and let the next update at a banker treat capacity as unknown.
+    lastCapacitySig = BankScanner:IsBankOpen() and ComputeBankCapacitySig() or nil
+
     -- Stop any in-flight progressive render before rebuilding.
     CancelBankRender()
 
@@ -2719,6 +2748,7 @@ function BankFrame:ReleaseHeld()
     layoutCached = false
     lastLayoutSettings = nil
     lastRenderSig = nil
+    lastCapacitySig = nil
 end
 
 -- True when the frame is hidden but still holds a valid layout matching the
@@ -2894,6 +2924,21 @@ function BankFrame:IncrementalUpdate(dirtyBags)
         -- No cached layout, do full refresh
         self:Refresh()
         return
+    end
+
+    -- A bank bag was added, removed or swapped for a different size: the rendered layout
+    -- has no cells for the new capacity and no per-slot reconciliation below can create
+    -- them. Rebuild instead. Only meaningful at the banker (slot counts read 0 away from
+    -- it), and viewingCharacter already returned above.
+    if BankScanner:IsBankOpen() then
+        local capacitySig = ComputeBankCapacitySig()
+        if capacitySig ~= lastCapacitySig then
+            ns:Debug("Bank capacity changed - forcing rescan + full refresh")
+            BankScanner:ScanAllBank()
+            layoutCached = false
+            self:Refresh()
+            return
+        end
     end
 
     local bank = BankScanner:GetCachedBank()
