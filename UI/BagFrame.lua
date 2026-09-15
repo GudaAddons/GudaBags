@@ -179,6 +179,13 @@ end
 
 -- Delta layout tracking: Skip layout recalc if settings unchanged
 local lastLayoutSettings = nil  -- { columns, iconSize, spacing, slotCount, viewType }
+-- Capacity fingerprint (Utils:ContainerCapacitySig) of the bags this layout was built
+-- for. Equipping, removing or swapping a bag changes slot COUNTS, not slot contents, so
+-- no content event reveals it: IncrementalUpdate walks the layout it already rendered,
+-- and a bag with no buttons yet has no buttonsByBag entry, so the fast path skips it.
+-- Constants.BAG_IDS, not NUM_BAG_SLOTS: that global stops at 4 and would silently skip
+-- Retail's reagent bag (5) — the same trap called out in GetCursorBagSlot.
+local lastCapacitySig = nil
 
 -- Use shared utility functions for key generation
 local function GetItemKey(itemData)
@@ -600,6 +607,13 @@ end
 
 function BagFrame:Refresh()
     if not frame then return end
+
+    -- Stamp the capacity this rebuild renders, up here rather than at the end so no early
+    -- return can leave it stale — that would make IncrementalUpdate's capacity guard fire
+    -- again on the next bag event, refreshing in a loop. Taken from the scanner cache,
+    -- which is what the render below draws from, so a Refresh reached with a stale cache
+    -- stamps what it actually drew and the guard corrects itself on the next event.
+    lastCapacitySig = Utils:ContainerCapacitySig(Constants.BAG_IDS, BagScanner:GetCachedBags())
 
     ns:ProfileStart("Refresh")
 
@@ -1497,6 +1511,31 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         -- No cached layout, do full refresh
         self:Refresh()
         return
+    end
+
+    -- A bag was equipped, removed or swapped for a different size: the rendered layout
+    -- has no cells for the new capacity and no per-slot reconciliation below can create
+    -- them. Rebuild instead. viewingCharacter already returned above.
+    if Utils:ContainerCapacitySig(Constants.BAG_IDS) ~= lastCapacitySig then
+        -- Rule 3: Refresh acquires, and Acquire reaches CreateFrame on a secure template
+        -- once the pool runs dry. The gate is not category-only: this guard is the first
+        -- thing that makes single/split view rebuild mid-session, so the "single/split
+        -- reach Refresh only on a first build" assumption in OnBagsUpdated no longer
+        -- holds. CanRebuildCategoryInCombat returns true out of combat, so this costs
+        -- nothing in the normal case.
+        -- On failure keep the stale layout and let PLAYER_REGEN_ENABLED rebuild, but fall
+        -- through to the repaint below rather than returning: dropping the whole update
+        -- is what made looted items invisible for the rest of a fight.
+        if not CanRebuildCategoryInCombat() then
+            ns:Debug("Bag capacity changed - deferred to combat end")
+            RegisterCombatEndCallback()
+        else
+            ns:Debug("Bag capacity changed - forcing rescan + full refresh")
+            BagScanner:ScanAllBags()
+            layoutCached = false
+            self:Refresh()
+            return
+        end
     end
 
     local bags = BagScanner:GetCachedBags()
@@ -2593,7 +2632,7 @@ function BagFrame:RestackAndClean()
                     pseudoItemButtons = {}
                     layoutCached = false
                     lastLayoutSettings = nil
-
+                
                     -- Rescan and refresh
                     BagScanner:ScanAllBags()
                     BagFrame:Refresh()
