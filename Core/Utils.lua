@@ -378,3 +378,39 @@ function Utils:FormatMoneyFull(amount)
     end
     return result
 end
+
+-------------------------------------------------
+-- Container capacity fingerprint
+--
+-- Adding, removing or swapping a bag changes slot COUNTS, not slot contents, so no
+-- content event can reveal it: an incremental update walks the layout it already
+-- rendered, and a container with no buttons yet is skipped entirely. Frames stamp the
+-- capacity they rendered and compare it against the live one to decide on a rebuild.
+--
+-- Counts SLOTS, never buttons, on purpose. In category view most slots own no button of
+-- their own (empties collapse into a single pseudo button, search hides more), so a
+-- button-count comparison reads "changed" on every update — that is why the earlier
+-- guard (b64715c) had to be reverted in 7181ba1. Capacity is view-independent.
+--
+-- Pass `cache` (a scanner's bagID -> {numSlots} table) to fingerprint what was
+-- rendered; omit it to fingerprint what the client currently has. Stamping from the
+-- cache matters: a Refresh driven by a stale cache renders the old layout, and
+-- stamping live there would record a capacity that was never drawn, permanently
+-- disarming the guard. Scanners drop containers with no slots, so a missing entry is 0.
+-------------------------------------------------
+function Utils:ContainerCapacitySig(ids, cache)
+    if not ids then return 0 end
+    local sig = 0
+    for i = 1, #ids do
+        local bagID = ids[i]
+        local slots
+        if cache then
+            local entry = cache[bagID]
+            slots = (entry and entry.numSlots) or 0
+        else
+            slots = C_Container.GetContainerNumSlots(bagID) or 0
+        end
+        sig = sig * 37 + slots
+    end
+    return sig
+end

@@ -35,6 +35,15 @@ local updateFrame = CreateFrame("Frame")
 updateFrame:Hide()
 
 function BankScanner:ScanAllBank()
+    -- Delegate on Retail like IsBankOpen/GetCachedBank/GetTotalSlots do. Without this
+    -- the Retail path silently no-ops: isBankOpen below is only ever set by the
+    -- `if not ns.IsRetail` event block, so every caller asking for a rescan (the
+    -- combat-end handler, the capacity guard) got a stale cache back.
+    local retailScanner = GetRetailScanner()
+    if retailScanner then
+        return retailScanner:ScanAllBank()
+    end
+
     if not isBankOpen then
         return cachedBank
     end

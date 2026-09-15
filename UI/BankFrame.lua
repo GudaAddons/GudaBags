@@ -81,23 +81,18 @@ local function ComputeBankRenderSig()
     return viewType .. ":" .. bankType .. ":" .. tostring(selectedTab)
 end
 
--- Capacity fingerprint of the live bank containers. Buying a bank bag slot and putting a
--- bag into it changes slot COUNTS, not slot contents, so no content event can reveal it:
--- IncrementalUpdate walks the layout it already rendered and finds nothing to do (a bag
--- with no buttons yet has no buttonsByBag entry, and PLAYERBANKBAGSLOTS_CHANGED fires on
--- purchase, while the slot is still empty — see BankFooter's BAG_UPDATE note).
---
--- Counts SLOTS, never buttons, on purpose. In category view most slots own no button of
--- their own (empties collapse into a single pseudo button, search hides more), so a
--- button-count comparison reads "changed" on every update — that is why the earlier
--- guard (b64715c) had to be reverted in 7181ba1. Capacity is view-independent.
-local function ComputeBankCapacitySig()
-    local sig = 0
-    local ids = Constants.BANK_BAG_IDS
-    for i = 1, #ids do
-        sig = sig * 37 + (C_Container.GetContainerNumSlots(ids[i]) or 0)
+-- Containers the current bank view actually renders, so the capacity guard below tracks
+-- what is on screen: the warband tabs when that view is up, the character bank otherwise
+-- (bag IDs on Classic, tab IDs on Retail). Same selection as RefreshSingleViewWithTabs.
+-- Buying a bank bag slot and putting a bag into it changes slot COUNTS, not slot
+-- contents, so no content event can reveal it — PLAYERBANKBAGSLOTS_CHANGED fires on
+-- purchase, while the slot is still empty (see BankFooter's BAG_UPDATE note).
+local function BankCapacityIDs()
+    local bankType = (BankFooter and BankFooter:GetCurrentBankType()) or "character"
+    if bankType == "warband" then
+        return Constants.WARBAND_BANK_TAB_IDS
     end
-    return sig
+    return Constants.BANK_BAG_IDS
 end
 
 -- Category View: Item-key-based button tracking
@@ -1684,14 +1679,19 @@ bankRenderDriver:SetScript("OnUpdate", ProcessBankRenderChunk)
 function BankFrame:Refresh()
     if not frame then return end
 
-    -- Record the capacity this rebuild renders from, up here rather than at the end:
-    -- Refresh has early returns below (purchase prompt active, bank empty), and any path
-    -- that left this stale would make IncrementalUpdate's capacity guard fire again on
-    -- the next bank event, refreshing in a loop. The purchase prompt in particular is up
+    -- Stamp the capacity this rebuild renders, up here rather than at the end: Refresh
+    -- has early returns below (purchase prompt active, bank empty), and any path that
+    -- left this stale would make IncrementalUpdate's capacity guard fire again on the
+    -- next bank event, refreshing in a loop. The purchase prompt in particular is up
     -- during the exact flow this guard exists for.
-    -- Bank bag slot counts only read true at the banker; away from it they are all 0, so
-    -- store nil there and let the next update at a banker treat capacity as unknown.
-    lastCapacitySig = BankScanner:IsBankOpen() and ComputeBankCapacitySig() or nil
+    -- Taken from the scanner cache, which is what the render below draws from: a Refresh
+    -- reached with a stale cache (ns.OnRetailBankTabsUpdated does not rescan first) draws
+    -- the old layout, and stamping the live capacity there would record something never
+    -- drawn and disarm the guard for good. Away from the banker slot counts all read 0,
+    -- so store nil and let the next update at a banker treat capacity as unknown.
+    lastCapacitySig = BankScanner:IsBankOpen()
+        and Utils:ContainerCapacitySig(BankCapacityIDs(), BankScanner:GetCachedBank())
+        or nil
 
     -- Stop any in-flight progressive render before rebuilding.
     CancelBankRender()
@@ -2748,7 +2748,6 @@ function BankFrame:ReleaseHeld()
     layoutCached = false
     lastLayoutSettings = nil
     lastRenderSig = nil
-    lastCapacitySig = nil
 end
 
 -- True when the frame is hidden but still holds a valid layout matching the
@@ -2930,9 +2929,17 @@ function BankFrame:IncrementalUpdate(dirtyBags)
     -- has no cells for the new capacity and no per-slot reconciliation below can create
     -- them. Rebuild instead. Only meaningful at the banker (slot counts read 0 away from
     -- it), and viewingCharacter already returned above.
-    if BankScanner:IsBankOpen() then
-        local capacitySig = ComputeBankCapacitySig()
-        if capacitySig ~= lastCapacitySig then
+    if BankScanner:IsBankOpen()
+        and Utils:ContainerCapacitySig(BankCapacityIDs()) ~= lastCapacitySig then
+        -- Rule 3: Refresh releases and re-acquires every button, and Acquire reaches
+        -- CreateFrame on a secure template once the pool runs dry — not allowed under
+        -- lockdown. Keep the stale layout and let PLAYER_REGEN_ENABLED rebuild, but fall
+        -- through so the slots that do have buttons still repaint (deferring the whole
+        -- update is what made looted items invisible for the rest of a fight).
+        if InCombatLockdown() then
+            ns:Debug("Bank capacity changed - deferred to combat end")
+            RegisterCombatEndCallback()
+        else
             ns:Debug("Bank capacity changed - forcing rescan + full refresh")
             BankScanner:ScanAllBank()
             layoutCached = false
