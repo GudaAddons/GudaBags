@@ -1487,14 +1487,22 @@ end
 -- fresh one. SetItem/SetEmpty fully reset a reused button's visual state, so no
 -- ResetButton teardown is needed between uses. Parked buttons were hidden, so
 -- ensure the reused button is shown.
+--
+-- Only reuse a button the bank still owns. This path bypasses ItemButton:Acquire,
+-- so a button that has since gone back to the shared pool (ResetButton clears
+-- owner) would be shown here while the pool still lists it as free — the bag frame
+-- then acquires the same button, reparents it to its own container, and the bank
+-- slot goes blank while the bank keeps painting it at bank coordinates.
 local function AcquireBankButton()
     if bankRecycle then
         bankRecycleIdx = bankRecycleIdx + 1
         local b = bankRecycle[bankRecycleIdx]
-        if b then
+        if b and b.owner == frame.container then
             b:SetShown(true)
             if b.wrapper then b.wrapper:SetShown(true) end
             return b
+        elseif b then
+            ns:Debug("Bank recycle: skipped a button no longer owned by the bank")
         end
     end
     ns:ProfileStart("bank.acquire")
@@ -1511,10 +1519,27 @@ local function ParkBankRecycleLeftovers()
     if not bankRecycle then return end
     for i = bankRecycleIdx + 1, #bankRecycle do
         local b = bankRecycle[i]
-        b:SetShown(false)
-        if b.wrapper then b.wrapper:SetShown(false) end
-        bankParked[#bankParked + 1] = b
+        -- Same ownership test as AcquireBankButton: a button already back in the
+        -- pool may belong to another frame now, so never hide or park it.
+        if b.owner == frame.container then
+            b:SetShown(false)
+            if b.wrapper then b.wrapper:SetShown(false) end
+            bankParked[#bankParked + 1] = b
+        end
     end
+    bankRecycle = nil
+    bankRecycleIdx = 0
+end
+
+-- One owner for "hand every bank button back to the shared pool". Releasing
+-- without also dropping itemButtons/bankParked leaves this file holding buttons
+-- the pool has already freed, and the next single/split Refresh seeds bankRecycle
+-- from exactly those two lists.
+local function ReleaseAllBankButtons()
+    if not frame then return end
+    ItemButton:ReleaseAll(frame.container)
+    itemButtons = {}
+    bankParked = {}
     bankRecycle = nil
     bankRecycleIdx = 0
 end
@@ -1729,10 +1754,8 @@ function BankFrame:Refresh()
         -- Full teardown (category view or view-type change) — releases active AND
         -- parked buttons (all owned by frame.container), so clear the parked list.
         ns:ProfileStart("BankRefresh.releaseall")
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBankButtons()
         ns:ProfileStop("BankRefresh.releaseall")
-        bankParked = {}
-        bankRecycle = nil
     end
     lastRefreshViewType = refreshViewType
     ReleaseAllCategoryHeaders()
@@ -2728,10 +2751,7 @@ function BankFrame:ReleaseHeld()
     bankDirtyWhileHidden = false
     if not frame then return end
     CancelBankRender()
-    ItemButton:ReleaseAll(frame.container)
-    bankParked = {}
-    bankRecycle = nil
-    bankRecycleIdx = 0
+    ReleaseAllBankButtons()
     ReleaseAllCategoryHeaders()
     buttonsBySlot = {}
     buttonsByBag = {}
@@ -3567,7 +3587,7 @@ local function OnSettingChanged(event, key, value)
     elseif key == "groupIdenticalItems" then
         -- Force full release when toggling item grouping to prevent visual artifacts
         -- Item structure changes fundamentally (grouped vs individual) but keys stay same
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBankButtons()
         buttonsByItemKey = {}
         pseudoItemButtons = {}
         BankFrame:Refresh()
@@ -3675,7 +3695,7 @@ function BankFrame:RestackAndClean()
             C_Timer.After(0.1, function()
                 if frame and frame:IsShown() then
                     -- Release all buttons first (they would be orphaned otherwise)
-                    ItemButton:ReleaseAll(frame.container)
+                    ReleaseAllBankButtons()
 
                     -- Clear all layout caches (removes ghost slots)
                     buttonsBySlot = {}
@@ -3712,7 +3732,7 @@ Events:Register("SETTING_CHANGED", OnSettingChanged, BankFrame)
 Events:Register("CATEGORIES_UPDATED", function()
     if frame and frame:IsShown() then
         -- Release all buttons to force full refresh (category assignments changed)
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBankButtons()
         buttonsByItemKey = {}
         pseudoItemButtons = {}
         BankFrame:Refresh()

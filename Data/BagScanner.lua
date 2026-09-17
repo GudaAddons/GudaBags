@@ -90,7 +90,12 @@ function BagScanner:ScanDirtyBags(bagIDs)
 
     for bagID in pairs(bagIDs) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
-        if not numSlots or numSlots == 0 then
+        if not (Constants.IsPlayerBagID(bagID) or bagID == Constants.KEYRING_BAG_ID) then
+            -- This cache holds player bags only. Callers outside the BAG_UPDATE path
+            -- (the bag frame's lock watcher) can hand in a bank container; scanning
+            -- it would file the whole bank bag as a "newly equipped" bag, persist it
+            -- as bags, and mark every item in it Recent.
+        elseif not numSlots or numSlots == 0 then
             -- Bag was removed or emptied - update known item counts.
             if cachedBags[bagID] and cachedBags[bagID].slots then
                 for slot, itemData in pairs(cachedBags[bagID].slots) do

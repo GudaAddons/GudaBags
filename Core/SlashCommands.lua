@@ -278,8 +278,12 @@ commandHandlers["status"] = function()
 
     if Expansion then
         ns:Print("Interface: " .. (Expansion.InterfaceVersion or "unknown"))
+        -- Printed raw because WoW: Forever ships no WOW_PROJECT_* constant of its
+        -- own, so this is the one value a Forever bug report has to carry.
+        ns:Print("WOW_PROJECT_ID: " .. tostring(WOW_PROJECT_ID))
         ns:Print("IsRetail: " .. tostring(Expansion.IsRetail))
         ns:Print("IsClassicEra: " .. tostring(Expansion.IsClassicEra))
+        ns:Print("IsForever: " .. tostring(Expansion.IsForever))
         ns:Print("IsTBC: " .. tostring(Expansion.IsTBC))
         ns:Print("IsMoP: " .. tostring(Expansion.IsMoP))
     else
