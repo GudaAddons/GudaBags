@@ -335,9 +335,19 @@ function BagFrame:HandleContainerDrop()
     local infoType, itemID = GetCursorInfo()
     if infoType ~= "item" or not itemID then return end
 
-    -- Find first empty bag slot (bags 0 to NUM_BAG_SLOTS)
-    for bagID = 0, NUM_BAG_SLOTS do
-        local numSlots = C_Container.GetContainerNumSlots(bagID)
+    -- Every carried container, not 0..NUM_BAG_SLOTS: that global is nil on some
+    -- flavors, and it undercounts WoW: Forever's equipped bags, so a drop would skip
+    -- free slots that exist.
+    --
+    -- Ordinary bags only, same predicate as ItemButton's FindCurrentEmptySlot. A
+    -- specialised bag refuses an item it does not accept, and PickupContainerItem
+    -- leaves it on the cursor -- this loop returns on the first free slot it finds,
+    -- so offering one would strand the item instead of falling through to
+    -- ClearCursor below.
+    for _, bagID in ipairs(Constants.BAG_IDS) do
+        local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
+        local numSlots = (bagID == Constants.PLAYER_BAG_MIN or bagType == "regular")
+            and C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
             if not itemInfo then
@@ -1130,9 +1140,15 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
             if button == "LeftButton" and self.categoryId == "Empty" then
                 local cursorType = GetCursorInfo()
                 if cursorType == "item" then
-                    -- Find first empty bag slot
-                    for bagID = 0, NUM_BAG_SLOTS do
-                        local numSlots = C_Container.GetContainerNumSlots(bagID)
+                    -- Find first empty bag slot. BAG_IDS picks up any extra equipped
+                    -- bag; the bagType gate keeps specialised bags out, matching the
+                    -- Empty category's own count below -- this IS the Empty
+                    -- category's click handler, so the two must agree on which free
+                    -- slots exist.
+                    for _, bagID in ipairs(Constants.BAG_IDS) do
+                        local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
+                        local numSlots = (bagID == Constants.PLAYER_BAG_MIN or bagType == "regular")
+                            and C_Container.GetContainerNumSlots(bagID) or 0
                         for slot = 1, numSlots do
                             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                             if not itemInfo then
@@ -1724,7 +1740,10 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         local firstSoulBagID, firstSoulSlot = nil, nil
         local firstQuiverBagID, firstQuiverSlot = nil, nil
 
-        for bagID = 0, NUM_BAG_SLOTS do
+        -- BAG_IDS, so the Empty pseudo-category counts free slots in the reagent bag
+        -- and in any extra equipped bag. 0..NUM_BAG_SLOTS stopped at 4 and made the
+        -- count disagree with what the layout actually renders.
+        for _, bagID in ipairs(Constants.BAG_IDS) do
             local numSlots = C_Container.GetContainerNumSlots(bagID)
             if numSlots and numSlots > 0 then
                 local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
@@ -2114,39 +2133,44 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end  -- end if not button.isEmptySlotButton
         end
 
-        -- Second pass: Find buttons whose itemKey no longer exists (item completely removed)
-        -- This handles grouped items where the primary slot wasn't the one removed
-        for itemKey, buttons in pairs(buttonsByItemKey) do
-            if not currentItemsByKey[itemKey] then
-                -- This item type no longer exists - convert buttons to ghosts
-                for _, button in ipairs(buttons) do
-                    -- Find the slotKey for this button
-                    for slotKey, btn in pairs(buttonsBySlot) do
-                        if btn == button and cachedItemData[slotKey] then
-                            local bagID, slot = slotKey:match("^(-?%d+):(%d+)$")
-                            bagID = tonumber(bagID)
-                            slot = tonumber(slot)
-                            if bagID and slot then
-                                ItemButton:SetEmpty(button, bagID, slot, iconSize, false)
-                                cachedItemData[slotKey] = nil
-                                cachedItemCount[slotKey] = nil
-                                cachedItemCharges[slotKey] = nil
-                                if hasSearch then
-                                    ItemButton:SetSearchState(button, false)
-                                else
-                                    ItemButton:ClearSearchState(button)
-                                end
-                                ghostsCreated = ghostsCreated + 1
-                                categoryLayoutStale = true
-                            end
-                            break
-                        end
-                    end
-                end
-            end
-        end
+        -- There is deliberately no second pass over buttonsByItemKey here.
+        --
+        -- One used to sweep item keys that no longer exist and ghost their buttons,
+        -- to catch grouped items whose primary slot was not the one removed. It could
+        -- not work, and it actively broke the layout. buttonsByItemKey is only ever
+        -- populated by RefreshCategoryView, never maintained incrementally, so after
+        -- an item leaves the bags its buttons stay filed under the departed key. The
+        -- sweep's own guard was `cachedItemData[slotKey]` -- but the loop above
+        -- guarantees that is truthy exactly when the slot is occupied (it writes the
+        -- new itemID on every occupied branch and nils it on every emptied one). So
+        -- the only button the sweep could ever reach was one the loop above had just
+        -- legitimately filled, and it painted that item straight back out as a ghost.
+        --
+        -- That was the "withdraw into a ghost slot and nothing appears until you
+        -- toggle bags" bug: the item was drawn and erased within a single pass.
+        -- Removals are already fully handled above, per slot.
 
         ns:Debug("CategoryView INCREMENTAL: reused=", buttonsReused, "updated=", buttonsUpdated, "counts=", countUpdates, "ghostsNew=", ghostsCreated, "ghostsReused=", ghostsReused)
+
+        -- A ghost's cell was laid out for an item that has since left, so whatever
+        -- arrives there is drawn in the departed item's position and under its
+        -- categoryId (only ever assigned during a rebuild). The item is visible, but
+        -- in the wrong place in its category -- and buttonsByItemKey still files the
+        -- button under the old key. Hand off to the same coalesced rebuild an
+        -- addition into an undrawn slot already uses, rather than rebuilding inline.
+        -- First-wins coalescing keeps a multi-stack withdrawal to one rebuild, and
+        -- Refresh cancels the timer it is satisfying.
+        --
+        -- Not while sorting: a sort empties and refills slots continuously, so this
+        -- would be true on nearly every pass and queue a full rebuild every 50ms for
+        -- the length of the sort. Sorting owns its own completion refresh (it fires
+        -- BAGS_UPDATED when it finishes), same as the lock watcher's guard.
+        if ghostsReused > 0 then
+            local SortEngine = ns:GetModule("SortEngine")
+            if not (SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking())) then
+                ScheduleCategoryRefresh()
+            end
+        end
 
         -- Update footer slot info (show regular bags only, special bags in tooltip)
         local regularTotal, regularFree, specialBags = BagScanner:GetDetailedSlotCounts()
@@ -2971,8 +2995,12 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
         ItemButton:UpdateLockForItem(bagID, slotID)
         -- Only watch when this is a lock (not an unlock); the unlock is what we
         -- may never be told about. No point watching while bags are closed.
+        -- Only watch this frame's own containers: the watcher rescans through
+        -- BagScanner, and a bank slot fed in there pollutes the bag cache (the
+        -- bank frame has its own ITEM_LOCK_CHANGED handler).
         local info = C_Container.GetContainerItemInfo(bagID, slotID)
-        if info and info.isLocked then
+        if info and info.isLocked
+            and (Constants.IsPlayerBagID(bagID) or bagID == Constants.KEYRING_BAG_ID) then
             StartLockWatch(bagID, slotID)
         end
     end

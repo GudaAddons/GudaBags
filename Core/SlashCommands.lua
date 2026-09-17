@@ -278,12 +278,32 @@ commandHandlers["status"] = function()
 
     if Expansion then
         ns:Print("Interface: " .. (Expansion.InterfaceVersion or "unknown"))
+        -- Printed raw because WoW: Forever ships no WOW_PROJECT_* constant of its
+        -- own, so this is the one value a Forever bug report has to carry.
+        ns:Print("WOW_PROJECT_ID: " .. tostring(WOW_PROJECT_ID))
         ns:Print("IsRetail: " .. tostring(Expansion.IsRetail))
         ns:Print("IsClassicEra: " .. tostring(Expansion.IsClassicEra))
+        ns:Print("IsForever: " .. tostring(Expansion.IsForever))
         ns:Print("IsTBC: " .. tostring(Expansion.IsTBC))
         ns:Print("IsMoP: " .. tostring(Expansion.IsMoP))
     else
         ns:Print("Expansion module: NOT LOADED")
+    end
+
+    -- Carried containers are discovered at load, so print what this client actually
+    -- reported. On a flavor whose bag layout we have not seen, this line is the
+    -- answer: it names every container the addon will scan and where the reagent
+    -- bag landed.
+    if Constants and Constants.BAG_IDS then
+        ns:Print("BAG_IDS: " .. table.concat(Constants.BAG_IDS, ", "))
+        ns:Print("REAGENT_BAG: " .. tostring(Constants.REAGENT_BAG)
+            .. "  PLAYER_BAG_MAX: " .. tostring(Constants.PLAYER_BAG_MAX))
+        ns:Print("NUM_BAG_SLOTS: " .. tostring(NUM_BAG_SLOTS)
+            .. "  NUM_TOTAL_EQUIPPED_BAG_SLOTS: " .. tostring(NUM_TOTAL_EQUIPPED_BAG_SLOTS))
+        ns:Print("Bank tabs: character " .. #(Constants.CHARACTER_BANK_TAB_IDS or {})
+            .. ", warband " .. #(Constants.WARBAND_BANK_TAB_IDS or {}))
+    else
+        ns:Print("Constants.BAG_IDS: NOT LOADED")
     end
 
     if Constants and Constants.FEATURES then

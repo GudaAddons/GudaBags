@@ -2,10 +2,12 @@
 """
 GudaBags offline test runner.
 
-Two passes:
+Three passes:
   1. Syntax-checks every .lua file in the addon (pure-Python Lua parser).
   2. Runs the locale matrix harness against a real Lua interpreter, loading the
      addon's actual rule code with the WoW API stubbed out.
+  3. Runs the expansion matrix harness, which loads the real Core/Expansion.lua
+     against every client flavor the TOC claims plus WoW: Forever.
 
 Requires:  pip install luaparser lupa
 
@@ -51,14 +53,14 @@ def syntax_pass():
     return failed
 
 
-def harness_pass():
+def harness_pass(name):
     try:
         import lupa
     except ImportError:
-        print("SKIP harness pass: pip install lupa")
+        print("SKIP %s pass: pip install lupa" % name)
         return 0
 
-    script = os.path.join(ROOT, "tests", "locale_matrix.lua")
+    script = os.path.join(ROOT, "tests", "%s.lua" % name)
     os.environ["GUDABAGS_PATH"] = ROOT.replace("\\", "/")
     runtime = lupa.LuaRuntime(unpack_returned_tuples=True)
     with io.open(script, encoding="utf-8") as fh:
@@ -75,12 +77,13 @@ def main():
     syntax_only = "--syntax" in sys.argv
     failures = syntax_pass()
     if not syntax_only:
-        print("")
         # Lua writes straight to the C stdout, so flush Python's buffer first
-        # or the two passes interleave out of order.
-        sys.stdout.flush()
-        failures += harness_pass()
-        sys.stdout.flush()
+        # or the passes interleave out of order.
+        for name in ("locale_matrix", "expansion_matrix"):
+            print("")
+            sys.stdout.flush()
+            failures += harness_pass(name)
+            sys.stdout.flush()
     print("")
     if failures:
         print("FAILED (%d)" % failures)

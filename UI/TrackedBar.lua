@@ -20,8 +20,6 @@ local pendingRefresh = false
 -- Constants
 local PADDING = 5
 local MAX_BUTTONS = 12  -- Maximum possible buttons (for button pool)
--- Iterate backpack + 4 bag slots + reagent bag (Retail only — Constants.REAGENT_BAG is nil on Classic).
-local MAX_PLAYER_BAG = Constants.REAGENT_BAG or Constants.PLAYER_BAG_MAX
 
 local function GetButtonSize()
     return Database:GetSetting("trackedBarSize") or 36
@@ -40,7 +38,7 @@ end
 -------------------------------------------------
 
 local function FindItemInBags(itemID)
-    for bagID = Constants.PLAYER_BAG_MIN, MAX_PLAYER_BAG do
+    for _, bagID in ipairs(Constants.BAG_IDS) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
@@ -54,7 +52,7 @@ end
 
 local function GetItemCount(itemID)
     local count = 0
-    for bagID = Constants.PLAYER_BAG_MIN, MAX_PLAYER_BAG do
+    for _, bagID in ipairs(Constants.BAG_IDS) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)

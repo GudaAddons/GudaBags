@@ -711,13 +711,12 @@ local function GetBankTypeForBagID(bagID)
     if bagID == Enum.BagIndex.Bank or (bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX) then
         return BANK_TYPE_CHARACTER
     end
-    -- Check for AccountBankTab containers (Warband bank)
-    if Enum.BagIndex.AccountBankTab_1 then
-        for i = 1, 5 do
-            local accountBagIndex = Enum.BagIndex["AccountBankTab_" .. i]
-            if accountBagIndex and bagID == accountBagIndex then
-                return BANK_TYPE_ACCOUNT
-            end
+    -- Check for AccountBankTab containers (Warband bank).
+    -- Constants already resolved every tab this client defines (Retail 5, Forever 9),
+    -- so match against that list rather than re-probing a hardcoded count.
+    for _, accountBagIndex in ipairs(Constants.WARBAND_BANK_TAB_IDS) do
+        if bagID == accountBagIndex then
+            return BANK_TYPE_ACCOUNT
         end
     end
     return nil

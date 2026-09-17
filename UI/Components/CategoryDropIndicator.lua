@@ -311,9 +311,20 @@ function CategoryDropIndicator:HandleDrop()
             CategoryManager:AssignItemToCategory(itemID, currentCategoryId)
         end
 
-        -- Find first empty bag slot and place item there
-        for bagID = 0, NUM_BAG_SLOTS do
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
+        -- Find first empty bag slot and place item there. BAG_IDS rather than
+        -- 0..NUM_BAG_SLOTS: that global is nil on some flavors and undercounts
+        -- WoW: Forever's equipped bags, so a withdrawal could report "no room" with
+        -- free slots sitting in an uncounted container.
+        --
+        -- Ordinary bags only, same predicate as ItemButton's FindCurrentEmptySlot.
+        -- A specialised bag refuses an item it does not accept and the item stays on
+        -- the cursor -- and the branch below then hides the indicator and returns
+        -- true, reporting a withdrawal that did not happen.
+        local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
+        for _, bagID in ipairs(Constants.BAG_IDS) do
+            local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
+            local numSlots = (bagID == Constants.PLAYER_BAG_MIN or bagType == "regular")
+                and C_Container.GetContainerNumSlots(bagID) or 0
             for slot = 1, numSlots do
                 local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                 if not itemInfo then
