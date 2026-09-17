@@ -550,12 +550,14 @@ function ItemScanner:ScanContainer(bagID)
 
     local containerItemID = nil
     local containerTexture = nil
-    -- The reagent bag has to be tested for explicitly. It is bagID 5 on Retail,
-    -- which the bank branch below also claims -- so without this it resolves
-    -- through GetBankBagInvSlot(1) and comes back wearing the first BANK bag's
-    -- item and icon. Constants.REAGENT_BAG is nil on Classic, where 5 really is a
-    -- bank bag, so that flavor keeps falling through as before.
-    if bagID > 0 and (bagID <= Constants.PLAYER_BAG_MAX or bagID == Constants.REAGENT_BAG) then
+    -- Ask the carried-bag set, not a numeric range. Carried ids overlap the bank
+    -- range below -- the reagent bag is 5 on Retail and 6 on WoW: Forever, and
+    -- Forever's fifth equipped bag is 5 -- so any carried container that misses this
+    -- branch resolves through GetBankBagInvSlot and comes back wearing a BANK bag's
+    -- item and icon. IsPlayerBagID is built from the discovered BAG_IDS, so it stays
+    -- correct as the layout changes; on Classic it excludes 5+, which really are
+    -- bank bags there, and that flavor keeps falling through as before.
+    if bagID > 0 and Constants.IsPlayerBagID(bagID) then
         local invSlot = C_Container.ContainerIDToInventoryID(bagID)
         if invSlot then
             containerItemID = GetInventoryItemID("player", invSlot)

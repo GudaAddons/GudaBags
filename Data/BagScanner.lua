@@ -407,13 +407,19 @@ end
 updateFrame:SetScript("OnUpdate", ProcessBatchedUpdates)
 
 -- Check if bagID is a player bag (not bank)
+--
+-- This gates OnBagUpdate, so anything it rejects has its BAG_UPDATE dropped and
+-- never refreshes live. It used to test `bagID >= 0 and bagID <= 4` -- the exact
+-- hardcoded range Constants warns against -- which silently excluded any carried
+-- container past 4 that was not precisely REAGENT_BAG. On WoW: Forever, whose fifth
+-- equipped bag is id 5 and whose reagent bag is 6, that is two live containers.
+--
+-- IsPlayerBagID deliberately excludes the keyring, so the second term is required;
+-- the two are not interchangeable. Same expression as ScanDirtyBags' own guard.
 local function IsPlayerBag(bagID)
     if not bagID then return false end
-    -- Player bags: 0-4, Reagent Bag: 5 (Retail), Keyring: -2 (Classic)
-    if bagID >= 0 and bagID <= 4 then return true end
-    if Constants.REAGENT_BAG and bagID == Constants.REAGENT_BAG then return true end
-    if Constants.KEYRING_BAG_ID and bagID == Constants.KEYRING_BAG_ID then return true end
-    return false
+    return Constants.IsPlayerBagID(bagID)
+        or (Constants.KEYRING_BAG_ID ~= nil and bagID == Constants.KEYRING_BAG_ID)
 end
 
 -- Arm the OnUpdate drain for whatever is currently in dirtyBags. One owner, so the

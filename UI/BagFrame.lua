@@ -335,9 +335,19 @@ function BagFrame:HandleContainerDrop()
     local infoType, itemID = GetCursorInfo()
     if infoType ~= "item" or not itemID then return end
 
-    -- Find first empty bag slot (bags 0 to NUM_BAG_SLOTS)
-    for bagID = 0, NUM_BAG_SLOTS do
-        local numSlots = C_Container.GetContainerNumSlots(bagID)
+    -- Every carried container, not 0..NUM_BAG_SLOTS: that global is nil on some
+    -- flavors, and it undercounts WoW: Forever's equipped bags, so a drop would skip
+    -- free slots that exist.
+    --
+    -- Ordinary bags only, same predicate as ItemButton's FindCurrentEmptySlot. A
+    -- specialised bag refuses an item it does not accept, and PickupContainerItem
+    -- leaves it on the cursor -- this loop returns on the first free slot it finds,
+    -- so offering one would strand the item instead of falling through to
+    -- ClearCursor below.
+    for _, bagID in ipairs(Constants.BAG_IDS) do
+        local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
+        local numSlots = (bagID == Constants.PLAYER_BAG_MIN or bagType == "regular")
+            and C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, numSlots do
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
             if not itemInfo then
@@ -1130,9 +1140,15 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
             if button == "LeftButton" and self.categoryId == "Empty" then
                 local cursorType = GetCursorInfo()
                 if cursorType == "item" then
-                    -- Find first empty bag slot
-                    for bagID = 0, NUM_BAG_SLOTS do
-                        local numSlots = C_Container.GetContainerNumSlots(bagID)
+                    -- Find first empty bag slot. BAG_IDS picks up any extra equipped
+                    -- bag; the bagType gate keeps specialised bags out, matching the
+                    -- Empty category's own count below -- this IS the Empty
+                    -- category's click handler, so the two must agree on which free
+                    -- slots exist.
+                    for _, bagID in ipairs(Constants.BAG_IDS) do
+                        local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
+                        local numSlots = (bagID == Constants.PLAYER_BAG_MIN or bagType == "regular")
+                            and C_Container.GetContainerNumSlots(bagID) or 0
                         for slot = 1, numSlots do
                             local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                             if not itemInfo then
@@ -1724,7 +1740,10 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         local firstSoulBagID, firstSoulSlot = nil, nil
         local firstQuiverBagID, firstQuiverSlot = nil, nil
 
-        for bagID = 0, NUM_BAG_SLOTS do
+        -- BAG_IDS, so the Empty pseudo-category counts free slots in the reagent bag
+        -- and in any extra equipped bag. 0..NUM_BAG_SLOTS stopped at 4 and made the
+        -- count disagree with what the layout actually renders.
+        for _, bagID in ipairs(Constants.BAG_IDS) do
             local numSlots = C_Container.GetContainerNumSlots(bagID)
             if numSlots and numSlots > 0 then
                 local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"

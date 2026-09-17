@@ -282,6 +282,111 @@ for _, case in ipairs(ALL) do
 end
 print("  " .. #ALL .. " scenario(s) checked")
 
+-------------------------------------------------
+-- 5. Carried container discovery (Core/Constants.lua)
+--
+-- Constants derives BAG_IDS from the client rather than hardcoding it, because the
+-- layout is not the same across flavors: Retail is backpack + 4 bags + reagent bag
+-- at 5, while WoW: Forever adds a FIFTH equipped bag and pushes its reagent bag to
+-- 6 -- so on Forever, id 5 means something different than it does on Retail.
+--
+-- The Retail rows are the regression lock: they must reproduce the hardcoded list
+-- this file replaced, exactly.
+-------------------------------------------------
+print("")
+print("Carried container discovery:")
+
+-- Constants.lua reaches further into the client than Expansion.lua does (item class
+-- tables, the font picker). Stub just enough to let it run to the end; none of it
+-- affects the bag-id derivation under test.
+GetLocale = function() return "enUS" end
+GetItemClassInfo = function(classID) return "Class" .. tostring(classID) end
+GetItemSubClassInfo = function(c, s) return "Sub" .. tostring(c) .. "." .. tostring(s) end
+GetItemInfoInstant = function() return nil end
+STANDARD_TEXT_FONT = "Fonts/FRIZQT__.TTF"
+UnitClass = function() return "Warrior", "WARRIOR" end
+bit = bit or {band = function(a, b)
+    local res, shift = 0, 1
+    while a > 0 and b > 0 do
+        if a % 2 == 1 and b % 2 == 1 then res = res + shift end
+        a, b, shift = math.floor(a / 2), math.floor(b / 2), shift * 2
+    end
+    return res
+end}
+
+-- Loads the real Core/Constants.lua against a stubbed client. Only the globals the
+-- bag-id derivation reads are varied; the rest are the minimum needed to reach the
+-- end of the file.
+local function DiscoverBags(iface, projectID, numBagSlots, numTotalEquipped, reagentID, bankTabs)
+    local E, ns = Detect(iface, projectID, true)
+
+    NUM_BAG_SLOTS = numBagSlots
+    NUM_TOTAL_EQUIPPED_BAG_SLOTS = numTotalEquipped
+    if reagentID or bankTabs then
+        local bagIndex = { ReagentBag = reagentID }
+        for i = 1, (bankTabs or 0) do
+            bagIndex["CharacterBankTab_" .. i] = 20 + i
+            bagIndex["AccountBankTab_" .. i] = 40 + i
+        end
+        Enum = { BagIndex = bagIndex }
+    else
+        Enum = nil
+    end
+
+    ns.L = setmetatable({}, {__index = function(_, k) return k end})
+    assert(loadfile(ADDON .. "/Core/Constants.lua"))("GudaBags", ns)
+    return ns.Constants
+end
+
+local BAG_CASES = {
+    {name = "Classic Era",  iface = 11509,  pid = 2,  numBag = nil, total = nil,
+     reagent = nil, tabs = nil, ids = "0, 1, 2, 3, 4",          reagentOut = nil},
+    {name = "Retail 12.1",  iface = 120100, pid = 1,  numBag = 4,   total = 5,
+     reagent = 5,   tabs = 6,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5},
+    {name = "FOREVER",      iface = 16001,  pid = 1,  numBag = 5,   total = 6,
+     reagent = 6,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5, 6",    reagentOut = 6},
+    -- NUM_TOTAL_EQUIPPED_BAG_SLOTS absent: rebuild from NUM_BAG_SLOTS + reagent bag.
+    {name = "FOREVER (no total)", iface = 16001, pid = 1, numBag = 5, total = nil,
+     reagent = 6,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5, 6",    reagentOut = 6},
+    -- A Retail-path client that reports no reagent bag must not get one invented.
+    -- An earlier draft defaulted REAGENT_BAG to 5 and appended that id to BAG_IDS,
+    -- which made the addon scan a container the client does not have.
+    {name = "Retail, no reagent", iface = 120100, pid = 1, numBag = 4, total = 4,
+     reagent = nil, tabs = 6,   ids = "0, 1, 2, 3, 4",          reagentOut = nil},
+}
+
+for _, case in ipairs(BAG_CASES) do
+    local C = DiscoverBags(case.iface, case.pid, case.numBag, case.total,
+                           case.reagent, case.tabs)
+    local got = table.concat(C.BAG_IDS, ", ")
+    print(string.format("  %-20s BAG_IDS = {%s}  REAGENT_BAG = %s  PLAYER_BAG_MAX = %s",
+          case.name, got, tostring(C.REAGENT_BAG), tostring(C.PLAYER_BAG_MAX)))
+
+    Check(case.name .. " BAG_IDS", got, case.ids)
+    if case.reagentOut == nil then
+        Check(case.name .. " REAGENT_BAG absent", C.REAGENT_BAG, nil)
+    else
+        Check(case.name .. " REAGENT_BAG", C.REAGENT_BAG, case.reagentOut)
+        -- The reagent bag must never raise PLAYER_BAG_MAX: that means "last ordinary
+        -- bag", and callers size loops off it.
+        Check(case.name .. " PLAYER_BAG_MAX", C.PLAYER_BAG_MAX, case.reagentOut - 1)
+    end
+
+    -- IsPlayerBagID is built from BAG_IDS, so every discovered id must pass it and
+    -- the first id past the end must not. This is the gate BagScanner gives
+    -- BAG_UPDATE, so a false negative means a container never refreshes live.
+    for _, bagID in ipairs(C.BAG_IDS) do
+        Check(case.name .. " IsPlayerBagID(" .. bagID .. ")", C.IsPlayerBagID(bagID), true)
+    end
+    local beyond = C.BAG_IDS[#C.BAG_IDS] + 1
+    Check(case.name .. " IsPlayerBagID(" .. beyond .. ")", C.IsPlayerBagID(beyond), false)
+
+    if case.tabs then
+        Check(case.name .. " character bank tabs", #C.CHARACTER_BANK_TAB_IDS, case.tabs)
+        Check(case.name .. " warband bank tabs", #C.WARBAND_BANK_TAB_IDS, case.tabs)
+    end
+end
+
 print("")
 if failures == 0 then
     print("ALL PASS - Forever detected as modern-API, shipped flavors unchanged")

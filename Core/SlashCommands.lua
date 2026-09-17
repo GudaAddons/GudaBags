@@ -290,6 +290,22 @@ commandHandlers["status"] = function()
         ns:Print("Expansion module: NOT LOADED")
     end
 
+    -- Carried containers are discovered at load, so print what this client actually
+    -- reported. On a flavor whose bag layout we have not seen, this line is the
+    -- answer: it names every container the addon will scan and where the reagent
+    -- bag landed.
+    if Constants and Constants.BAG_IDS then
+        ns:Print("BAG_IDS: " .. table.concat(Constants.BAG_IDS, ", "))
+        ns:Print("REAGENT_BAG: " .. tostring(Constants.REAGENT_BAG)
+            .. "  PLAYER_BAG_MAX: " .. tostring(Constants.PLAYER_BAG_MAX))
+        ns:Print("NUM_BAG_SLOTS: " .. tostring(NUM_BAG_SLOTS)
+            .. "  NUM_TOTAL_EQUIPPED_BAG_SLOTS: " .. tostring(NUM_TOTAL_EQUIPPED_BAG_SLOTS))
+        ns:Print("Bank tabs: character " .. #(Constants.CHARACTER_BANK_TAB_IDS or {})
+            .. ", warband " .. #(Constants.WARBAND_BANK_TAB_IDS or {}))
+    else
+        ns:Print("Constants.BAG_IDS: NOT LOADED")
+    end
+
     if Constants and Constants.FEATURES then
         ns:Print("Features:")
         for k, v in pairs(Constants.FEATURES) do

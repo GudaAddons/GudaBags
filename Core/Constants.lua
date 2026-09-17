@@ -32,18 +32,69 @@ Constants.FEATURES = {
 Constants.GUILD_BANK_MAX_TABS = 6
 Constants.GUILD_BANK_SLOTS_PER_TAB = 98  -- 14 columns x 7 rows
 
+-- Upper bound for probing Enum.BagIndex tab members. Retail defines 6 character
+-- bank tabs and 5 account (warband) tabs; Forever defines 9 of each. Probing past
+-- the end is free -- a missing member is simply nil -- so this only needs to stay
+-- ahead of the client, not match it.
+local MAX_BANK_TAB_PROBE = 12
+
+-- Carried containers are discovered from the client, never hardcoded.
+--
+-- Retail is backpack + 4 equipped bags + reagent bag at 5. WoW: Forever ships a
+-- FIFTH equipped bag, which pushes its reagent bag to 6 -- so on Forever id 5 is an
+-- ordinary bag, not the reagent bag. A literal list gets both the count and the
+-- meaning of id 5 wrong there, and the count may move again before Forever's launch.
+--
+-- NUM_TOTAL_EQUIPPED_BAG_SLOTS is the client's own count and includes the reagent
+-- bag; NUM_BAG_SLOTS excludes it. Prefer the former, reconstruct from the latter,
+-- and fall back to the historical Retail shape so a client with neither behaves
+-- exactly as this file did before.
+local function DiscoverCarriedBags()
+    local hasReagentBag = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag ~= nil
+    local equipped = NUM_TOTAL_EQUIPPED_BAG_SLOTS
+        or ((NUM_BAG_SLOTS or 4) + (hasReagentBag and 1 or 0))
+
+    local ids = { 0 }  -- backpack is container 0 on every flavor
+    for bagID = 1, equipped do
+        ids[#ids + 1] = bagID
+    end
+    return ids
+end
+
 -- Bag ID Ranges (differ between retail and classic)
 Constants.PLAYER_BAG_MIN = 0
 if Expansion and Expansion.IsRetail then
-    -- Retail: bags 0-4 (backpack + 4 equipped bags) + reagent bag (5)
-    Constants.PLAYER_BAG_MAX = 4
-    Constants.REAGENT_BAG = 5  -- Retail only
+    Constants.BAG_IDS = DiscoverCarriedBags()
+
+    -- The reagent bag's id is the client's answer to give, not ours to assume: 5 on
+    -- Retail, 6 on Forever, nil where the feature does not exist. No literal
+    -- fallback -- Enum.BagIndex.ReagentBag shipped with the reagent bag itself, so
+    -- a client without the member has no reagent bag to point at, and inventing one
+    -- would make the addon scan a container that is not there.
+    Constants.REAGENT_BAG = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
+
+    -- Last ordinary bag, i.e. excluding the reagent bag: 4 on Retail, 5 on Forever.
+    -- Diagnostics only (/guda status); nothing branches on it, and nothing should --
+    -- see the note on IsPlayerBagID below.
+    local highest = Constants.BAG_IDS[#Constants.BAG_IDS]
+    Constants.PLAYER_BAG_MAX = (highest == Constants.REAGENT_BAG) and (highest - 1) or highest
+
     -- Check if modern bank tabs are active (TWW and later)
     Constants.CHARACTER_BANK_TABS_ACTIVE = Enum and Enum.BagIndex and Enum.BagIndex.CharacterBankTab_1 ~= nil
     if Constants.CHARACTER_BANK_TABS_ACTIVE then
         -- Modern Retail: Each bank tab is a separate container
         Constants.BANK_BAG_MIN = Enum.BagIndex.CharacterBankTab_1
-        Constants.BANK_BAG_MAX = Enum.BagIndex.CharacterBankTab_6 or Enum.BagIndex.CharacterBankTab_5
+        -- Highest tab the client actually defines. Retail stops at 6; Forever ships
+        -- CharacterBankTab_1..9, so a fixed _6-or-_5 ceiling would hide three tabs.
+        -- math.max rather than last-one-wins: BANK_BAG_MIN..MAX is used as a range
+        -- test, so it must be the true ceiling even if the enum is ever non-monotonic.
+        Constants.BANK_BAG_MAX = Constants.BANK_BAG_MIN
+        for i = 2, MAX_BANK_TAB_PROBE do
+            local tabIndex = Enum.BagIndex["CharacterBankTab_" .. i]
+            if tabIndex then
+                Constants.BANK_BAG_MAX = math.max(Constants.BANK_BAG_MAX, tabIndex)
+            end
+        end
     else
         -- Older Retail: traditional bank + bank bags
         Constants.BANK_BAG_MIN = 6
@@ -62,10 +113,11 @@ Constants.BANK_MAIN_BAG = -1
 Constants.KEYRING_BAG = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 
 -- Warband Bank (Retail only)
-Constants.WARBAND_BANK_ACTIVE = Expansion and Expansion.IsRetail and Enum.BagIndex.AccountBankTab_1 ~= nil
+Constants.WARBAND_BANK_ACTIVE = Expansion and Expansion.IsRetail
+    and Enum and Enum.BagIndex and Enum.BagIndex.AccountBankTab_1 ~= nil
 Constants.WARBAND_BANK_TAB_IDS = {}
 if Constants.WARBAND_BANK_ACTIVE then
-    for i = 1, 5 do
+    for i = 1, MAX_BANK_TAB_PROBE do
         local tabIndex = Enum.BagIndex["AccountBankTab_" .. i]
         if tabIndex then
             table.insert(Constants.WARBAND_BANK_TAB_IDS, tabIndex)
@@ -73,15 +125,13 @@ if Constants.WARBAND_BANK_ACTIVE then
     end
 end
 
--- Bag ID Arrays (derived from ranges for convenience)
+-- Bank ID arrays. BAG_IDS was discovered above, alongside the ranges it derives.
 if Expansion and Expansion.IsRetail then
-    -- Retail: include reagent bag in player bags
-    Constants.BAG_IDS = {0, 1, 2, 3, 4, 5}
     if Constants.CHARACTER_BANK_TABS_ACTIVE then
         -- Modern Retail: Bank tabs are separate containers
         Constants.BANK_BAG_IDS = {}
         Constants.CHARACTER_BANK_TAB_IDS = {}
-        for i = 1, 6 do
+        for i = 1, MAX_BANK_TAB_PROBE do
             local tabIndex = Enum.BagIndex["CharacterBankTab_" .. i]
             if tabIndex then
                 table.insert(Constants.BANK_BAG_IDS, tabIndex)
@@ -103,9 +153,12 @@ Constants.BANK_BAG_ID = -1
 -- has one owner.
 --
 -- Writing that test as `bagID >= 1 and bagID <= PLAYER_BAG_MAX` is the recurring
--- bug this exists to stop: PLAYER_BAG_MAX is 4 on every flavor, and Retail's
--- reagent bag is 5, so such a range silently excludes it and the feature just
--- doesn't fire for reagents. Excludes the keyring, which is not in BAG_IDS.
+-- bug this exists to stop. A numeric range cannot describe the carried set: which
+-- ids exist, and what they mean, differ per flavor and move between builds. Retail
+-- puts the reagent bag at 5 and PLAYER_BAG_MAX at 4, so the range drops it and the
+-- feature silently never fires for reagents; Forever shifts both up by one, so a
+-- range tuned to Retail is wrong there in a different way. Ask this set instead.
+-- Excludes the keyring, which is not in BAG_IDS.
 local BAG_ID_SET = {}
 for _, bagID in ipairs(Constants.BAG_IDS) do
     BAG_ID_SET[bagID] = true
