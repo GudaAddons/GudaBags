@@ -124,36 +124,3 @@ end
 function Features:HasInscriptionBags()
     return Expansion.Features.HasInscriptionBags
 end
-
--------------------------------------------------
--- Category availability based on expansion
--------------------------------------------------
-
-function Features:ShouldShowCategory(categoryId)
-    -- TBC-only categories
-    if categoryId == "Keyring" then
-        return Expansion.IsTBC
-    end
-
-    if categoryId == "Quiver" then
-        return Expansion.IsTBC
-    end
-
-    -- All other categories are available in both expansions
-    return true
-end
-
--------------------------------------------------
--- Get list of expansion-specific categories to disable
--------------------------------------------------
-
-function Features:GetDisabledCategories()
-    local disabled = {}
-
-    if not Expansion.IsTBC then
-        disabled["Keyring"] = true
-        disabled["Quiver"] = true
-    end
-
-    return disabled
-end

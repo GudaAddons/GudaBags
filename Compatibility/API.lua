@@ -42,19 +42,6 @@ function API:UseContainerItem(bagID, slot)
 end
 
 -------------------------------------------------
--- Keyring API (Classic Era, TBC and WoW: Forever)
--------------------------------------------------
-
-function API:HasKeyring()
-    return Expansion.Features.HasKeyring
-end
-
-function API:GetKeyringSize()
-    local keyringID = ns.Constants.KEYRING_BAG_ID
-    return keyringID and C_Container.GetContainerNumSlots(keyringID) or 0
-end
-
--------------------------------------------------
 -- Item Family/Bag Type API
 -------------------------------------------------
 

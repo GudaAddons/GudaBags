@@ -24,6 +24,7 @@ local itemButtons = {}
 local categoryHeaders = {}
 local isInitialized = false
 local viewingCharacter = nil -- nil = current character, or fullName string
+local usabilityStale = false -- usability changed while viewing another character
 
 -- Combat lockdown handling
 -- ContainerFrameItemButtonTemplate is a secure template that cannot be created during combat
@@ -1416,6 +1417,7 @@ function BagFrame:Show()
     heldHidden = false
     dirtyWhileHidden = false
 
+    usabilityStale = false  -- this scan re-resolves usability
     BagScanner:ScanAllBags()
     -- Clean up Recent items: both expired (time-based) and stale (no longer in bags)
     -- If any items were removed, force full button release to prevent texture artifacts
@@ -1495,7 +1497,19 @@ function BagFrame:GetViewingCharacter()
     return viewingCharacter
 end
 
+-- Returning to the current character renders from the scanner cache, which still
+-- holds the isUsable values from before a skill/level change that happened while
+-- another character was on screen. Rescan first, while viewingCharacter is still
+-- set, so nothing live-updates the other character's layout mid-scan.
+local function RescanIfUsabilityStale()
+    if usabilityStale then
+        usabilityStale = false
+        BagScanner:ScanAllBags()
+    end
+end
+
 function BagFrame:ViewCharacter(fullName, charData)
+    if not fullName then RescanIfUsabilityStale() end
     viewingCharacter = fullName
     Header:SetViewingCharacter(fullName, charData)
 
@@ -2565,6 +2579,7 @@ local function OnSettingChanged(event, key, value)
 
     -- When changing view type while viewing another character, reset to current character
     if key == "bagViewType" and viewingCharacter then
+        RescanIfUsabilityStale()
         viewingCharacter = nil
         Header:SetViewingCharacter(nil, nil)
     end
@@ -2865,6 +2880,18 @@ local function ResetPendingItemRefresh()
     pendingItemRefreshCount = 0
 end
 
+-- One owner for "add to the pending set", for the same reason. The cap bounds
+-- GET_ITEM_INFO_RECEIVED bursts; uncapped callers are already bounded by the
+-- buttons on screen. Returns false when the item was dropped.
+local function QueueItemRefresh(itemID, uncapped)
+    if pendingItemRefresh[itemID] == nil then
+        if not uncapped and pendingItemRefreshCount >= ITEM_REFRESH_MAX then return false end
+        pendingItemRefreshCount = pendingItemRefreshCount + 1
+    end
+    pendingItemRefresh[itemID] = true
+    return true
+end
+
 local function ApplyItemInfoRefresh()
     itemRefreshTimer = nil
     if not (frame and frame:IsShown()) or viewingCharacter then
@@ -2979,11 +3006,32 @@ Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
     -- the bags at all, so cap the set rather than let one burst size it. Anything
     -- dropped here is still picked up by the scan that a bag update or a reopen
     -- performs; the repaint is an optimisation, not the only path.
-    if pendingItemRefresh[itemID] == nil then
-        if pendingItemRefreshCount >= ITEM_REFRESH_MAX then return end
-        pendingItemRefreshCount = pendingItemRefreshCount + 1
+    if QueueItemRefresh(itemID) then
+        ScheduleItemRefresh()
     end
-    pendingItemRefresh[itemID] = true
+end, BagFrame)
+
+-- A skill-up, learned spell or level-up changed which items are usable, and
+-- ItemScanner has dropped its tooltip cache. Nothing in the bags moved, so no
+-- BAG_UPDATE will repaint: queue every shown item through the repaint above.
+-- Uncapped: unlike the burst above, nothing else would pick up what the cap drops.
+-- A held-hidden layout would fast-reopen with the old overlays, so drop it; a
+-- layout of another character is rescanned on the way back (ViewCharacter).
+Events:Register("ITEM_USABILITY_CHANGED", function()
+    if not (frame and frame:IsShown()) then
+        if heldHidden then dirtyWhileHidden = true end
+        return
+    end
+    if viewingCharacter then
+        usabilityStale = true
+        return
+    end
+    for _, button in ipairs(itemButtons) do
+        local itemID = button.itemData and button.itemData.itemID
+        if itemID then
+            QueueItemRefresh(itemID, true)
+        end
+    end
     ScheduleItemRefresh()
 end, BagFrame)
 

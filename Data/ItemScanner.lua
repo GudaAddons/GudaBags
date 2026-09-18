@@ -601,10 +601,50 @@ end
 -- Clear tooltip cache when player stats change (affects usability)
 local Events = ns:GetModule("Events")
 if Events then
-    -- Level up changes what items are usable
-    Events:Register("PLAYER_LEVEL_UP", function()
+    -- Level, skill and learned-spell changes move an item's "Requires ..." line
+    -- between red and white without touching the bags, so no BAG_UPDATE follows.
+    -- Wiping the cache alone would leave the open (or held-hidden) frames showing
+    -- the old overlay, so ITEM_USABILITY_CHANGED tells them to re-resolve.
+    --
+    -- Debounced so a burst (skill-up + learned spell, login) is one wipe and one
+    -- repaint. Deferred out of combat: Classic weapon skills rise per hit, and a
+    -- full re-scan per swing buys nothing.
+    local usabilityDirty = false
+    local usabilityTimer = nil
+    local function FlushUsability()
+        usabilityTimer = nil
+        if InCombatLockdown() then
+            usabilityDirty = true
+            return
+        end
         ItemScanner:ClearTooltipCache()
-    end, ItemScanner)
+        Events:Fire("ITEM_USABILITY_CHANGED")
+    end
+
+    local function InvalidateUsability()
+        if InCombatLockdown() then
+            usabilityDirty = true
+            return
+        end
+        if not usabilityTimer then
+            usabilityTimer = C_Timer.NewTimer(0.5, FlushUsability)
+        end
+    end
+
+    Events:Register("PLAYER_LEVEL_UP", InvalidateUsability, ItemScanner)
+    -- Profession/fishing skill-ups and newly learned weapon skills or professions
+    Events:Register("SKILL_LINES_CHANGED", InvalidateUsability, ItemScanner)
+
+    -- Learned spells/recipes (riding requirements, "Already known"). The names
+    -- differ per flavor, and RegisterEvent errors on one the client lacks.
+    if C_EventUtils and C_EventUtils.IsEventValid then
+        for _, event in ipairs({ "LEARNED_SPELL_IN_TAB", "LEARNED_SPELL_IN_SKILL_LINE",
+                                 "NEW_RECIPE_LEARNED" }) do
+            if C_EventUtils.IsEventValid(event) then
+                Events:Register(event, InvalidateUsability, ItemScanner)
+            end
+        end
+    end
 
     -- Equipment changes can affect stats and thus usability. In combat this
     -- fires on weapon/trinket swaps; wiping + bulk re-scanning then races the
@@ -623,6 +663,10 @@ if Events then
         if equipmentCacheDirty then
             equipmentCacheDirty = false
             ItemScanner:ClearTooltipCache()
+        end
+        if usabilityDirty then
+            usabilityDirty = false
+            InvalidateUsability()
         end
     end, ItemScanner)
 

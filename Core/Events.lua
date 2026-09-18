@@ -24,6 +24,7 @@ local customEvents = {
     BAGS_UPDATED = true,
     CATEGORIES_UPDATED = true,
     PROFILE_LOADED = true,
+    ITEM_USABILITY_CHANGED = true,
 }
 
 function Events:Register(event, callback, owner)
