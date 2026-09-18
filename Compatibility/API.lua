@@ -42,22 +42,6 @@ function API:UseContainerItem(bagID, slot)
 end
 
 -------------------------------------------------
--- Keyring API (TBC only)
--------------------------------------------------
-
-function API:HasKeyring()
-    return Expansion.Features.HasKeyring
-end
-
-function API:GetKeyringSize()
-    if not Expansion.Features.HasKeyring then
-        return 0
-    end
-    -- Keyring is bag ID -2 in TBC
-    return C_Container.GetContainerNumSlots(-2) or 0
-end
-
--------------------------------------------------
 -- Item Family/Bag Type API
 -------------------------------------------------
 

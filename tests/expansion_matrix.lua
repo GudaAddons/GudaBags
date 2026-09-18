@@ -15,10 +15,10 @@
 --
 -- 2. Forever lands on Retail whatever it reports. Its interface version (16001 =
 --    1.60.1) looks Vanilla, but the 1.60.1.69893 client binary carries the modern
---    API -- C_Bank.*, CharacterBankTab_N, NumReagentBagSlots, SortBags,
---    IsBoundToAccountUntilEquip -- and lacks the Classic-only GetNumBankSlots and
---    KeyRingButton. Classifying it Vanilla would strip the reagent bag, the bank
---    tabs and native sort off a client that has all three.
+--    API -- C_Bank.*, CharacterBankTab_N, SortBags, IsBoundToAccountUntilEquip --
+--    and lacks the Classic-only GetNumBankSlots. Classifying it Vanilla would strip
+--    the bank tabs and native sort off a client that has both. Its carried-bag
+--    layout, though, is backpack + 5 bags + keyring with NO reagent bag (section 5).
 
 local ADDON = os.getenv("GUDABAGS_PATH")
 
@@ -161,15 +161,15 @@ for _, case in ipairs(FOREVER_CASES) do
     Check("Forever(" .. case.label .. ") IsMoP", E.IsMoP, false)
 end
 
--- Forever's capability set: Vanilla-shaped, no Retail features.
+-- Forever's capability set: Retail features plus the keyring.
 print("")
 print("WoW: Forever capability set:")
 local F = Detect(16001, 1, true)
--- Mirrors Retail. Each value is corroborated by a string probe of the 1.60.1.69893
--- binary against Classic Era / TBC / MoP / Retail controls -- notably HasKeyring,
--- false because Forever has no KeyRingButton where all three Classic clients do.
+-- Mirrors Retail, plus the keyring: Forever has one in game (confirmed in game;
+-- the exe string probe for KeyRingButton was a false negative -- FrameXML lives
+-- in CASC, not the binary).
 local FOREVER_FEATURES = {
-    HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
+    HasKeyring = true, HasQuiverBags = false, HasAmmoBags = false,
     HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = true,
     HasNativeBagSort = true, HasReagentBank = true, HasWarbandBank = true,
     HasCurrency = true, HasAccountBoundItems = true,
@@ -287,8 +287,10 @@ print("  " .. #ALL .. " scenario(s) checked")
 --
 -- Constants derives BAG_IDS from the client rather than hardcoding it, because the
 -- layout is not the same across flavors: Retail is backpack + 4 bags + reagent bag
--- at 5, while WoW: Forever adds a FIFTH equipped bag and pushes its reagent bag to
--- 6 -- so on Forever, id 5 means something different than it does on Retail.
+-- at 5, while WoW: Forever is backpack + FIVE bags + a keyring and has NO reagent
+-- bag -- so on Forever, id 5 is an ordinary bag. The Forever rows feed the worst
+-- case: a mainline-shaped client that still reports a reagent slot in
+-- NUM_TOTAL_EQUIPPED_BAG_SLOTS and Enum.BagIndex.ReagentBag. Neither may leak in.
 --
 -- The Retail rows are the regression lock: they must reproduce the hardcoded list
 -- this file replaced, exactly.
@@ -338,21 +340,34 @@ local function DiscoverBags(iface, projectID, numBagSlots, numTotalEquipped, rea
     return ns.Constants
 end
 
+-- playerMax is PLAYER_BAG_MAX, "last ordinary bag"; keyring is KEYRING_BAG_ID.
 local BAG_CASES = {
     {name = "Classic Era",  iface = 11509,  pid = 2,  numBag = nil, total = nil,
-     reagent = nil, tabs = nil, ids = "0, 1, 2, 3, 4",          reagentOut = nil},
+     reagent = nil, tabs = nil, ids = "0, 1, 2, 3, 4",          reagentOut = nil,
+     playerMax = 4, keyring = -2},
+    {name = "TBC",          iface = 20506,  pid = 5,  numBag = nil, total = nil,
+     reagent = nil, tabs = nil, ids = "0, 1, 2, 3, 4",          reagentOut = nil,
+     playerMax = 4, keyring = -2},
+    {name = "MoP",          iface = 50504,  pid = 19, numBag = 4,   total = nil,
+     reagent = nil, tabs = nil, ids = "0, 1, 2, 3, 4",          reagentOut = nil,
+     playerMax = 4, keyring = nil},
     {name = "Retail 12.1",  iface = 120100, pid = 1,  numBag = 4,   total = 5,
-     reagent = 5,   tabs = 6,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5},
+     reagent = 5,   tabs = 6,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5,
+     playerMax = 4, keyring = nil},
+    -- Worst case: the mainline enum and total still describe a reagent bag at 5.
     {name = "FOREVER",      iface = 16001,  pid = 1,  numBag = 5,   total = 6,
-     reagent = 6,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5, 6",    reagentOut = 6},
-    -- NUM_TOTAL_EQUIPPED_BAG_SLOTS absent: rebuild from NUM_BAG_SLOTS + reagent bag.
-    {name = "FOREVER (no total)", iface = 16001, pid = 1, numBag = 5, total = nil,
-     reagent = 6,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5, 6",    reagentOut = 6},
+     reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
+     playerMax = 5, keyring = -2},
+    -- NUM_BAG_SLOTS absent: fall back to Forever's five equipped bags.
+    {name = "FOREVER (no NUM_BAG_SLOTS)", iface = 16001, pid = 1, numBag = nil, total = nil,
+     reagent = nil, tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
+     playerMax = 5, keyring = -2},
     -- A Retail-path client that reports no reagent bag must not get one invented.
     -- An earlier draft defaulted REAGENT_BAG to 5 and appended that id to BAG_IDS,
     -- which made the addon scan a container the client does not have.
     {name = "Retail, no reagent", iface = 120100, pid = 1, numBag = 4, total = 4,
-     reagent = nil, tabs = 6,   ids = "0, 1, 2, 3, 4",          reagentOut = nil},
+     reagent = nil, tabs = 6,   ids = "0, 1, 2, 3, 4",          reagentOut = nil,
+     playerMax = 4, keyring = nil},
 }
 
 for _, case in ipairs(BAG_CASES) do
@@ -367,9 +382,14 @@ for _, case in ipairs(BAG_CASES) do
         Check(case.name .. " REAGENT_BAG absent", C.REAGENT_BAG, nil)
     else
         Check(case.name .. " REAGENT_BAG", C.REAGENT_BAG, case.reagentOut)
-        -- The reagent bag must never raise PLAYER_BAG_MAX: that means "last ordinary
-        -- bag", and callers size loops off it.
-        Check(case.name .. " PLAYER_BAG_MAX", C.PLAYER_BAG_MAX, case.reagentOut - 1)
+    end
+    -- The reagent bag must never raise PLAYER_BAG_MAX: that means "last ordinary
+    -- bag", and callers size loops off it.
+    Check(case.name .. " PLAYER_BAG_MAX", C.PLAYER_BAG_MAX, case.playerMax)
+    Check(case.name .. " KEYRING_BAG_ID", C.KEYRING_BAG_ID, case.keyring)
+    -- The keyring is never a carried bag: IsPlayerBag pairs the two on purpose.
+    if case.keyring then
+        Check(case.name .. " IsPlayerBagID(keyring)", C.IsPlayerBagID(case.keyring), false)
     end
 
     -- IsPlayerBagID is built from BAG_IDS, so every discovered id must pass it and

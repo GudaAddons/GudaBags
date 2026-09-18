@@ -74,7 +74,7 @@ function Footer:Init(parent)
     frame.quiverBagButton = QuiverBag:Init(frame)
     local quiverBagButton = QuiverBag:GetButton()
 
-    -- Initialize keyring (TBC only - returns nil for other expansions)
+    -- Initialize keyring (returns nil on expansions without one)
     frame.keyringButton = Keyring:Init(frame)
     local keyringButton = Keyring:GetButton()
 
@@ -209,7 +209,7 @@ function Footer:Show()
         end
     end
 
-    -- Position keyring relative to soul/quiver bag or bag slots (TBC only)
+    -- Position keyring relative to soul/quiver bag or bag slots (keyring flavors only)
     local keyringButton = Keyring:GetButton()
     if keyringButton then
         Keyring:SetAnchor(lastAnchor)
@@ -534,7 +534,7 @@ function Footer:ShowCached(characterFullName)
         end
     end
 
-    -- Position and show keyring for toggle functionality (TBC only)
+    -- Position and show keyring for toggle functionality (keyring flavors only)
     local keyringButton = Keyring:GetButton()
     if keyringButton then
         Keyring:SetAnchor(lastAnchor)

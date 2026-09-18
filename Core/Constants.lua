@@ -7,7 +7,6 @@ ns.Constants = Constants
 local Expansion = ns:GetModule("Expansion")
 
 -- Feature flags (enable/disable features during development)
--- KEYRING is TBC-only (keyring was removed in later expansions)
 -- GUILD_BANK is available in TBC and later (introduced in TBC, interface 20000+)
 -- Not available in Classic Era (interface 11xxx)
 local isGuildBankSupported = false
@@ -25,7 +24,6 @@ Constants.FEATURES = {
     CHARACTERS = true,
     SEARCH = true,
     SORT = true,
-    KEYRING = Expansion and Expansion.IsTBC or false,
 }
 
 -- Guild Bank Constants (TBC and later)
@@ -40,16 +38,30 @@ local MAX_BANK_TAB_PROBE = 12
 
 -- Carried containers are discovered from the client, never hardcoded.
 --
--- Retail is backpack + 4 equipped bags + reagent bag at 5. WoW: Forever ships a
--- FIFTH equipped bag, which pushes its reagent bag to 6 -- so on Forever id 5 is an
--- ordinary bag, not the reagent bag. A literal list gets both the count and the
--- meaning of id 5 wrong there, and the count may move again before Forever's launch.
+-- Retail is backpack + 4 equipped bags + reagent bag at 5. WoW: Forever is
+-- backpack + FIVE equipped bags (1-5) + a keyring, and has NO reagent bag -- so on
+-- Forever id 5 is an ordinary bag, not the reagent bag. A literal list gets both the
+-- count and the meaning of id 5 wrong there, and the count may move again before
+-- Forever's launch.
 --
 -- NUM_TOTAL_EQUIPPED_BAG_SLOTS is the client's own count and includes the reagent
 -- bag; NUM_BAG_SLOTS excludes it. Prefer the former, reconstruct from the latter,
 -- and fall back to the historical Retail shape so a client with neither behaves
 -- exactly as this file did before.
+--
+-- Forever never consults the reagent-bag signals. It runs the mainline API, so
+-- NUM_TOTAL_EQUIPPED_BAG_SLOTS and Enum.BagIndex.ReagentBag may both still count a
+-- reagent slot the client does not have; trusting them would add a phantom
+-- container. Its ordinary bags come from NUM_BAG_SLOTS alone.
 local function DiscoverCarriedBags()
+    if Expansion.IsForever then
+        local ids = { 0 }
+        for bagID = 1, (NUM_BAG_SLOTS or 5) do
+            ids[#ids + 1] = bagID
+        end
+        return ids
+    end
+
     local hasReagentBag = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag ~= nil
     local equipped = NUM_TOTAL_EQUIPPED_BAG_SLOTS
         or ((NUM_BAG_SLOTS or 4) + (hasReagentBag and 1 or 0))
@@ -67,11 +79,15 @@ if Expansion and Expansion.IsRetail then
     Constants.BAG_IDS = DiscoverCarriedBags()
 
     -- The reagent bag's id is the client's answer to give, not ours to assume: 5 on
-    -- Retail, 6 on Forever, nil where the feature does not exist. No literal
-    -- fallback -- Enum.BagIndex.ReagentBag shipped with the reagent bag itself, so
-    -- a client without the member has no reagent bag to point at, and inventing one
-    -- would make the addon scan a container that is not there.
-    Constants.REAGENT_BAG = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
+    -- Retail, nil where the feature does not exist. No literal fallback --
+    -- Enum.BagIndex.ReagentBag shipped with the reagent bag itself, so a client
+    -- without the member has no reagent bag to point at, and inventing one would
+    -- make the addon scan a container that is not there.
+    --
+    -- Forever is forced to nil: it has no reagent bag, but its mainline enum may
+    -- still carry the member -- and at 5 that would relabel its fifth ordinary bag.
+    Constants.REAGENT_BAG = not Expansion.IsForever
+        and Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
 
     -- Last ordinary bag, i.e. excluding the reagent bag: 4 on Retail, 5 on Forever.
     -- Diagnostics only (/guda status); nothing branches on it, and nothing should --
@@ -108,9 +124,6 @@ else
     Constants.CHARACTER_BANK_TABS_ACTIVE = false
 end
 Constants.BANK_MAIN_BAG = -1
-
--- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
-Constants.KEYRING_BAG = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
 
 -- Warband Bank (Retail only)
 Constants.WARBAND_BANK_ACTIVE = Expansion and Expansion.IsRetail
@@ -156,8 +169,9 @@ Constants.BANK_BAG_ID = -1
 -- bug this exists to stop. A numeric range cannot describe the carried set: which
 -- ids exist, and what they mean, differ per flavor and move between builds. Retail
 -- puts the reagent bag at 5 and PLAYER_BAG_MAX at 4, so the range drops it and the
--- feature silently never fires for reagents; Forever shifts both up by one, so a
--- range tuned to Retail is wrong there in a different way. Ask this set instead.
+-- feature silently never fires for reagents; Forever has an ordinary bag at 5 and
+-- no reagent bag, so a range tuned to Retail is wrong there in a different way.
+-- Ask this set instead.
 -- Excludes the keyring, which is not in BAG_IDS.
 local BAG_ID_SET = {}
 for _, bagID in ipairs(Constants.BAG_IDS) do
@@ -168,8 +182,9 @@ function Constants.IsPlayerBagID(bagID)
     return bagID ~= nil and BAG_ID_SET[bagID] == true
 end
 
--- Keyring bag ID (Classic Era and TBC only, nil for other expansions)
-Constants.KEYRING_BAG_ID = Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) and -2 or nil
+-- Keyring bag ID: -2 on every flavor that has one, nil elsewhere. Gated by
+-- Features.HasKeyring so the list of keyring flavors has a single owner.
+Constants.KEYRING_BAG_ID = Expansion and Expansion.Features.HasKeyring and -2 or nil
 
 Constants.HEARTHSTONE_ID = 6948
 

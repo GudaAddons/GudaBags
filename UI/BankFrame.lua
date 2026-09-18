@@ -25,6 +25,7 @@ local searchBar
 local itemButtons = {}
 local categoryHeaders = {}
 local viewingCharacter = nil
+local usabilityStale = false  -- usability changed while viewing another character at the banker
 
 -- Combat lockdown handling
 -- ContainerFrameItemButtonTemplate is a secure template that cannot be created during combat
@@ -2912,6 +2913,14 @@ function BankFrame:GetViewingCharacter()
 end
 
 function BankFrame:ViewCharacter(fullName, charData)
+    -- Returning to the current character renders from the scanner cache, which
+    -- still holds pre-change isUsable values; rescan first (see BagFrame).
+    if not fullName and usabilityStale then
+        usabilityStale = false
+        if BankScanner:IsBankOpen() then
+            BankScanner:ScanAllBank()
+        end
+    end
     viewingCharacter = fullName
     BankHeader:SetViewingCharacter(fullName, charData)
 
@@ -3783,6 +3792,18 @@ local function ResetPendingItemRefresh()
     pendingItemRefreshCount = 0
 end
 
+-- One owner for "add to the pending set", for the same reason. The cap bounds
+-- GET_ITEM_INFO_RECEIVED bursts; uncapped callers are already bounded by the
+-- buttons on screen. Returns false when the item was dropped.
+local function QueueItemRefresh(itemID, uncapped)
+    if pendingItemRefresh[itemID] == nil then
+        if not uncapped and pendingItemRefreshCount >= ITEM_REFRESH_MAX then return false end
+        pendingItemRefreshCount = pendingItemRefreshCount + 1
+    end
+    pendingItemRefresh[itemID] = true
+    return true
+end
+
 local function ApplyItemInfoRefresh()
     itemRefreshTimer = nil
     if not (frame and frame:IsShown()) or viewingCharacter then
@@ -3923,11 +3944,32 @@ Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
     -- the bank at all, so cap the set rather than let one burst size it. Anything
     -- dropped here is still picked up by the scan that a bank update or a reopen
     -- performs; the repaint is an optimisation, not the only path.
-    if pendingItemRefresh[itemID] == nil then
-        if pendingItemRefreshCount >= ITEM_REFRESH_MAX then return end
-        pendingItemRefreshCount = pendingItemRefreshCount + 1
+    if QueueItemRefresh(itemID) then
+        ScheduleItemRefresh()
     end
-    pendingItemRefresh[itemID] = true
+end, BankFrame)
+
+-- Usability changed without a bank update (skill-up, learned spell, level-up):
+-- same as the bag frame, uncapped for the same reason. A held layout's incremental
+-- reopen skips SetItem for an unchanged itemID, so it would keep the old overlays;
+-- drop it instead. Away from the banker the slots can't be re-scanned, and opening
+-- the banker rebuilds from a fresh scan anyway.
+Events:Register("ITEM_USABILITY_CHANGED", function()
+    if not (frame and frame:IsShown()) then
+        if bankHeld then bankDirtyWhileHidden = true end
+        return
+    end
+    if not BankScanner:IsBankOpen() then return end
+    if viewingCharacter then
+        usabilityStale = true
+        return
+    end
+    for _, button in ipairs(itemButtons) do
+        local itemID = button.itemData and button.itemData.itemID
+        if itemID then
+            QueueItemRefresh(itemID, true)
+        end
+    end
     ScheduleItemRefresh()
 end, BankFrame)
 
