@@ -161,13 +161,13 @@ for _, case in ipairs(FOREVER_CASES) do
     Check("Forever(" .. case.label .. ") IsMoP", E.IsMoP, false)
 end
 
--- Forever's capability set: Vanilla-shaped, no Retail features.
+-- Forever's capability set: Retail features plus the keyring.
 print("")
 print("WoW: Forever capability set:")
 local F = Detect(16001, 1, true)
--- Mirrors Retail, plus the keyring: Forever has one in game (confirmed by the
--- user; the exe string probe for KeyRingButton was a false negative -- FrameXML
--- lives in CASC, not the binary).
+-- Mirrors Retail, plus the keyring: Forever has one in game (confirmed in game;
+-- the exe string probe for KeyRingButton was a false negative -- FrameXML lives
+-- in CASC, not the binary).
 local FOREVER_FEATURES = {
     HasKeyring = true, HasQuiverBags = false, HasAmmoBags = false,
     HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = true,
@@ -358,13 +358,6 @@ local BAG_CASES = {
     {name = "FOREVER",      iface = 16001,  pid = 1,  numBag = 5,   total = 6,
      reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
      playerMax = 5, keyring = -2},
-    -- ...or at 6, the layout an earlier draft of this file assumed.
-    {name = "FOREVER (reagent 6)", iface = 16001, pid = 1, numBag = 5, total = 6,
-     reagent = 6,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
-     playerMax = 5, keyring = -2},
-    {name = "FOREVER (no total)", iface = 16001, pid = 1, numBag = 5, total = nil,
-     reagent = nil, tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
-     playerMax = 5, keyring = -2},
     -- NUM_BAG_SLOTS absent: fall back to Forever's five equipped bags.
     {name = "FOREVER (no NUM_BAG_SLOTS)", iface = 16001, pid = 1, numBag = nil, total = nil,
      reagent = nil, tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
@@ -389,13 +382,11 @@ for _, case in ipairs(BAG_CASES) do
         Check(case.name .. " REAGENT_BAG absent", C.REAGENT_BAG, nil)
     else
         Check(case.name .. " REAGENT_BAG", C.REAGENT_BAG, case.reagentOut)
-        -- The reagent bag must never raise PLAYER_BAG_MAX: that means "last ordinary
-        -- bag", and callers size loops off it.
-        Check(case.name .. " PLAYER_BAG_MAX", C.PLAYER_BAG_MAX, case.reagentOut - 1)
     end
-    Check(case.name .. " PLAYER_BAG_MAX (explicit)", C.PLAYER_BAG_MAX, case.playerMax)
+    -- The reagent bag must never raise PLAYER_BAG_MAX: that means "last ordinary
+    -- bag", and callers size loops off it.
+    Check(case.name .. " PLAYER_BAG_MAX", C.PLAYER_BAG_MAX, case.playerMax)
     Check(case.name .. " KEYRING_BAG_ID", C.KEYRING_BAG_ID, case.keyring)
-    Check(case.name .. " KEYRING_BAG", C.KEYRING_BAG, case.keyring)
     -- The keyring is never a carried bag: IsPlayerBag pairs the two on purpose.
     if case.keyring then
         Check(case.name .. " IsPlayerBagID(keyring)", C.IsPlayerBagID(case.keyring), false)

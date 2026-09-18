@@ -38,7 +38,7 @@ function BagScanner:ScanAllBags()
         end
     end
 
-    -- Also scan keyring (TBC only)
+    -- Also scan keyring (nil on flavors without one)
     if Constants.KEYRING_BAG_ID then
         local keyringData = ItemScanner:ScanContainer(Constants.KEYRING_BAG_ID)
         if keyringData then

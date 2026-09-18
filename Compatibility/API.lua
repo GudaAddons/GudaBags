@@ -50,11 +50,8 @@ function API:HasKeyring()
 end
 
 function API:GetKeyringSize()
-    local keyringID = ns.Constants and ns.Constants.KEYRING_BAG_ID
-    if not Expansion.Features.HasKeyring or not keyringID then
-        return 0
-    end
-    return C_Container.GetContainerNumSlots(keyringID) or 0
+    local keyringID = ns.Constants.KEYRING_BAG_ID
+    return keyringID and C_Container.GetContainerNumSlots(keyringID) or 0
 end
 
 -------------------------------------------------

@@ -4,7 +4,7 @@ local addonName, ns = ...
 -- Keyring exists in Classic Era, TBC and WoW: Forever; removed in later expansions
 local Expansion = ns:GetModule("Expansion")
 if not Expansion.Features.HasKeyring then
-    -- Register empty stub module for non-TBC expansions
+    -- Register empty stub module for expansions without a keyring
     ns:RegisterModule("Footer.Keyring", {
         Init = function() return nil end,
         Show = function() end,

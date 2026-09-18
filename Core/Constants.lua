@@ -7,7 +7,6 @@ ns.Constants = Constants
 local Expansion = ns:GetModule("Expansion")
 
 -- Feature flags (enable/disable features during development)
--- KEYRING is TBC-only (keyring was removed in later expansions)
 -- GUILD_BANK is available in TBC and later (introduced in TBC, interface 20000+)
 -- Not available in Classic Era (interface 11xxx)
 local isGuildBankSupported = false
@@ -25,7 +24,6 @@ Constants.FEATURES = {
     CHARACTERS = true,
     SEARCH = true,
     SORT = true,
-    KEYRING = Expansion and Expansion.IsTBC or false,
 }
 
 -- Guild Bank Constants (TBC and later)
@@ -127,17 +125,6 @@ else
 end
 Constants.BANK_MAIN_BAG = -1
 
--- Keyring bag ID (Classic Era, TBC and WoW: Forever; nil for other expansions).
--- Classic Era and TBC use -2. Forever runs the mainline API, so it asks the enum
--- first and falls back to the same -2.
-local KEYRING_ID = nil
-if Expansion and (Expansion.IsClassicEra or Expansion.IsTBC) then
-    KEYRING_ID = -2
-elseif Expansion and Expansion.IsForever then
-    KEYRING_ID = (Enum and Enum.BagIndex and Enum.BagIndex.Keyring) or -2
-end
-Constants.KEYRING_BAG = KEYRING_ID
-
 -- Warband Bank (Retail only)
 Constants.WARBAND_BANK_ACTIVE = Expansion and Expansion.IsRetail
     and Enum and Enum.BagIndex and Enum.BagIndex.AccountBankTab_1 ~= nil
@@ -195,8 +182,9 @@ function Constants.IsPlayerBagID(bagID)
     return bagID ~= nil and BAG_ID_SET[bagID] == true
 end
 
--- Keyring bag ID (Classic Era, TBC and WoW: Forever; nil for other expansions)
-Constants.KEYRING_BAG_ID = KEYRING_ID
+-- Keyring bag ID: -2 on every flavor that has one, nil elsewhere. Gated by
+-- Features.HasKeyring so the list of keyring flavors has a single owner.
+Constants.KEYRING_BAG_ID = Expansion and Expansion.Features.HasKeyring and -2 or nil
 
 Constants.HEARTHSTONE_ID = 6948
 
