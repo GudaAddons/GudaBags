@@ -551,8 +551,8 @@ function ItemScanner:ScanContainer(bagID)
     local containerItemID = nil
     local containerTexture = nil
     -- Ask the carried-bag set, not a numeric range. Carried ids overlap the bank
-    -- range below -- the reagent bag is 5 on Retail and 6 on WoW: Forever, and
-    -- Forever's fifth equipped bag is 5 -- so any carried container that misses this
+    -- range below -- the reagent bag is 5 on Retail, and on WoW: Forever (no reagent
+    -- bag) 5 is an ordinary fifth equipped bag -- so any carried container that misses this
     -- branch resolves through GetBankBagInvSlot and comes back wearing a BANK bag's
     -- item and icon. IsPlayerBagID is built from the discovered BAG_IDS, so it stays
     -- correct as the layout changes; on Classic it excludes 5+, which really are

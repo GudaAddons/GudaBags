@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
--- Classic Era and TBC feature guard
--- Keyring exists in Classic Era and TBC, removed in later expansions
+-- Keyring feature guard
+-- Keyring exists in Classic Era, TBC and WoW: Forever; removed in later expansions
 local Expansion = ns:GetModule("Expansion")
 if not Expansion.Features.HasKeyring then
     -- Register empty stub module for non-TBC expansions

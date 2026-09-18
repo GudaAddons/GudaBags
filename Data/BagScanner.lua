@@ -412,7 +412,8 @@ updateFrame:SetScript("OnUpdate", ProcessBatchedUpdates)
 -- never refreshes live. It used to test `bagID >= 0 and bagID <= 4` -- the exact
 -- hardcoded range Constants warns against -- which silently excluded any carried
 -- container past 4 that was not precisely REAGENT_BAG. On WoW: Forever, whose fifth
--- equipped bag is id 5 and whose reagent bag is 6, that is two live containers.
+-- equipped bag is id 5 (and which has no reagent bag), that is a live container.
+-- Forever's keyring is covered by the KEYRING_BAG_ID term, as on Classic Era/TBC.
 --
 -- IsPlayerBagID deliberately excludes the keyring, so the second term is required;
 -- the two are not interchangeable. Same expression as ScanDirtyBags' own guard.

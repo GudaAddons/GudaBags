@@ -37,9 +37,15 @@ local iface = tonumber(interfaceVersion) or 0
 --     C_Bank.*, CharacterBankTab_N, NumReagentBagSlots, ERR_REAGENTBAG_*,
 --     SortBags, SortBankBags, FetchNumPurchasedBankTabs, IsBoundToAccountUntilEquip
 --   present in all three Classic clients, absent in Retail + Forever --
---     GetNumBankSlots, NumBankSlots, KeyRingButton
+--     GetNumBankSlots, NumBankSlots
 -- So Forever takes the Retail path. Classifying it by version alone would strip the
--- reagent bag, the bank tabs and native sort off a client that has all of them.
+-- bank tabs and native sort off a client that has them.
+--
+-- The API is modern, but the CARRIED BAG LAYOUT is not: in game Forever has the
+-- backpack, FIVE equipped bags (1-5) and a keyring -- and no reagent bag. The
+-- reagent-bag strings above are shared-engine leftovers, not a feature, and a
+-- missing KeyRingButton in the exe proves nothing (FrameXML lives in CASC).
+-- Constants.lua owns that layout; see DiscoverCarriedBags there.
 Expansion.IsForever = iface >= 16000 and iface < 20000
 
 -- Primary detection via WOW_PROJECT_ID, corroborated by interface-version range so
@@ -64,15 +70,15 @@ end
 
 -- Feature availability based on expansion
 --
--- Forever rides the Retail capability set (IsRetail is true there): no keyring --
--- the client has no KeyRingButton -- no quiver/ammo, and every Retail flag on.
+-- Forever rides the Retail capability set (IsRetail is true there) -- no
+-- quiver/ammo, every Retail flag on -- plus the keyring, which it has in game.
 -- Each Retail flag is still guarded at its call site by an existence check on the
 -- actual API (Constants.lua probes Enum.BagIndex.CharacterBankTab_1 and
 -- AccountBankTab_1; BankFrame/Money probe C_Bank.*), so anything Forever turns out
 -- not to ship degrades rather than errors. Confirm with /guda status in game.
 Expansion.Features = {
-    -- Classic Era and TBC features
-    HasKeyring = Expansion.IsClassicEra or Expansion.IsTBC,
+    -- Classic Era and TBC features (the keyring also exists on WoW: Forever)
+    HasKeyring = Expansion.IsClassicEra or Expansion.IsTBC or Expansion.IsForever,
     HasQuiverBags = Expansion.IsClassicEra or Expansion.IsTBC,
     HasAmmoBags = Expansion.IsClassicEra or Expansion.IsTBC,
 

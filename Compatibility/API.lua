@@ -42,7 +42,7 @@ function API:UseContainerItem(bagID, slot)
 end
 
 -------------------------------------------------
--- Keyring API (TBC only)
+-- Keyring API (Classic Era, TBC and WoW: Forever)
 -------------------------------------------------
 
 function API:HasKeyring()
@@ -50,11 +50,11 @@ function API:HasKeyring()
 end
 
 function API:GetKeyringSize()
-    if not Expansion.Features.HasKeyring then
+    local keyringID = ns.Constants and ns.Constants.KEYRING_BAG_ID
+    if not Expansion.Features.HasKeyring or not keyringID then
         return 0
     end
-    -- Keyring is bag ID -2 in TBC
-    return C_Container.GetContainerNumSlots(-2) or 0
+    return C_Container.GetContainerNumSlots(keyringID) or 0
 end
 
 -------------------------------------------------
