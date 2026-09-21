@@ -471,6 +471,11 @@ local API_CHECK_TEMPLATES = {
     "UIPanelButtonTemplate", "GameTooltipTemplate", "UIDropDownMenuTemplate",
     "BackdropTemplate", "SettingsCheckBoxTemplate", "SettingsCheckboxTemplate",
     "WowStyle1DropdownTemplate", "MinimalSliderWithSteppersTemplate",
+    -- Retail-only, and the one template created without an existence guard:
+    -- UI/BankFrame.lua builds the bank-tab purchase button from it because
+    -- C_Bank.PurchaseBankTab is protected. If this ever reports MISSING, that
+    -- CreateFrame is an error waiting on the "+" tab.
+    "BankPanelPurchaseButtonScriptTemplate",
 }
 
 local function ApiCheckTable(kind)
@@ -479,6 +484,95 @@ local function ApiCheckTable(kind)
     if kind == "c_container" then return C_Container end
     if kind == "c_bank" then return C_Bank end
     return nil
+end
+
+-- Diagnostic, like status/apicheck: raw output for a bug report, not UI text.
+-- Answers "what does this client actually say its bank is", which is the question
+-- every wrong guess about the bank has come from.
+commandHandlers["bankdump"] = function()
+    local Constants = ns.Constants
+    local scanner = ns:GetModule("RetailBankScanner")
+    local bankTypeChar = Enum and Enum.BankType and Enum.BankType.Character
+
+    ns:Print("=== GudaBags bank dump ===")
+    ns:Print("IsRetail: " .. tostring(ns.IsRetail)
+        .. "  IsForever: " .. tostring(ns.IsForever)
+        .. "  HasTabbedBank: " .. tostring(ns.ExpansionFeatures and ns.ExpansionFeatures.HasTabbedBank))
+    ns:Print("CHARACTER_BANK_TABS_ACTIVE: " .. tostring(Constants.CHARACTER_BANK_TABS_ACTIVE)
+        .. "  BANK_BAG_MIN/MAX: " .. tostring(Constants.BANK_BAG_MIN) .. "/" .. tostring(Constants.BANK_BAG_MAX))
+
+    -- Container ids the addon believes in, and what the client says each holds.
+    -- A tab the player has not bought reports 0 slots, so this line alone
+    -- distinguishes "owned" from "for sale".
+    local ids = Constants.CHARACTER_BANK_TAB_IDS
+    if ids then
+        ns:Print("CHARACTER_BANK_TAB_IDS (" .. #ids .. "): " .. table.concat(ids, ", "))
+        for i, id in ipairs(ids) do
+            local slots = C_Container and C_Container.GetContainerNumSlots
+                and C_Container.GetContainerNumSlots(id)
+            -- Which inventory slot (if any) actually backs this container, and what
+            -- bag sits there. This is where the footer icon comes from, and it is
+            -- the answer a numeric offset like bagID - 4 gets wrong.
+            local invSlot = C_Container and C_Container.ContainerIDToInventoryID
+                and C_Container.ContainerIDToInventoryID(id)
+            local itemID = invSlot and GetInventoryItemID("player", invSlot)
+            local tex = invSlot and GetInventoryItemTexture("player", invSlot)
+            ns:Print("  tab " .. i .. " -> container " .. tostring(id)
+                .. "  slots: " .. tostring(slots)
+                .. "  invSlot: " .. tostring(invSlot)
+                .. "  itemID: " .. tostring(itemID)
+                .. "  tex: " .. tostring(tex))
+        end
+    else
+        ns:Print("CHARACTER_BANK_TAB_IDS: nil")
+    end
+
+    -- The client's own counts. FetchNumPurchasedBankTabs is not used anywhere in
+    -- the addon, so this is the one place it can be compared against what the
+    -- addon derives from FetchPurchasedBankTabData.
+    if C_Bank and bankTypeChar then
+        local purchasedCount = C_Bank.FetchNumPurchasedBankTabs
+            and C_Bank.FetchNumPurchasedBankTabs(bankTypeChar)
+        local maxTabs = C_Bank.FetchMaxNumBankTabs and C_Bank.FetchMaxNumBankTabs(bankTypeChar)
+        ns:Print("C_Bank purchased: " .. tostring(purchasedCount)
+            .. "  max: " .. tostring(maxTabs)
+            .. "  canPurchase: " .. tostring(C_Bank.CanPurchaseBankTab and C_Bank.CanPurchaseBankTab(bankTypeChar)))
+
+        local tabData = C_Bank.FetchPurchasedBankTabData and C_Bank.FetchPurchasedBankTabData(bankTypeChar)
+        ns:Print("FetchPurchasedBankTabData: " .. (tabData and (#tabData .. " entries") or "nil"))
+        if tabData then
+            for _, t in ipairs(tabData) do
+                ns:Print("  ID=" .. tostring(t.ID) .. "  name=" .. tostring(t.name)
+                    .. "  icon=" .. tostring(t.icon))
+            end
+        end
+    else
+        ns:Print("C_Bank or Enum.BankType missing")
+    end
+
+    if scanner then
+        ns:Print("scanner GetNumPurchasedTabs: " .. tostring(scanner:GetNumPurchasedTabs(bankTypeChar))
+            .. "  warbandAvailable: " .. tostring(scanner:IsWarbandBankAvailable()))
+    else
+        ns:Print("RetailBankScanner: NOT LOADED (non-Retail client)")
+    end
+
+    -- Which close path is actually live. Presence in the binary proves nothing --
+    -- the enum MEMBER is what the call needs, and a nil one closes nothing silently.
+    ns:Print("Close: ClearInteraction="
+        .. tostring(C_PlayerInteractionManager ~= nil and C_PlayerInteractionManager.ClearInteraction ~= nil)
+        .. "  PlayerInteractionType.Banker="
+        .. tostring(Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.Banker)
+        -- The RESOLVED one, not the bare global: on a client that namespaced it the
+        -- global reads nil while the call is perfectly available via C_Bank.
+        .. "  CloseBankFrame=" .. (_G.CloseBankFrame and "global"
+            or (C_Bank and C_Bank.CloseBankFrame and "C_Bank")
+            or "MISSING"))
+
+    local footer = ns:GetModule("BankFrame.BankFooter")
+    if footer and footer.DebugDumpSlotRow then
+        footer:DebugDumpSlotRow()
+    end
 end
 
 commandHandlers["apicheck"] = function()

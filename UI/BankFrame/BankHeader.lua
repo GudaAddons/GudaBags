@@ -218,7 +218,9 @@ function BankHeader:SetBackdropAlpha(alpha)
         frame:ClearAllPoints()
         frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
-        local closeSize = ns.IsRetail and 22 or 32
+        -- Art, not API: the 22px close button belongs to retail's own frame art.
+        -- WoW: Forever is IsRetail on Vanilla art, so it takes the 32px one.
+        local closeSize = ns.ExpansionFeatures.HasRetailFrameArt and 22 or 32
         if frame.closeButton then frame.closeButton:SetSize(closeSize, closeSize) end
         -- Raise header above blizzardBg's NineSlice or metalFrame overlay
         local parent = frame:GetParent()

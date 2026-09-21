@@ -481,7 +481,15 @@ Constants.DEFAULTS = {
     hiddenChips = {},
     showQuestBar = true,
     hideQuestBarInBGs = true,
-    hoverBagline = false,
+    -- "Show All Bags": bag/bank slots inline in the footer rather than collapsed
+    -- behind a flyout.
+    --
+    -- Defaults ON for WoW: Forever only. Its bank draws the containers as a visible
+    -- "Bag Slots" row -- that row IS the client's bank-container UI -- so collapsing
+    -- it to a single icon hides the thing the player is looking for. Elsewhere the
+    -- collapsed default stays, since changing it would move the footer for every
+    -- existing character on a flavor that never asked for it.
+    hoverBagline = (Expansion and Expansion.IsForever) or false,
     showFooter = true,
     showDragFlyout = true,
     showTooltipCounts = true,
