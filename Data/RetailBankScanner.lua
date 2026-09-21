@@ -11,9 +11,16 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local ItemScanner = ns:GetModule("ItemScanner")
 
--- Bank types
-local BANK_TYPE_CHARACTER = Enum.BankType.Character
-local BANK_TYPE_ACCOUNT = Enum.BankType.Account  -- Warband Bank
+-- Bank types.
+--
+-- Existence-guarded because this module loads on any IsRetail client, which now
+-- includes WoW: Forever. An unguarded Enum.BankType read at module scope is a
+-- load-time error that takes the whole addon down rather than a degraded
+-- feature, and developer-guide.md section 6 requires Enum members to be probed.
+-- Every C_Bank call below is already guarded, so nil bank types leave the modern
+-- bank inert instead of broken.
+local BANK_TYPE_CHARACTER = Enum and Enum.BankType and Enum.BankType.Character
+local BANK_TYPE_ACCOUNT = Enum and Enum.BankType and Enum.BankType.Account  -- Warband Bank
 
 -- Cache for scanned bank data
 local cachedCharacterBank = {}

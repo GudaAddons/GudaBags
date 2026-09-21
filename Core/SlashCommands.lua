@@ -297,17 +297,36 @@ commandHandlers["status"] = function()
     if Constants and Constants.BAG_IDS then
         ns:Print("BAG_IDS: " .. table.concat(Constants.BAG_IDS, ", "))
         ns:Print("REAGENT_BAG: " .. tostring(Constants.REAGENT_BAG)
-            .. "  PLAYER_BAG_MAX: " .. tostring(Constants.PLAYER_BAG_MAX))
+            .. "  PLAYER_BAG_MAX: " .. tostring(Constants.PLAYER_BAG_MAX)
+            .. "  KEYRING_BAG_ID: " .. tostring(Constants.KEYRING_BAG_ID))
+        -- Says whether the bag count came from the client or from the hardcoded
+        -- fallback in DiscoverCarriedBags. On a flavor nobody has tested, "the
+        -- client never told us" and "the client said 5" look identical otherwise.
         ns:Print("NUM_BAG_SLOTS: " .. tostring(NUM_BAG_SLOTS)
+            .. (NUM_BAG_SLOTS == nil and " (FALLBACK USED)" or "")
             .. "  NUM_TOTAL_EQUIPPED_BAG_SLOTS: " .. tostring(NUM_TOTAL_EQUIPPED_BAG_SLOTS))
-        ns:Print("Bank tabs: character " .. #(Constants.CHARACTER_BANK_TAB_IDS or {})
-            .. ", warband " .. #(Constants.WARBAND_BANK_TAB_IDS or {}))
+        -- CHARACTER_BANK_TABS_ACTIVE reveals which bank branch Constants took: a
+        -- false here on a modern client means it silently fell back to the old
+        -- {-1, 6..12} bank-bag layout, which looks like "the bank is empty".
+        ns:Print("CHARACTER_BANK_TABS_ACTIVE: " .. tostring(Constants.CHARACTER_BANK_TABS_ACTIVE)
+            .. "  WARBAND_BANK_ACTIVE: " .. tostring(Constants.WARBAND_BANK_ACTIVE))
+        ns:Print("BANK_BAG_MIN: " .. tostring(Constants.BANK_BAG_MIN)
+            .. "  BANK_BAG_MAX: " .. tostring(Constants.BANK_BAG_MAX))
+        ns:Print("Character bank tabs (" .. #(Constants.CHARACTER_BANK_TAB_IDS or {}) .. "): "
+            .. table.concat(Constants.CHARACTER_BANK_TAB_IDS or {}, ", "))
+        ns:Print("Warband bank tabs (" .. #(Constants.WARBAND_BANK_TAB_IDS or {}) .. "): "
+            .. table.concat(Constants.WARBAND_BANK_TAB_IDS or {}, ", "))
     else
         ns:Print("Constants.BAG_IDS: NOT LOADED")
     end
 
+    -- Two different tables with confusingly similar names, and only the first
+    -- used to be printed here. Constants.FEATURES is the addon's own subsystem
+    -- toggles; Expansion.Features is the client capability set that the whole
+    -- compatibility layer branches on, and it is the one a report about an
+    -- untested flavor actually needs.
     if Constants and Constants.FEATURES then
-        ns:Print("Features:")
+        ns:Print("Constants.FEATURES (subsystem toggles):")
         for k, v in pairs(Constants.FEATURES) do
             ns:Print("  " .. k .. ": " .. tostring(v))
         end
@@ -315,11 +334,222 @@ commandHandlers["status"] = function()
         ns:Print("Constants.FEATURES: NOT LOADED")
     end
 
+    if Expansion and Expansion.Features then
+        ns:Print("Expansion.Features (client capabilities):")
+        for k, v in pairs(Expansion.Features) do
+            ns:Print("  " .. k .. ": " .. tostring(v))
+        end
+    else
+        ns:Print("Expansion.Features: NOT LOADED")
+    end
+
+    -- Where each relocated function resolved from. WoW: Forever ships none of
+    -- these as globals, so a MISSING line here explains an "attempt to call a nil
+    -- value" without needing the stack trace.
+    local CompatAPI = ns:GetModule("Compatibility.API")
+    if CompatAPI and CompatAPI.resolvedSource then
+        ns:Print("Relocated API source:")
+        for _, name in ipairs(CompatAPI.resolvedNames or {}) do
+            ns:Print("  " .. name .. ": " .. tostring(CompatAPI.resolvedSource[name]))
+        end
+    else
+        ns:Print("Compatibility.API: NOT LOADED")
+    end
+
     -- Check if modules are registered
     local scanner = ns:GetModule("GuildBankScanner")
     local gbFrame = ns:GetModule("GuildBankFrame")
     ns:Print("GuildBankScanner: " .. (scanner and "loaded" or "NOT LOADED"))
     ns:Print("GuildBankFrame: " .. (gbFrame and "loaded" or "NOT LOADED"))
+end
+
+-- API check - report which client APIs this flavor actually provides.
+--
+-- Exists because a chat line caps at 255 characters, so the alternative -- asking
+-- a tester to paste a /run probe -- cannot cover the surface that matters. And
+-- because the failure mode here is silence: WoW: Forever dropped the legacy global
+-- item functions, and the only symptom was "attempt to call a nil value" from
+-- deep inside a bag scan. A named list of what is missing turns that into a
+-- one-line answer.
+--
+-- Grouped the way the addon depends on them, so a MISSING entry points at the
+-- subsystem that will break rather than just at a name. Nothing here is cached:
+-- it must report the live client, and it runs only when a human types it.
+local API_CHECK_GROUPS = {
+    -- Every global function the addon actually calls, extracted from the source
+    -- rather than hand-picked, so this cannot drift out of date silently and does
+    -- not depend on guessing which ones a new client dropped. Third-party entry
+    -- points (Pawn, Outfitter, LibStub) are deliberately absent -- they are
+    -- expected to be missing and say nothing about the client.
+    { "Addon global call surface", "global",
+      { "AutoStoreGuildBankItem", "BankButtonIDToInvSlotID",
+        "BreakUpLargeNumbers", "ButtonFrameTemplate_HideButtonBar",
+        "ButtonFrameTemplate_HidePortrait", "BuyGuildBankTab",
+        "CanEditGuildBankTabInfo", "CanMerchantRepair",
+        "CanWithdrawGuildBankMoney", "CloseBankFrame", "CloseDropDownMenus",
+        "CloseGuildBankFrame", "ContainerFrameItemButton_OnEnter",
+        "ContainerFrameItemButton_OnLeave", "ContainerIDToInventoryID",
+        "CooldownFrame_Set", "CreateColor", "CreateMinimalSliderFormatter",
+        "CreateObjectPool", "CursorHasItem", "DoesTemplateExist",
+        "DynamicResizeButton_Resize", "GetAuctionItemInfo", "GetAuctionItemLink",
+        "GetBankSlotCost", "GetBuildInfo", "GetCVar", "GetCoinTextureString",
+        "GetCraftItemLink", "GetCraftReagentItemLink", "GetCursorInfo",
+        "GetCursorPosition", "GetDenominationsFromCopper",
+        "GetDetailedCurrencyInfo", "GetGuildBankItemInfo", "GetGuildBankItemLink",
+        "GetGuildBankMoney", "GetGuildBankMoneyTransaction",
+        "GetGuildBankTabCost", "GetGuildBankTabInfo", "GetGuildBankText",
+        "GetGuildBankTransaction", "GetGuildBankWithdrawMoney", "GetGuildInfo",
+        "GetInboxHeaderInfo", "GetInboxItem", "GetInboxItemLink",
+        "GetInboxNumItems", "GetInventoryItemID", "GetInventoryItemLink",
+        "GetInventoryItemTexture", "GetLocale", "GetMaxPlayerLevel", "GetMoney",
+        "GetNumBankSlots", "GetNumGuildBankMoneyTransactions",
+        "GetNumGuildBankTabs", "GetNumGuildBankTransactions", "GetQuestItemLink",
+        "GetQuestLogItemLink", "GetRealmName", "GetRepairAllCost",
+        "GetSendMailCOD", "GetSendMailItem", "GetSendMailItemLink",
+        "GetSendMailMoney", "GetSendMailPrice", "GetSpellCooldown",
+        "GetTimePreciseSec", "GetTradeSkillItemLink",
+        "GetTradeSkillReagentItemLink", "HandleModifiedItemClick",
+        "IsAddOnLoaded", "IsAltKeyDown", "IsControlKeyDown", "IsInGuild",
+        "IsInInstance", "IsLoggedIn", "IsModifiedClick", "IsMouseButtonDown",
+        "IsShiftKeyDown", "IsSpellKnown", "MoneyFrame_Update",
+        "MoneyInputFrame_GetCopper", "MoneyInputFrame_ResetMoney", "MouseIsOver",
+        "MuteSoundFile", "OpenStackSplitFrame", "PanelTemplates_DeselectTab",
+        "PanelTemplates_SetNumTabs", "PanelTemplates_SetTab",
+        "PanelTemplates_TabResize", "PickupBagFromSlot", "PickupGuildBankItem",
+        "PickupInventoryItem", "PlaySound", "PurchaseSlot", "PutItemInBag",
+        "QueryGuildBankLog", "QueryGuildBankTab", "QueryGuildBankText",
+        "RecentTimeDate", "RepairAllItems", "SendMail", "SetCVar",
+        "SetCurrentGuildBankTab", "SetCursor", "SetItemButtonCount",
+        "SetItemButtonDesaturated", "SetItemButtonTexture", "SpellIsTargeting",
+        "SplitGuildBankItem", "StaticPopup_Show", "ToggleDropDownMenu",
+        "UIDropDownMenu_AddButton", "UIDropDownMenu_CreateInfo",
+        "UIDropDownMenu_Initialize", "UIDropDownMenu_SetText",
+        "UIDropDownMenu_SetWidth", "UnitClass", "UnitFactionGroup", "UnitLevel",
+        "UnitName", "UnitRace", "UnitSex", "UnmuteSoundFile" } },
+    -- Globals the addon reads or overrides rather than calls, plus the modern
+    -- menu entry point it prefers when present.
+    { "Bag globals and menu API", "global",
+      { "NUM_BAG_SLOTS", "NUM_TOTAL_EQUIPPED_BAG_SLOTS", "ToggleBackpack",
+        "ToggleBag", "OpenAllBags", "CloseAllBags", "OpenBackpack", "OpenBag",
+        "CloseBag", "CloseBackpack", "GuildBankFrame_LoadUI", "MenuUtil",
+        "BankFrame", "GuildBankFrame", "PlaceAuctionBid" } },
+    { "Namespaces", "global",
+      { "C_Container", "C_Item", "C_Bank", "C_GuildBank", "C_CurrencyInfo",
+        "C_EquipmentSet", "C_TradeSkillUI", "C_XMLUtil", "C_AddOns", "C_CVar",
+        "C_Spell", "C_Mail", "C_PlayerInteractionManager" } },
+    { "C_Item", "c_item",
+      { "GetItemInfo", "GetItemInfoInstant", "GetItemSpell", "GetItemQualityColor",
+        "GetItemClassInfo", "GetItemIconByID", "GetItemFamily", "GetItemCount",
+        "IsBoundToAccountUntilEquip", "RequestLoadItemDataByID" } },
+    { "C_Container", "c_container",
+      { "GetContainerItemInfo", "GetContainerNumSlots", "ContainerIDToInventoryID",
+        "SortBags", "SortBankBags", "SortAccountBankBags",
+        "SortReagentBankBags" } },
+    { "C_Bank", "c_bank",
+      { "FetchNumPurchasedBankTabs", "FetchPurchasedBankTabData",
+        "FetchViewableBankTypes", "AutoDepositItemsIntoBank", "CanPurchaseBankTab",
+        "FetchBankLockedReason", "CanDepositMoney", "FetchDepositedMoney" } },
+}
+
+-- Enum members are checked separately: indexing a missing parent table is the
+-- error this whole command is meant to find, so each lookup walks down guarded.
+local API_CHECK_ENUMS = {
+    "BagIndex.Backpack", "BagIndex.Keyring", "BagIndex.ReagentBag",
+    "BagIndex.Reagentbank", "BagIndex.CharacterBankTab_1",
+    "BagIndex.CharacterBankTab_6", "BagIndex.CharacterBankTab_9",
+    "BagIndex.AccountBankTab_1", "BagIndex.AccountBankTab_5",
+    "BagIndex.AccountBankTab_9", "BankType.Character", "BankType.Account",
+    "PlayerInteractionType.Banker", "PlayerInteractionType.GuildBanker",
+    "ItemQuality.Common",
+}
+
+-- Templates the addon builds frames from. Probed through C_XMLUtil rather than a
+-- throwaway CreateFrame: item buttons use a secure template, and Rule 3 keeps
+-- every one of those in the pre-warmed pool. A diagnostic must not mint one.
+local API_CHECK_TEMPLATES = {
+    "ContainerFrameItemButtonTemplate", "SecureActionButtonTemplate",
+    "UIPanelButtonTemplate", "GameTooltipTemplate", "UIDropDownMenuTemplate",
+    "BackdropTemplate", "SettingsCheckBoxTemplate", "SettingsCheckboxTemplate",
+    "WowStyle1DropdownTemplate", "MinimalSliderWithSteppersTemplate",
+}
+
+local function ApiCheckTable(kind)
+    if kind == "global" then return _G end
+    if kind == "c_item" then return C_Item end
+    if kind == "c_container" then return C_Container end
+    if kind == "c_bank" then return C_Bank end
+    return nil
+end
+
+commandHandlers["apicheck"] = function()
+    ns:Print("=== GudaBags API check ===")
+    ns:Print("Interface: " .. tostring(select(4, GetBuildInfo()))
+        .. "  Build: " .. tostring(select(2, GetBuildInfo())))
+
+    for _, group in ipairs(API_CHECK_GROUPS) do
+        local label, kind, names = group[1], group[2], group[3]
+        local parent = ApiCheckTable(kind)
+        if not parent then
+            ns:Print(label .. ": PARENT TABLE MISSING")
+        else
+            local missing = {}
+            for _, name in ipairs(names) do
+                if parent[name] == nil then
+                    missing[#missing + 1] = name
+                end
+            end
+            if #missing == 0 then
+                ns:Print(label .. ": all " .. #names .. " present")
+            else
+                ns:Print(label .. ": MISSING " .. #missing .. "/" .. #names
+                    .. " -> " .. table.concat(missing, ", "))
+            end
+        end
+    end
+
+    local missingEnums = {}
+    for _, path in ipairs(API_CHECK_ENUMS) do
+        local parentName, member = path:match("^(.-)%.(.+)$")
+        local parent = Enum and parentName and Enum[parentName]
+        if not parent or parent[member] == nil then
+            missingEnums[#missingEnums + 1] = path
+        end
+    end
+    if #missingEnums == 0 then
+        ns:Print("Enum members: all " .. #API_CHECK_ENUMS .. " present")
+    else
+        ns:Print("Enum members: MISSING " .. #missingEnums .. "/" .. #API_CHECK_ENUMS
+            .. " -> " .. table.concat(missingEnums, ", "))
+    end
+
+    -- DoesTemplateExist first: it is what UI/Controls/Checkbox, Select and Slider
+    -- already use to pick a template, so this reports the same answer those
+    -- controls will act on. C_XMLUtil is the fallback for a client without it.
+    local templateProbe, probeName
+    if DoesTemplateExist then
+        templateProbe, probeName = DoesTemplateExist, "DoesTemplateExist"
+    elseif C_XMLUtil and C_XMLUtil.GetTemplateInfo then
+        templateProbe, probeName = C_XMLUtil.GetTemplateInfo, "C_XMLUtil"
+    end
+
+    if templateProbe then
+        local missingTemplates = {}
+        for _, name in ipairs(API_CHECK_TEMPLATES) do
+            local ok, info = pcall(templateProbe, name)
+            if not ok or not info then
+                missingTemplates[#missingTemplates + 1] = name
+            end
+        end
+        if #missingTemplates == 0 then
+            ns:Print("Templates (" .. probeName .. "): all "
+                .. #API_CHECK_TEMPLATES .. " present")
+        else
+            ns:Print("Templates (" .. probeName .. "): MISSING -> "
+                .. table.concat(missingTemplates, ", "))
+        end
+    else
+        ns:Print("Templates: no probe available, not checked")
+    end
 end
 
 -- Help
@@ -337,6 +567,7 @@ commandHandlers["help"] = function()
     ns:Print("  /guda debugitem - Toggle item data on hover")
     ns:Print("  /guda locale [code|reset] - Test locale")
     ns:Print("  /guda status - Show expansion/feature detection")
+    ns:Print("  /guda apicheck - Report which client APIs this flavor provides")
     ns:Print("  /guda profile - Toggle performance profiler")
     ns:Print("  /guda profiledump - Print profiler timings")
     ns:Print("  /guda pool - Show item button pool usage by owner")

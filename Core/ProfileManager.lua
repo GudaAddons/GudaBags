@@ -302,11 +302,18 @@ function ProfileManager:LoadProfile(name)
 
     -- Remap theme for cross-expansion compatibility
     local theme = GudaBags_CharDB.settings.theme
-    if ns.IsRetail and theme == "retail" then
-        -- "Retail" theme is a Classic-only cosmetic; on actual Retail, "blizzard" is equivalent
+    -- Keyed on HasRetailFrameArt, not IsRetail: the question is whether this
+    -- client's own frame art is already the metal look. WoW: Forever is
+    -- modern-API on Vanilla art, so it belongs on the Classic side of both
+    -- branches -- importing a Retail profile there should give it the "retail"
+    -- skin, and its own "retail" setting must survive a round trip.
+    if ns.ExpansionFeatures.HasRetailFrameArt and theme == "retail" then
+        -- Where the native frame is already metal, "blizzard" is the equivalent
         GudaBags_CharDB.settings.theme = "blizzard"
-    elseif not ns.IsRetail and profile.expansionId == (WOW_PROJECT_MAINLINE or 1) and theme == "blizzard" then
-        -- Importing from Retail where "blizzard" uses native metal frames; on Classic, "retail" is the equivalent look
+    elseif not ns.ExpansionFeatures.HasRetailFrameArt
+        and profile.expansionId == (WOW_PROJECT_MAINLINE or 1) and theme == "blizzard" then
+        -- Importing from Retail, where "blizzard" uses native metal frames; here
+        -- the bundled "retail" skin is the equivalent look
         GudaBags_CharDB.settings.theme = "retail"
     end
 

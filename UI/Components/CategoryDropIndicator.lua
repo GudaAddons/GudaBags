@@ -6,6 +6,9 @@ ns:RegisterModule("CategoryDropIndicator", CategoryDropIndicator)
 local Constants = ns.Constants
 local L = ns.L
 
+-- WoW: Forever has no global GetItemInfo; resolved in Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+
 -------------------------------------------------
 -- State
 -------------------------------------------------

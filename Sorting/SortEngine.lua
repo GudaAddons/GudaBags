@@ -23,7 +23,11 @@ local C_Container_GetContainerNumFreeSlots = C_Container.GetContainerNumFreeSlot
 local C_Container_PickupContainerItem = C_Container.PickupContainerItem
 local C_Container_SplitContainerItem = C_Container.SplitContainerItem
 local C_Item_GetItemFamily = C_Item.GetItemFamily
-local GetItemInfo = GetItemInfo
+-- Resolved rather than taken straight from _G: WoW: Forever has no global
+-- GetItemInfo, only C_Item.GetItemInfo. Compatibility/API.lua picks whichever
+-- this client has. Still a module-top local, so the call sites below and the
+-- frame budget are unchanged.
+local GetItemInfo = ns.GetItemInfo
 local bit_band = bit.band
 local table_sort = table.sort
 local string_find = string.find

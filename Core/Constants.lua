@@ -7,15 +7,26 @@ ns.Constants = Constants
 local Expansion = ns:GetModule("Expansion")
 
 -- Feature flags (enable/disable features during development)
--- GUILD_BANK is available in TBC and later (introduced in TBC, interface 20000+)
--- Not available in Classic Era (interface 11xxx)
-local isGuildBankSupported = false
-if Expansion and not Expansion.IsClassicEra then
-    -- Guild bank available in TBC+, check interface version >= 20000
-    if Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 20000 then
-        isGuildBankSupported = true
-    end
-end
+--
+-- GUILD_BANK: guild banks arrived in TBC, so every flavor except Classic Era has
+-- them. Keyed on the expansion flags, NOT on the interface version.
+--
+-- This used to read `InterfaceVersion >= 20000`, which silently disabled the
+-- whole feature on WoW: Forever -- Forever reports 16001 (a Vanilla-shaped
+-- number for a modern-API client), so the check failed and the scanner, the
+-- frame, the header button and the setting all vanished on a client that does
+-- have guild banks. The version number is exactly the signal Core/Expansion.lua
+-- warns cannot be trusted on Forever; the flags already account for it.
+--
+-- Deliberately no API existence probe here. Constants.lua loads very early, so
+-- probing GuildBankFrame_LoadUI or C_GuildBank at this point is load-order
+-- dependent, and a false negative would turn off a working feature on the
+-- flavors that already ship it. Graceful degradation is handled where it can be
+-- judged safely: GuildBankScanner type-checks GuildBankFrame_LoadUI before
+-- hooking it, and GuildBankFrame existence-guards its Blizzard interop.
+local isGuildBankSupported = (Expansion
+    and not Expansion.IsClassicEra
+    and (Expansion.IsRetail or Expansion.IsTBC or Expansion.IsMoP)) and true or false
 
 Constants.FEATURES = {
     BANK = true,
@@ -38,30 +49,28 @@ local MAX_BANK_TAB_PROBE = 12
 
 -- Carried containers are discovered from the client, never hardcoded.
 --
--- Retail is backpack + 4 equipped bags + reagent bag at 5. WoW: Forever is
--- backpack + FIVE equipped bags (1-5) + a keyring, and has NO reagent bag -- so on
--- Forever id 5 is an ordinary bag, not the reagent bag. A literal list gets both the
--- count and the meaning of id 5 wrong there, and the count may move again before
--- Forever's launch.
+-- Retail is backpack + 4 equipped bags + reagent bag at 5. WoW: Forever is the
+-- SAME, plus a keyring: main bag (0), four ordinary bags (1-4), a reagent bag (5),
+-- keyring (-2). Confirmed in game 2026-09-21.
+--
+-- There is deliberately NO Forever branch here. An earlier session concluded
+-- Forever had five ordinary bags and no reagent bag, and special-cased it to build
+-- BAG_IDS from NUM_BAG_SLOTS alone while forcing REAGENT_BAG to nil. That was
+-- wrong in both directions: where NUM_BAG_SLOTS is 4, container 5 was left out of
+-- BAG_IDS entirely, so the reagent bag was never scanned and IsPlayerBagID(5)
+-- rejected its BAG_UPDATEs; where it was included, it was mislabelled an ordinary
+-- bag, so every reagent-specific path silently did nothing. The reagent-bag
+-- strings in the binary (NumReagentBagSlots, PreferReagentBags, ReagentBagsFitIt,
+-- ERR_REAGENTBAG_*) were dismissed as shared-engine leftovers; they were the
+-- feature. Ask the client, and believe it.
 --
 -- NUM_TOTAL_EQUIPPED_BAG_SLOTS is the client's own count and includes the reagent
 -- bag; NUM_BAG_SLOTS excludes it. Prefer the former, reconstruct from the latter,
 -- and fall back to the historical Retail shape so a client with neither behaves
--- exactly as this file did before.
---
--- Forever never consults the reagent-bag signals. It runs the mainline API, so
--- NUM_TOTAL_EQUIPPED_BAG_SLOTS and Enum.BagIndex.ReagentBag may both still count a
--- reagent slot the client does not have; trusting them would add a phantom
--- container. Its ordinary bags come from NUM_BAG_SLOTS alone.
+-- exactly as this file did before. Overshooting is cheap: GetContainerNumSlots
+-- returns 0 for a container the client does not have, so a phantom id simply
+-- yields nothing -- far cheaper than omitting a real one.
 local function DiscoverCarriedBags()
-    if Expansion.IsForever then
-        local ids = { 0 }
-        for bagID = 1, (NUM_BAG_SLOTS or 5) do
-            ids[#ids + 1] = bagID
-        end
-        return ids
-    end
-
     local hasReagentBag = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag ~= nil
     local equipped = NUM_TOTAL_EQUIPPED_BAG_SLOTS
         or ((NUM_BAG_SLOTS or 4) + (hasReagentBag and 1 or 0))
@@ -79,17 +88,16 @@ if Expansion and Expansion.IsRetail then
     Constants.BAG_IDS = DiscoverCarriedBags()
 
     -- The reagent bag's id is the client's answer to give, not ours to assume: 5 on
-    -- Retail, nil where the feature does not exist. No literal fallback --
-    -- Enum.BagIndex.ReagentBag shipped with the reagent bag itself, so a client
-    -- without the member has no reagent bag to point at, and inventing one would
-    -- make the addon scan a container that is not there.
+    -- Retail and on WoW: Forever, nil where the feature does not exist. No literal
+    -- fallback -- Enum.BagIndex.ReagentBag shipped with the reagent bag itself, so a
+    -- client without the member has no reagent bag to point at, and inventing one
+    -- would make the addon scan a container that is not there.
     --
-    -- Forever is forced to nil: it has no reagent bag, but its mainline enum may
-    -- still carry the member -- and at 5 that would relabel its fifth ordinary bag.
-    Constants.REAGENT_BAG = not Expansion.IsForever
-        and Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
+    -- Not special-cased for Forever: it has a reagent bag at 5 like Retail. Forcing
+    -- this to nil there was what turned its reagent bag into an ordinary bag.
+    Constants.REAGENT_BAG = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
 
-    -- Last ordinary bag, i.e. excluding the reagent bag: 4 on Retail, 5 on Forever.
+    -- Last ordinary bag, i.e. excluding the reagent bag: 4 on Retail and Forever.
     -- Diagnostics only (/guda status); nothing branches on it, and nothing should --
     -- see the note on IsPlayerBagID below.
     local highest = Constants.BAG_IDS[#Constants.BAG_IDS]
@@ -168,10 +176,12 @@ Constants.BANK_BAG_ID = -1
 -- Writing that test as `bagID >= 1 and bagID <= PLAYER_BAG_MAX` is the recurring
 -- bug this exists to stop. A numeric range cannot describe the carried set: which
 -- ids exist, and what they mean, differ per flavor and move between builds. Retail
--- puts the reagent bag at 5 and PLAYER_BAG_MAX at 4, so the range drops it and the
--- feature silently never fires for reagents; Forever has an ordinary bag at 5 and
--- no reagent bag, so a range tuned to Retail is wrong there in a different way.
--- Ask this set instead.
+-- and Forever put the reagent bag at 5 and PLAYER_BAG_MAX at 4, so the range drops
+-- it and the feature silently never fires for reagents; on the Classic flavors 5 is
+-- a BANK bag, so the same range reaches into the wrong container set entirely. And
+-- our own reading of a layout can be wrong -- Forever's was, for a while. Ask this
+-- set instead: it is built from what the client reported, so it cannot disagree
+-- with the containers that actually exist.
 -- Excludes the keyring, which is not in BAG_IDS.
 local BAG_ID_SET = {}
 for _, bagID in ipairs(Constants.BAG_IDS) do
@@ -290,9 +300,16 @@ end
 -- pcall'd because this runs while building the category editor's dropdown: a
 -- classID missing on an older flavor (Reagent, Glyph) must not take the whole
 -- editor down.
+-- Resolved inline, not via Compatibility/API.lua, because that file loads after
+-- this one. Same shape as the GetItemInfoInstant resolution above: WoW: Forever
+-- has no global GetItemClassInfo, only C_Item.GetItemClassInfo, and the older
+-- flavors are the other way round. Without this the label always falls back to
+-- the English name on Forever.
+local getClassInfo = GetItemClassInfo or (C_Item and C_Item.GetItemClassInfo)
+
 function Constants.GetItemClassLabel(classID)
-    if GetItemClassInfo then
-        local ok, label = pcall(GetItemClassInfo, classID)
+    if getClassInfo then
+        local ok, label = pcall(getClassInfo, classID)
         if ok and label and label ~= "" then
             return label
         end
@@ -492,7 +509,9 @@ Constants.DEFAULTS = {
     autoVendorJunk = true,  -- Auto sell gray items at merchants
     autoRepair = false,  -- Auto repair all items at repair-capable merchants
     mailBulkAttach = true,  -- Shift+Right-Click at a mailbox mails every copy of an item
-    retailEmptySlots = false,  -- Use retail-style empty slot textures (Classic only)
+    retailEmptySlots = false,  -- Retail-style empty slot textures; offered wherever
+                               -- the client's own slot art is not already Retail's
+                               -- (every Classic flavor, plus WoW: Forever)
     minimalEmptySlots = false,  -- Show empty slots as thin border outline instead of slot icon
     gudaSort = false,  -- Use GudaBags custom sort engine instead of Blizzard's (Retail only)
 

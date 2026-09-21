@@ -7,6 +7,9 @@ local Constants = ns.Constants
 local Events = ns:GetModule("Events")
 local Theme = ns:GetModule("Theme")
 
+-- WoW: Forever has no global GetItemInfo; resolved in Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+
 local frame
 local currentCategoryId
 local currentRules = {}

@@ -1524,8 +1524,11 @@ local function CreateSettingsFrame()
         end
         if key == "theme" then
             ApplySettingsTheme()
-            -- Auto-enable retail empty slots when switching to Retail theme (Classic only)
-            if not ns.IsRetail then
+            -- Auto-enable retail empty slots when switching to the Retail theme.
+            -- Gated on HasRetailFrameArt, not IsRetail, so it also fires on WoW:
+            -- Forever -- which now offers the theme and, like Classic, needs this
+            -- setting on for the slot art to follow the frame art.
+            if not ns.ExpansionFeatures.HasRetailFrameArt then
                 local Database = ns:GetModule("Database")
                 local themeName = Database:GetSetting("theme")
                 if themeName == "retail" then

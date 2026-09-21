@@ -16,6 +16,11 @@ local Header = ns:GetModule("Header")
 local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
 local LayoutEngine = ns:GetModule("BagFrame.LayoutEngine")
 local Utils = ns:GetModule("Utils")
+
+-- WoW: Forever has no global GetItemInfo/GetCoinTextureString; resolved in
+-- Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+local GetCoinTextureString = ns.GetCoinTextureString
 local CategoryHeaderPool = ns:GetModule("CategoryHeaderPool")
 local Theme = ns:GetModule("Theme")
 

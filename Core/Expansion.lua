@@ -19,12 +19,16 @@ ns:RegisterModule("Expansion", Expansion)
 -- Interface version is read BEFORE the project-ID tests, because it is the only
 -- signal that stays reliable on a client whose WOW_PROJECT_ID we have never seen.
 local _, _, _, interfaceVersion = GetBuildInfo()
-Expansion.InterfaceVersion = interfaceVersion
 
 -- Every comparison below now runs unconditionally rather than only in a fallback,
 -- so normalise once: a nil or string 4th return would otherwise be a load-time
 -- error instead of a skipped branch.
 local iface = tonumber(interfaceVersion) or 0
+
+-- Published as the NORMALISED number, not the raw 4th return. Other modules
+-- compare against this value, and a client handing back a string would make
+-- those comparisons throw at load rather than take the wrong branch.
+Expansion.InterfaceVersion = iface
 
 -- WoW: Forever ("Camelot", Interface 16001 = 1.60.1) is the one client where the
 -- interface version and the API surface disagree. The version number is
@@ -41,11 +45,15 @@ local iface = tonumber(interfaceVersion) or 0
 -- So Forever takes the Retail path. Classifying it by version alone would strip the
 -- bank tabs and native sort off a client that has them.
 --
--- The API is modern, but the CARRIED BAG LAYOUT is not: in game Forever has the
--- backpack, FIVE equipped bags (1-5) and a keyring -- and no reagent bag. The
--- reagent-bag strings above are shared-engine leftovers, not a feature, and a
+-- The carried bag layout is Retail's too, confirmed in game 2026-09-21: main bag,
+-- FOUR ordinary bags (1-4) and a reagent bag at 5 -- plus a keyring, which is the
+-- only difference. The reagent-bag strings above are the feature, not leftovers --
+-- reading them as leftovers is what cost Forever its reagent bag for a while. A
 -- missing KeyRingButton in the exe proves nothing (FrameXML lives in CASC).
 -- Constants.lua owns that layout; see DiscoverCarriedBags there.
+--
+-- What Forever does NOT share with Retail is its FRAME ART, which is Vanilla's.
+-- That is a separate axis from the API and has its own flag, HasRetailFrameArt.
 Expansion.IsForever = iface >= 16000 and iface < 20000
 
 -- Primary detection via WOW_PROJECT_ID, corroborated by interface-version range so
@@ -99,6 +107,21 @@ Expansion.Features = {
     HasReagentBank = Expansion.IsRetail,
     HasWarbandBank = Expansion.IsRetail,
     HasCurrency = Expansion.IsRetail or Expansion.IsMoP,
+
+    -- "Does the CLIENT'S OWN bag/bank frame art already look like modern Retail?"
+    --
+    -- This is about art, not API, and it is the one place IsRetail is the wrong
+    -- question. GudaBags ships its own recreation of Retail's metal frame under
+    -- Assets/Themes/retail, offered as the "retail" theme -- but only where the
+    -- native frame is not already that, or it would be a duplicate of the
+    -- "blizzard" theme (which just renders the client's own NineSlice).
+    --
+    -- WoW: Forever runs the modern API on VANILLA-era frame art, so it is the
+    -- first client where those two answers differ. Gating the theme on IsRetail
+    -- hid it there and silently remapped it away, leaving Forever players with no
+    -- way to get the modern look at all. Anything cosmetic that asks "is the
+    -- native UI already modern" must use this, not IsRetail.
+    HasRetailFrameArt = Expansion.IsRetail and not Expansion.IsForever,
 
     -- Account-bound items (heirlooms, "Bind to Account", Warbound) arrived in
     -- WotLK 3.2, so Classic Era and TBC have none at all. Gate on this rather than

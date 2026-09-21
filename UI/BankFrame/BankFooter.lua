@@ -382,7 +382,9 @@ local function CreateDepositReagentsButton(parent)
     button:SetSize(130, 22)
     button:SetText(L["BANK_DEPOSIT_REAGENTS"])
     button:SetScript("OnClick", function()
-        if C_Bank and C_Bank.AutoDepositItemsIntoBank then
+        -- Enum.BankType probed alongside C_Bank: the guard was on the function
+        -- only, so a client with C_Bank but no BankType enum errored on click.
+        if C_Bank and C_Bank.AutoDepositItemsIntoBank and Enum and Enum.BankType then
             C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Character)
         end
     end)
@@ -405,7 +407,7 @@ local function CreateDepositWarboundButton(parent)
     button:SetSize(150, 22)
     button:SetText(L["BANK_DEPOSIT_WARBOUND"])
     button:SetScript("OnClick", function()
-        if C_Bank and C_Bank.AutoDepositItemsIntoBank then
+        if C_Bank and C_Bank.AutoDepositItemsIntoBank and Enum and Enum.BankType then
             C_Bank.AutoDepositItemsIntoBank(Enum.BankType.Account)
         end
     end)
@@ -438,8 +440,10 @@ local function CreateIncludeReagentsCheckbox(parent)
     checkbox:SetScript("OnClick", function(self)
         local checked = self:GetChecked()
         -- Try CVar first
-        if SetCVar then
-            SetCVar(INCLUDE_REAGENTS_CVAR, checked and "1" or "0")
+        -- ns.SetCVar, not the bare global: WoW: Forever moved CVar access into
+        -- C_CVar, so the global guard here would silently do nothing there.
+        if ns.SetCVar then
+            ns.SetCVar(INCLUDE_REAGENTS_CVAR, checked and "1" or "0")
             ns:Debug("Include Reagents set via CVar:", checked)
         end
         -- Also sync with Blizzard's checkbox if available
@@ -454,8 +458,8 @@ local function CreateIncludeReagentsCheckbox(parent)
     -- Sync state when shown
     checkbox:SetScript("OnShow", function(self)
         -- Try CVar first
-        if GetCVar then
-            local value = GetCVar(INCLUDE_REAGENTS_CVAR)
+        if ns.GetCVar then
+            local value = ns.GetCVar(INCLUDE_REAGENTS_CVAR)
             if value then
                 self:SetChecked(value == "1")
                 ns:Debug("Include Reagents read from CVar:", value)

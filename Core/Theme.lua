@@ -115,7 +115,11 @@ local cachedThemeName = nil
 --- Returns the active theme table
 function Theme:Get()
     local themeName = Database:GetSetting("theme") or "guda"
-    if themeName == "retail" and ns.IsRetail then
+    -- HasRetailFrameArt, not IsRetail: the "retail" theme only duplicates
+    -- "blizzard" on a client whose native frame art is already the metal look.
+    -- WoW: Forever is modern-API on Vanilla art, so there the bundled skin is a
+    -- genuinely different look and must not be remapped away.
+    if themeName == "retail" and ns.ExpansionFeatures.HasRetailFrameArt then
         themeName = "guda"
     elseif themeName == "classic" then
         themeName = "blizzard"

@@ -19,6 +19,9 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Utils = ns:GetModule("Utils")
 
+-- WoW: Forever has no global GetItemInfo; resolved in Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+
 -- Batch state. Only one batch can run at a time (guarded by isRunning).
 local isRunning = false
 local queue = {}          -- pending stacks: { bagID, slot, count }

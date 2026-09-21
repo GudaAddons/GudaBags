@@ -18,7 +18,9 @@
 --    API -- C_Bank.*, CharacterBankTab_N, SortBags, IsBoundToAccountUntilEquip --
 --    and lacks the Classic-only GetNumBankSlots. Classifying it Vanilla would strip
 --    the bank tabs and native sort off a client that has both. Its carried-bag
---    layout, though, is backpack + 5 bags + keyring with NO reagent bag (section 5).
+--    layout is Retail's -- backpack + 4 bags + reagent bag at 5 -- plus a keyring
+--    (section 5). Its FRAME ART, however, is Vanilla's, which is a separate
+--    question from the API and has its own flag (HasRetailFrameArt).
 
 local ADDON = os.getenv("GUDABAGS_PATH")
 
@@ -94,23 +96,30 @@ local SHIPPED = {
 }
 
 local SHIPPED_FEATURES = {
-    ["Retail / Midnight"] = {HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
+    -- HasRetailFrameArt is true only on real Retail: the client's own bag frame
+    -- art is already the metal look, so the bundled "retail" skin is redundant.
+    ["Retail / Midnight"] = {HasRetailFrameArt = true,
+        HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
         HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = true,
         HasNativeBagSort = true, HasReagentBank = true, HasWarbandBank = true,
         HasCurrency = true, HasAccountBoundItems = true},
-    ["Retail / TWW"] = {HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
+    ["Retail / TWW"] = {HasRetailFrameArt = true,
+        HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
         HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = true,
         HasNativeBagSort = true, HasReagentBank = true, HasWarbandBank = true,
         HasCurrency = true, HasAccountBoundItems = true},
-    ["MoP Classic"] = {HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
+    ["MoP Classic"] = {HasRetailFrameArt = false,
+        HasKeyring = false, HasQuiverBags = false, HasAmmoBags = false,
         HasGemBags = true, HasInscriptionBags = true, HasInteractionManager = true,
         HasNativeBagSort = false, HasReagentBank = false, HasWarbandBank = false,
         HasCurrency = true, HasAccountBoundItems = true},
-    ["TBC Anniversary"] = {HasKeyring = true, HasQuiverBags = true, HasAmmoBags = true,
+    ["TBC Anniversary"] = {HasRetailFrameArt = false,
+        HasKeyring = true, HasQuiverBags = true, HasAmmoBags = true,
         HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = false,
         HasNativeBagSort = false, HasReagentBank = false, HasWarbandBank = false,
         HasCurrency = false, HasAccountBoundItems = false},
-    ["Classic Era"] = {HasKeyring = true, HasQuiverBags = true, HasAmmoBags = true,
+    ["Classic Era"] = {HasRetailFrameArt = false,
+        HasKeyring = true, HasQuiverBags = true, HasAmmoBags = true,
         HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = false,
         HasNativeBagSort = false, HasReagentBank = false, HasWarbandBank = false,
         HasCurrency = false, HasAccountBoundItems = false},
@@ -169,6 +178,11 @@ local F = Detect(16001, 1, true)
 -- the exe string probe for KeyRingButton was a false negative -- FrameXML lives
 -- in CASC, not the binary).
 local FOREVER_FEATURES = {
+    -- The one flag where Forever is NOT Retail: it runs the modern API on
+    -- Vanilla-era frame art, so the bundled "retail" theme and the retail slot
+    -- textures are a real choice there rather than a duplicate of "blizzard".
+    -- Gating those on IsRetail hid them from Forever entirely.
+    HasRetailFrameArt = false,
     HasKeyring = true, HasQuiverBags = false, HasAmmoBags = false,
     HasGemBags = false, HasInscriptionBags = false, HasInteractionManager = true,
     HasNativeBagSort = true, HasReagentBank = true, HasWarbandBank = true,
@@ -177,7 +191,7 @@ local FOREVER_FEATURES = {
 for _, flag in ipairs({"HasKeyring", "HasQuiverBags", "HasAmmoBags", "HasGemBags",
                        "HasInscriptionBags", "HasInteractionManager", "HasNativeBagSort",
                        "HasReagentBank", "HasWarbandBank", "HasCurrency",
-                       "HasAccountBoundItems"}) do
+                       "HasAccountBoundItems", "HasRetailFrameArt"}) do
     print(string.format("  %-24s %s", flag, tostring(F.Features[flag])))
     Check("Forever Features." .. flag, F.Features[flag], FOREVER_FEATURES[flag])
 end
@@ -286,11 +300,14 @@ print("  " .. #ALL .. " scenario(s) checked")
 -- 5. Carried container discovery (Core/Constants.lua)
 --
 -- Constants derives BAG_IDS from the client rather than hardcoding it, because the
--- layout is not the same across flavors: Retail is backpack + 4 bags + reagent bag
--- at 5, while WoW: Forever is backpack + FIVE bags + a keyring and has NO reagent
--- bag -- so on Forever, id 5 is an ordinary bag. The Forever rows feed the worst
--- case: a mainline-shaped client that still reports a reagent slot in
--- NUM_TOTAL_EQUIPPED_BAG_SLOTS and Enum.BagIndex.ReagentBag. Neither may leak in.
+-- layout is not the same across flavors: Classic is backpack + 4 bags, Retail adds
+-- a reagent bag at 5, and WoW: Forever matches Retail and adds a keyring.
+--
+-- The Forever rows exist because they were wrong once. An earlier reading had
+-- Forever at five ordinary bags with no reagent bag, and these cases asserted that
+-- Enum.BagIndex.ReagentBag must NOT be believed there. It should have been: the
+-- client was right and the addon was overriding it, which cost the reagent bag its
+-- own identity and, depending on NUM_BAG_SLOTS, its place in BAG_IDS entirely.
 --
 -- The Retail rows are the regression lock: they must reproduce the hardcoded list
 -- this file replaced, exactly.
@@ -354,14 +371,19 @@ local BAG_CASES = {
     {name = "Retail 12.1",  iface = 120100, pid = 1,  numBag = 4,   total = 5,
      reagent = 5,   tabs = 6,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5,
      playerMax = 4, keyring = nil},
-    -- Worst case: the mainline enum and total still describe a reagent bag at 5.
-    {name = "FOREVER",      iface = 16001,  pid = 1,  numBag = 5,   total = 6,
-     reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
-     playerMax = 5, keyring = -2},
-    -- NUM_BAG_SLOTS absent: fall back to Forever's five equipped bags.
-    {name = "FOREVER (no NUM_BAG_SLOTS)", iface = 16001, pid = 1, numBag = nil, total = nil,
-     reagent = nil, tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = nil,
-     playerMax = 5, keyring = -2},
+    -- Forever's real layout, confirmed in game 2026-09-21: main bag + FOUR ordinary
+    -- bags + a reagent bag at 5 + a keyring. Identical to Retail except for the
+    -- keyring -- which is why there is no Forever branch in DiscoverCarriedBags.
+    {name = "FOREVER",      iface = 16001,  pid = 1,  numBag = 4,   total = 5,
+     reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5,
+     playerMax = 4, keyring = -2},
+    -- NUM_TOTAL_EQUIPPED_BAG_SLOTS absent: reconstruct from NUM_BAG_SLOTS plus the
+    -- reagent bag the enum reports. The regression guard for the bug this replaced,
+    -- which built the list from NUM_BAG_SLOTS alone and so dropped id 5 entirely --
+    -- the reagent bag was never scanned and IsPlayerBagID(5) rejected its updates.
+    {name = "FOREVER (no total)", iface = 16001, pid = 1, numBag = 4, total = nil,
+     reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5,
+     playerMax = 4, keyring = -2},
     -- A Retail-path client that reports no reagent bag must not get one invented.
     -- An earlier draft defaulted REAGENT_BAG to 5 and appended that id to BAG_IDS,
     -- which made the addon scan a container the client does not have.
@@ -405,6 +427,48 @@ for _, case in ipairs(BAG_CASES) do
         Check(case.name .. " character bank tabs", #C.CHARACTER_BANK_TAB_IDS, case.tabs)
         Check(case.name .. " warband bank tabs", #C.WARBAND_BANK_TAB_IDS, case.tabs)
     end
+end
+
+-------------------------------------------------
+-- 6. Guild bank capability gate (Core/Constants.lua FEATURES.GUILD_BANK)
+--
+-- Guild banks arrived in TBC, so every flavor except Classic Era has them.
+--
+-- This gate used to read `InterfaceVersion >= 20000`, which is false on WoW:
+-- Forever -- interface 16001 is a Vanilla-shaped number on a modern-API client.
+-- The whole feature therefore vanished there: GuildBankScanner and GuildBankFrame
+-- both early-return on this flag, so the module never registered, the header
+-- button never appeared and the setting was hidden. Nothing errored, which is why
+-- it went unnoticed.
+--
+-- Locked down here per flavor so the next client with an unexpected version
+-- number cannot silently disable it again. The Classic Era row is the other half
+-- of the contract: the fix must not hand guild banks to a flavor without them.
+-------------------------------------------------
+print("")
+print("Guild bank capability gate:")
+
+local GUILD_BANK_CASES = {
+    {name = "Classic Era", iface = 11509,  pid = 2,  expect = false},
+    {name = "TBC",         iface = 20506,  pid = 5,  expect = true},
+    {name = "MoP",         iface = 50504,  pid = 19, expect = true},
+    {name = "Retail TWW",  iface = 110207, pid = 1,  expect = true},
+    {name = "Retail 12.1", iface = 120100, pid = 1,  expect = true},
+    -- The regression this section exists for.
+    {name = "FOREVER",     iface = 16001,  pid = 1,  expect = true},
+    -- Forever reporting WOW_PROJECT_CLASSIC must still get the guild bank: the
+    -- gate keys off IsClassicEra, and Expansion.lua excludes Forever from that.
+    {name = "FOREVER (pid=CLASSIC)", iface = 16001, pid = 2, expect = true},
+    -- A launch-day patch bump inside Forever's range changes nothing.
+    {name = "FOREVER (16100)", iface = 16100, pid = 1, expect = true},
+}
+
+for _, case in ipairs(GUILD_BANK_CASES) do
+    local C = DiscoverBags(case.iface, case.pid, 5, nil, nil, 9)
+    local got = C.FEATURES and C.FEATURES.GUILD_BANK
+    print(string.format("  %-24s iface=%-6d GUILD_BANK = %s",
+          case.name, case.iface, tostring(got)))
+    Check(case.name .. " FEATURES.GUILD_BANK", got, case.expect)
 end
 
 print("")
