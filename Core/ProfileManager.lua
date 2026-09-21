@@ -422,7 +422,11 @@ function ProfileManager:ResetToDefaults()
     -- Reset settings to defaults (preserve frame positions)
     if Constants.DEFAULTS then
         for key, default in pairs(Constants.DEFAULTS) do
-            GudaBags_CharDB.settings[key] = default
+            -- Copied for the same reason the import path below copies: a table
+            -- default assigned straight across IS the Constants.DEFAULTS table,
+            -- and the call sites that mutate such a setting in place would be
+            -- rewriting the default itself.
+            GudaBags_CharDB.settings[key] = DeepCopy(default)
         end
     end
 

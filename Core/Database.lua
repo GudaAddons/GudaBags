@@ -9,6 +9,17 @@ local Events = ns:GetModule("Events")
 local playerFullName
 local isFreshInstall = false
 
+local function DeepCopy(orig)
+    if type(orig) ~= "table" then
+        return orig
+    end
+    local copy = {}
+    for k, v in pairs(orig) do
+        copy[DeepCopy(k)] = DeepCopy(v)
+    end
+    return copy
+end
+
 local function GetPlayerFullName()
     -- Don't use cached value if it was set incorrectly (nil name)
     if playerFullName and not playerFullName:match("^nil%-") then
@@ -52,6 +63,12 @@ local function InitializeCharDB()
         }
     end
 
+    -- Guarded like the tables below it. A CharDB that arrives without settings
+    -- would otherwise make the defaults loop throw; the pcall around event
+    -- handlers swallows that, so every migration below is skipped and every later
+    -- SetSetting throws on the same nil index -- writes fail silently while reads
+    -- keep returning defaults, which looks exactly like "settings never save".
+    GudaBags_CharDB.settings = GudaBags_CharDB.settings or {}
     GudaBags_CharDB.pinnedSlots = GudaBags_CharDB.pinnedSlots or {}
     GudaBags_CharDB.lockedItems = GudaBags_CharDB.lockedItems or {}
     GudaBags_CharDB.setProtectionExceptions = GudaBags_CharDB.setProtectionExceptions or {}
@@ -59,7 +76,12 @@ local function InitializeCharDB()
 
     for key, default in pairs(Constants.DEFAULTS) do
         if GudaBags_CharDB.settings[key] == nil then
-            GudaBags_CharDB.settings[key] = default
+            -- Copied, never referenced. A table default assigned straight across
+            -- IS the Constants.DEFAULTS table, and the call sites that mutate
+            -- such a setting in place (mergedGroups, hiddenChips) would be
+            -- rewriting the default itself for every character loaded this
+            -- session.
+            GudaBags_CharDB.settings[key] = DeepCopy(default)
         end
     end
 
