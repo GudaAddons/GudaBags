@@ -5,6 +5,11 @@ ns:RegisterModule("BagFrame.LayoutEngine", LayoutEngine)
 
 local Constants = ns.Constants
 
+-- WoW: Forever has no global GetItemInfo -- it lives only in C_Item there.
+-- Compatibility/API.lua resolves whichever this client has; cached as a local
+-- because the section builders call it per item.
+local GetItemInfo = ns.GetItemInfo
+
 -- The keyring builds its item records here by hand rather than through
 -- ItemScanner:ScanSlot, so it has to resolve icons the same way or it inherits the
 -- nil-iconFileID blank slot that ScanSlot already guards against. Resolved lazily

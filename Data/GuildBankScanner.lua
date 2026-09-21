@@ -14,6 +14,10 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Expansion = ns:GetModule("Expansion")
 
+-- WoW: Forever has no global GetItemInfo/GetItemInfoInstant; resolved in
+-- Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+local GetItemInfoInstant = ns.GetItemInfoInstant
 
 -- Cache for scanned guild bank data
 local cachedGuildBank = {}
@@ -596,7 +600,10 @@ Events:Register("ADDON_LOADED", function(event, addonName)
 end, GuildBankScanner)
 
 -- Also try to hook immediately if addon is already loaded
-if IsAddOnLoaded and IsAddOnLoaded("Blizzard_GuildBankUI") then
+-- ns.IsAddOnLoaded, not the bare global: WoW: Forever only has
+-- C_AddOns.IsAddOnLoaded, so the global guard would skip this hook there.
+-- Data/EquipmentSets.lua:217 already prefers C_AddOns the same way.
+if ns.IsAddOnLoaded and ns.IsAddOnLoaded("Blizzard_GuildBankUI") then
     HookBlizzardGuildBankFrame()
 end
 
@@ -834,7 +841,13 @@ end, GuildBankScanner)
 
 -- PLAYER_INTERACTION_MANAGER for modern WoW (MoP Remix+, Retail, TWW)
 -- This fires BEFORE Blizzard's frame shows, allowing preemptive hiding
-if Expansion and Expansion.InterfaceVersion and Expansion.InterfaceVersion >= 50000 then
+--
+-- Gated on the named capability rather than `InterfaceVersion >= 50000`, which is
+-- what Features.HasInteractionManager exists for and which the two call sites
+-- above (567, 654) already use. The version compare was false on WoW: Forever --
+-- interface 16001 -- so a client that does have the interaction manager fell back
+-- to inferring "the guild bank is open" from frame traffic.
+if Expansion and Expansion.Features and Expansion.Features.HasInteractionManager then
     -- Check if the enum exists (modern WoW only)
     if Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.GuildBanker then
         local GUILD_BANKER_TYPE = Enum.PlayerInteractionType.GuildBanker

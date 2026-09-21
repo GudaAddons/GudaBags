@@ -9,6 +9,15 @@ local Font = ns:GetModule("Font")
 local Tooltip = ns:GetModule("Tooltip")
 local Utils = ns:GetModule("Utils")
 
+-- WoW: Forever has no global GetItemInfo/GetItemSpell -- they live only in
+-- C_Item there. Compatibility/API.lua resolves whichever this client has;
+-- cached as locals because SetItem runs per button.
+local GetItemInfo = ns.GetItemInfo
+local GetItemSpell = ns.GetItemSpell
+-- Normalised in Compatibility/API.lua: C_Spell.GetSpellCooldown returns a table
+-- where the global returned four values.
+local GetSpellCooldown = ns.GetSpellCooldown
+
 -------------------------------------------------
 -- Upgrade arrow (Pawn / SimpleItemLevel compatibility)
 -- Drawn on our own buttons using whichever advisor addon is present. Pawn
@@ -395,10 +404,15 @@ local RETAIL_SLOT_TEXTURES = {
     highlight = "Interface\\AddOns\\GudaBags\\Assets\\Themes\\retail\\btn_highlight_strong",
 }
 
--- Resolve effective slot textures: on Retail WoW use theme directly,
--- on Classic expansions the retailEmptySlots setting controls it
+-- Resolve effective slot textures: where the client's own slot art is already
+-- Retail's, the theme decides; everywhere else the retailEmptySlots setting does.
+--
+-- Keyed on HasRetailFrameArt rather than IsRetail so WoW: Forever -- modern API,
+-- Vanilla art -- takes the setting-driven path like the Classic flavors. Under
+-- IsRetail it took the theme path, where Forever's theme has no slotTextures, so
+-- the retail slot art was unreachable and the setting did nothing.
 local function GetEffectiveSlotTextures()
-    if ns.IsRetail then
+    if ns.ExpansionFeatures.HasRetailFrameArt then
         local Theme = ns:GetModule("Theme")
         return Theme:Get().slotTextures
     end

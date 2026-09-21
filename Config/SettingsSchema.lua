@@ -16,7 +16,11 @@ function SettingsSchema.GetGeneral()
                 { value = "guda", label = L["SETTINGS_THEME_GUDA"] },
                 { value = "blizzard", label = L["SETTINGS_THEME_BLIZZARD"] },
             }
-            if not ns.IsRetail then
+            -- Offered wherever the client's own frame art is not already the
+            -- modern metal look -- every Classic flavor, and WoW: Forever, which
+            -- is modern-API on Vanilla art. On real Retail it would just
+            -- duplicate the "blizzard" theme.
+            if not ns.ExpansionFeatures.HasRetailFrameArt then
                 table.insert(opts, { value = "retail", label = L["SETTINGS_THEME_RETAIL"] })
             end
             return opts
@@ -29,7 +33,9 @@ function SettingsSchema.GetGeneral()
         { type = "slider", key = "bgAlpha", label = L["SETTINGS_BG_OPACITY"], min = 0, max = 100, step = 5, format = "%" },
         { type = "row", children = {
             { type = "checkbox", key = "retailEmptySlots", label = L["SETTINGS_RETAIL_EMPTY_SLOTS"], tooltip = L["SETTINGS_RETAIL_EMPTY_SLOTS_TIP"],
-              hidden = function() return ns.IsRetail end },
+              -- Same reasoning as the theme option: only pointless where the
+              -- client's own slot art is already Retail's.
+              hidden = function() return ns.ExpansionFeatures.HasRetailFrameArt end },
             { type = "checkbox", key = "minimalEmptySlots", label = L["SETTINGS_MINIMAL_EMPTY_SLOTS"], tooltip = L["SETTINGS_MINIMAL_EMPTY_SLOTS_TIP"] },
         }},
 

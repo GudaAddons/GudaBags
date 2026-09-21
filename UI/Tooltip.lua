@@ -8,6 +8,11 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Utils = ns:GetModule("Utils")
 
+-- WoW: Forever has no global GetItemInfo/GetItemQualityColor; resolved in
+-- Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+local GetItemQualityColor = ns.GetItemQualityColor
+
 -- Tooltips we are allowed to write into: the ones a player actually reads.
 --
 -- Everything else is a hidden scanning tooltip (ours, Pawn's, CanIMogIt's, or

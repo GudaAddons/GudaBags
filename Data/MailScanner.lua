@@ -6,6 +6,9 @@ ns:RegisterModule("MailScanner", MailScanner)
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 
+-- WoW: Forever has no global GetItemInfo; resolved in Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+
 -- State
 local isMailboxOpen = false
 local cachedMail = {}

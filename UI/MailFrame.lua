@@ -11,6 +11,9 @@ local Font = ns:GetModule("Font")
 local Theme = ns:GetModule("Theme")
 local Utils = ns:GetModule("Utils")
 
+-- WoW: Forever has no global GetItemInfo; resolved in Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+
 local MailHeader = nil
 local MailFooter = nil
 local MailScanner = nil

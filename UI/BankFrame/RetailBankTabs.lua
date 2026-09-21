@@ -13,8 +13,11 @@ local bankTypeButtons = {}
 local onBankTypeChanged = nil
 local RetailBankScanner = nil
 
-local BANK_TYPE_CHARACTER = Enum.BankType.Character
-local BANK_TYPE_ACCOUNT = Enum.BankType.Account
+-- Existence-guarded: this module loads on any IsRetail client, WoW: Forever
+-- included, and an unguarded Enum.BankType read here would be a load-time error
+-- rather than a missing feature. See Data/RetailBankScanner.lua for the same note.
+local BANK_TYPE_CHARACTER = Enum and Enum.BankType and Enum.BankType.Character
+local BANK_TYPE_ACCOUNT = Enum and Enum.BankType and Enum.BankType.Account
 
 local function LoadComponents()
     RetailBankScanner = ns:GetModule("RetailBankScanner")

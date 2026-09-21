@@ -8,6 +8,11 @@ local Constants = ns.Constants
 -- Numeric item classes: itemType/itemSubType from GetItemInfo are localized
 local ITEM_CLASS = Constants.ITEM_CLASS
 
+-- WoW: Forever has no global GetItemInfo -- it lives only in C_Item there.
+-- Compatibility/API.lua resolves whichever this client has; cached as a local
+-- because ScanSlot runs per slot.
+local GetItemInfo = ns.GetItemInfo
+
 -- Get inventory slot for bank bag (same logic as BankFooter for API consistency)
 local function GetBankBagInvSlot(bankBagIndex)
     if ContainerIDToInventoryID then
@@ -551,8 +556,8 @@ function ItemScanner:ScanContainer(bagID)
     local containerItemID = nil
     local containerTexture = nil
     -- Ask the carried-bag set, not a numeric range. Carried ids overlap the bank
-    -- range below -- the reagent bag is 5 on Retail, and on WoW: Forever (no reagent
-    -- bag) 5 is an ordinary fifth equipped bag -- so any carried container that misses this
+    -- range below -- the reagent bag is 5 on Retail and on WoW: Forever, and on the
+    -- Classic flavors 5 is a BANK bag -- so any carried container that misses this
     -- branch resolves through GetBankBagInvSlot and comes back wearing a BANK bag's
     -- item and icon. IsPlayerBagID is built from the discovered BAG_IDS, so it stays
     -- correct as the layout changes; on Classic it excludes 5+, which really are

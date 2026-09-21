@@ -411,8 +411,8 @@ updateFrame:SetScript("OnUpdate", ProcessBatchedUpdates)
 -- This gates OnBagUpdate, so anything it rejects has its BAG_UPDATE dropped and
 -- never refreshes live. It used to test `bagID >= 0 and bagID <= 4` -- the exact
 -- hardcoded range Constants warns against -- which silently excluded any carried
--- container past 4 that was not precisely REAGENT_BAG. On WoW: Forever, whose fifth
--- equipped bag is id 5 (and which has no reagent bag), that is a live container.
+-- container past 4 that was not precisely REAGENT_BAG, and any flavor whose layout
+-- we had misread. Ask the discovered set instead and the question cannot come up.
 -- Forever's keyring is covered by the KEYRING_BAG_ID term, as on Classic Era/TBC.
 --
 -- IsPlayerBagID deliberately excludes the keyring, so the second term is required;

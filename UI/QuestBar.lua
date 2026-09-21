@@ -9,6 +9,11 @@ local Events = ns:GetModule("Events")
 local Font = ns:GetModule("Font")
 local Utils = ns:GetModule("Utils")
 
+-- WoW: Forever has no global GetItemInfo/GetItemSpell; resolved in
+-- Compatibility/API.lua.
+local GetItemInfo = ns.GetItemInfo
+local GetItemSpell = ns.GetItemSpell
+
 -- Local state
 local frame = nil
 local mainButton = nil
