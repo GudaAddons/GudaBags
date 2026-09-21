@@ -87,13 +87,18 @@ local RELOCATED = {
     GetCVar              = C_CVar,
     SetCVar              = C_CVar,
     IsAddOnLoaded        = C_AddOns,
+    -- Both take no arguments and return nothing, so the relocation is shape-safe.
+    -- Without this the bank stays open after the frame is hidden on a client that
+    -- dropped the global: the addon parents Blizzard's bank frame away, so nothing
+    -- else ends the banker session and the player has to walk out of range.
+    CloseBankFrame       = C_Bank,
 }
 
 -- Stable order for printing, so /guda status output is comparable between runs.
 API.resolvedNames = {
     "GetItemInfo", "GetItemInfoInstant", "GetItemSpell", "GetItemQualityColor",
     "GetItemClassInfo", "GetCoinTextureString", "GetCVar", "SetCVar",
-    "IsAddOnLoaded", "GetSpellCooldown",
+    "IsAddOnLoaded", "CloseBankFrame", "GetSpellCooldown",
 }
 
 -- Which source each name resolved from, for /guda status. A MISSING line here is

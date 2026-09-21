@@ -328,14 +328,30 @@ local function CreateBankFrame()
 
     -- Close bank interaction and reset character when frame is hidden
     f:SetScript("OnHide", function()
-        if ns.IsRetail then
-            if C_PlayerInteractionManager and C_PlayerInteractionManager.ClearInteraction then
-                C_PlayerInteractionManager.ClearInteraction(Enum.PlayerInteractionType.Banker)
-            end
-        else
-            if CloseBankFrame then
-                CloseBankFrame()
-            end
+        -- End the banker session, not just our window. Blizzard's bank frame is
+        -- parented away and unregistered (HideDefaultBankFrame), so its own OnHide
+        -- never runs and nothing else will close the interaction -- the player stays
+        -- "at the bank" until they walk out of range.
+        --
+        -- Probed by existence, never by flavor. The old IsRetail/else split sent
+        -- WoW: Forever down the interaction-manager branch and made CloseBankFrame
+        -- unreachable there, so if any part of that path is missing -- and
+        -- Enum.PlayerInteractionType.Banker was read unguarded, which yields a
+        -- silent no-op when the member is absent -- nothing closed the bank at all.
+        --
+        -- Both are attempted rather than one-or-the-other: they are not equivalent
+        -- on every client, and a redundant close is already absorbed by the
+        -- closingBank re-entrancy guard in ns.OnBankClosed.
+        if C_PlayerInteractionManager and C_PlayerInteractionManager.ClearInteraction
+            and Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.Banker then
+            C_PlayerInteractionManager.ClearInteraction(Enum.PlayerInteractionType.Banker)
+        end
+        -- ns.CloseBankFrame, not the bare global: WoW: Forever moved this one into
+        -- C_Bank like the rest of the legacy surface, so the global is nil there and
+        -- ClearInteraction alone does not end the session. Compatibility/API.lua
+        -- resolves whichever the client has.
+        if ns.CloseBankFrame then
+            ns.CloseBankFrame()
         end
         -- Clear search bar text and filters
         SearchBar:Clear(f)
@@ -513,6 +529,12 @@ local function CreateBankFrame()
     end
 
     -- Create bottom bank type tabs (Bank | Warband) - Retail only
+    --
+    -- Creation deliberately still asks the enum, not the runtime probe that
+    -- ShowBottomTabs uses: this runs once while the frame is built, before combat
+    -- can start (Rule 3), and availability is not knowable until a bank is opened.
+    -- The bar is created hidden wherever the client could ever need it; whether it
+    -- is ever SHOWN is the scanner's call.
     if ns.IsRetail and Constants.WARBAND_BANK_ACTIVE then
         f.bottomTabs = {}
         f.bottomTabBar = CreateFrame("Frame", "GudaBankBottomTabBar", f)
@@ -831,7 +853,12 @@ function BankFrame:ShowPurchasePrompt(bankTypeEnum)
     prompt:Show()
 
     -- Set frame to minimum size for purchase prompt
-    frame:SetSize(math.max(frame:GetWidth(), 380), math.max(frame:GetHeight(), (ns.IsRetail and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT)))
+    -- The taller retail minimum exists to fit retail's chrome, so it is keyed on
+    -- HasRetailFrameArt, not IsRetail. WoW: Forever runs the modern API on Vanilla
+    -- frame art, so IsRetail is true there while the chrome is the short kind --
+    -- sizing off IsRetail gave it a retail-shaped bank it has no art for. Every
+    -- BANK_MIN_HEIGHT pick below asks the same question.
+    frame:SetSize(math.max(frame:GetWidth(), 380), math.max(frame:GetHeight(), (ns.ExpansionFeatures.HasRetailFrameArt and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT)))
 end
 
 -- Hide purchase prompt and restore normal content
@@ -852,7 +879,14 @@ end
 
 function BankFrame:ShowSideTabs(characterFullName, bankType)
     if not frame or not frame.sideTabBar then return end
-    if not ns.IsRetail then return end
+    -- HasTabbedBank, not IsRetail. WoW: Forever's containers are bank tabs, but the
+    -- client presents them Classic-style -- one grid plus a lock row for the ones
+    -- you have not bought -- so a tab strip there offers the player tabs their own
+    -- bank never showed them.
+    if not ns.ExpansionFeatures.HasTabbedBank then
+        self:HideSideTabs()
+        return
+    end
 
     -- Get bank type from footer if not specified
     bankType = bankType or (BankFooter and BankFooter:GetCurrentBankType()) or "character"
@@ -864,7 +898,18 @@ function BankFrame:ShowSideTabs(characterFullName, bankType)
 
     -- Get the appropriate tab container IDs based on bank type
     local tabContainerIDs = isWarband and Constants.WARBAND_BANK_TAB_IDS or Constants.CHARACTER_BANK_TAB_IDS
-    local tabsActive = isWarband and Constants.WARBAND_BANK_ACTIVE or Constants.CHARACTER_BANK_TABS_ACTIVE
+    -- Same distinction as ShowBottomTabs: for the account bank, "does the client
+    -- define the enum" is not "does the bank exist".
+    --
+    -- Spelled out rather than `isWarband and X or Y`: that idiom silently yields Y
+    -- whenever X is false, so a warband bank that is merely unavailable would fall
+    -- through to the CHARACTER tab flag and report itself active.
+    local tabsActive
+    if isWarband then
+        tabsActive = (RetailBankScanner and RetailBankScanner:IsWarbandBankAvailable()) or false
+    else
+        tabsActive = Constants.CHARACTER_BANK_TABS_ACTIVE
+    end
 
     ns:Debug("  tabContainerIDs count:", tabContainerIDs and #tabContainerIDs or 0)
     ns:Debug("  tabsActive:", tostring(tabsActive))
@@ -1314,16 +1359,38 @@ end
 
 function BankFrame:ShowBottomTabs()
     if not frame or not frame.bottomTabBar then return end
-    if not ns.IsRetail or not Constants.WARBAND_BANK_ACTIVE then return end
+    -- A Classic-presenting bank has no second bank to switch to, so the whole bar
+    -- is a retail affordance. See Expansion.Features.HasTabbedBank.
+    if not ns.ExpansionFeatures.HasTabbedBank then
+        if BankFooter and BankFooter:GetCurrentBankType() == "warband" then
+            BankFooter:SetCurrentBankType("character")
+        end
+        self:HideBottomTabs()
+        return
+    end
+
+    -- Whether an account bank EXISTS is the scanner's question, not the enum's.
+    -- Constants.WARBAND_BANK_ACTIVE only reports that this client defines
+    -- Enum.BagIndex.AccountBankTab_1, which WoW: Forever does while having no
+    -- account bank -- gating on it put a Warband tab on a bank that cannot fill it.
+    if not (RetailBankScanner and RetailBankScanner:IsWarbandBankAvailable()) then
+        -- Nothing to switch between, so the bar is noise. Send the view home too:
+        -- a bank type left on "warband" would otherwise render an absent bank.
+        if BankFooter and BankFooter:GetCurrentBankType() == "warband" then
+            BankFooter:SetCurrentBankType("character")
+        end
+        self:HideBottomTabs()
+        return
+    end
 
     -- Create tabs if they don't exist
     if not frame.bottomTabs.character then
-        frame.bottomTabs.character = CreateBottomBankTypeTab(frame.bottomTabBar, "character", "Bank")
+        frame.bottomTabs.character = CreateBottomBankTypeTab(frame.bottomTabBar, "character", ns.L["BANK_TITLE_CHARACTER"])
         frame.bottomTabs.character:SetPoint("TOPLEFT", frame.bottomTabBar, "TOPLEFT", 0, 0)
     end
 
     if not frame.bottomTabs.warband then
-        frame.bottomTabs.warband = CreateBottomBankTypeTab(frame.bottomTabBar, "warband", "Warband")
+        frame.bottomTabs.warband = CreateBottomBankTypeTab(frame.bottomTabBar, "warband", ns.L["BANK_TITLE_WARBAND"])
         frame.bottomTabs.warband:SetPoint("LEFT", frame.bottomTabs.character, "RIGHT", BOTTOM_TAB_SPACING, 0)
     end
 
@@ -1850,7 +1917,7 @@ function BankFrame:Refresh()
         local iconSize = Database:GetSetting("iconSize")
         local spacing = Database:GetSetting("iconSpacing")
         local minWidth = (iconSize * columns) + (Constants.FRAME.PADDING * 2)
-        local minHeight = math.max((6 * iconSize) + (5 * spacing) + 80, (ns.IsRetail and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
+        local minHeight = math.max((6 * iconSize) + (5 * spacing) + 80, (ns.ExpansionFeatures.HasRetailFrameArt and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
 
         frame:SetSize(math.max(minWidth, 250), minHeight)
         BankFooter:UpdateSlotInfo(0, 0)
@@ -1883,7 +1950,7 @@ function BankFrame:Refresh()
     -- it was the bulk of the per-tab-switch cost beyond the actual render).
     local allTabsContainerIDs = isWarbandView and Constants.WARBAND_BANK_TAB_IDS or Constants.CHARACTER_BANK_TAB_IDS
     local isAllTabsView = viewType ~= "category" and viewType ~= "split"
-        and ns.IsRetail and selectedTab == 0
+        and ns.ExpansionFeatures.HasTabbedBank and selectedTab == 0
         and (Constants.CHARACTER_BANK_TABS_ACTIVE or isWarbandView)
         and allTabsContainerIDs and #allTabsContainerIDs > 1
 
@@ -1985,7 +2052,11 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, hasSearch, isRe
     local selectedTab = RetailBankScanner and RetailBankScanner:GetSelectedTab() or 0
     local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
     local isWarbandView = ns.IsRetail and currentBankType == "warband"
-    local showTabSections = ns.IsRetail and selectedTab == 0 and (Constants.CHARACTER_BANK_TABS_ACTIVE or isWarbandView)
+    -- HasTabbedBank, not IsRetail: a client whose own bank is one grid plus a
+    -- purchasable-slot row must not be sliced into per-tab sections, even though
+    -- its containers really are CharacterBankTab_N underneath.
+    local showTabSections = ns.ExpansionFeatures.HasTabbedBank and selectedTab == 0
+        and (Constants.CHARACTER_BANK_TABS_ACTIVE or isWarbandView)
 
     -- Get tab info for headers
     local tabContainerIDs = isWarbandView and Constants.WARBAND_BANK_TAB_IDS or Constants.CHARACTER_BANK_TAB_IDS
@@ -2057,7 +2128,7 @@ function BankFrame:RefreshSingleView(bank, bagsToShow, settings, hasSearch, isRe
     local frameHeightNeeded = actualContentHeight + chromeHeight
 
     -- Apply minimum height (2 rows of icons + spacing + chrome, min 340)
-    local minFrameHeight = math.max((2 * iconSize) + (1 * spacing) + chromeHeight, (ns.IsRetail and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
+    local minFrameHeight = math.max((2 * iconSize) + (1 * spacing) + chromeHeight, (ns.ExpansionFeatures.HasRetailFrameArt and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
     local adjustedFrameHeight = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check screen limits
@@ -2375,7 +2446,7 @@ function BankFrame:RefreshSingleViewWithTabs(bank, settings, hasSearch, isReadOn
     local frameHeightNeeded = containerHeight + chromeHeight
 
     -- Apply minimum height (2 rows of icons + spacing + chrome, min 340)
-    local minFrameHeight = math.max((2 * iconSize) + (1 * spacing) + chromeHeight, (ns.IsRetail and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
+    local minFrameHeight = math.max((2 * iconSize) + (1 * spacing) + chromeHeight, (ns.ExpansionFeatures.HasRetailFrameArt and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
     local adjustedFrameHeight = math.max(frameHeightNeeded, minFrameHeight)
 
     -- Check screen limits
@@ -2490,7 +2561,7 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
     local correctFrameHeight = contentHeight + chromeHeight
 
     -- Apply minimum frame height (2 rows of icons + chrome, min 340)
-    local minFrameHeight = math.max((2 * iconSize) + chromeHeight, (ns.IsRetail and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
+    local minFrameHeight = math.max((2 * iconSize) + chromeHeight, (ns.ExpansionFeatures.HasRetailFrameArt and Constants.FRAME.BANK_MIN_HEIGHT_RETAIL or Constants.FRAME.BANK_MIN_HEIGHT))
     local adjustedFrameHeight = math.max(correctFrameHeight, minFrameHeight)
 
     -- Check screen limits

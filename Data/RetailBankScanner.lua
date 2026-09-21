@@ -31,6 +31,9 @@ local isBankOpen = false
 local currentBankType = BANK_TYPE_CHARACTER  -- Which bank type is currently being viewed
 local selectedTabIndex = 0  -- 0 = all tabs, 1+ = specific tab
 
+-- Last answer from IsWarbandBankAvailable(). nil = never probed.
+local warbandAvailable = nil
+
 -- In modern Retail (TWW+), each bank tab is a separate container
 -- Enum.BagIndex.CharacterBankTab_1 through CharacterBankTab_6
 
@@ -63,16 +66,44 @@ function RetailBankScanner:GetBankTypeName(bankType)
     return "Bank"
 end
 
+-- Does this account actually HAVE a warband bank? One function owns the question.
+--
+-- Constants.WARBAND_BANK_ACTIVE is not that question. It only says the client
+-- DEFINES Enum.BagIndex.AccountBankTab_1 -- a statement about the enum, not about
+-- the bank. WoW: Forever ships the entire account-bank enum (AccountBankTab_1..9)
+-- and has no account bank, so gating UI on that flag hangs a Warband tab on a
+-- client that can never fill it.
+--
+-- FetchBankLockedReason is the client's own answer, and is already what
+-- HandleBankOpened trusts before it scans. Answers are cached rather than
+-- re-probed because this is read from render paths (Rule 2).
+--
+-- Only an answer taken while the bank is OPEN is cached. Away from a banker these
+-- probes report a lock on real Retail too, so believing them there would hide a
+-- warband bank that exists. Until the bank has been opened once we defer to what
+-- the client's enum claims, which is exactly today's behavior; a client without an
+-- account bank corrects itself on the first bank visit.
+function RetailBankScanner:IsWarbandBankAvailable()
+    if isBankOpen and C_Bank and C_Bank.FetchBankLockedReason and BANK_TYPE_ACCOUNT then
+        warbandAvailable = C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT) == nil
+    end
+
+    if warbandAvailable ~= nil then
+        return warbandAvailable
+    end
+
+    return (Constants.WARBAND_BANK_ACTIVE and true) or false
+end
+
 function RetailBankScanner:GetAvailableBankTypes()
     local types = {
-        { type = BANK_TYPE_CHARACTER, name = "Bank", icon = "Interface\\Icons\\INV_Misc_Bag_10_Blue" },
+        { type = BANK_TYPE_CHARACTER, name = ns.L["BANK_TITLE_CHARACTER"], icon = "Interface\\Icons\\INV_Misc_Bag_10_Blue" },
     }
 
-    -- Warband bank is available at level 10+
-    if C_Bank and C_Bank.CanUseBank and C_Bank.CanUseBank(BANK_TYPE_ACCOUNT) then
+    if self:IsWarbandBankAvailable() then
         table.insert(types, {
             type = BANK_TYPE_ACCOUNT,
-            name = "Warband Bank",
+            name = ns.L["BANK_TITLE_WARBAND"],
             icon = "Interface\\Icons\\INV_Misc_Bag_17",
         })
     end
@@ -108,9 +139,8 @@ function RetailBankScanner:GetBankTabs(bankType)
 
     -- For warband bank, check if it's locked first
     if bankType == BANK_TYPE_ACCOUNT then
-        local warbandLocked = C_Bank.FetchBankLockedReason and C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
-        if warbandLocked ~= nil then
-            ns:Debug("GetBankTabs: Warband bank is locked, reason:", tostring(warbandLocked))
+        if not self:IsWarbandBankAvailable() then
+            ns:Debug("GetBankTabs: Warband bank unavailable")
             return tabs
         end
     end
@@ -739,14 +769,14 @@ Events:OnBankOpened(function()
     RetailBankScanner:ScanBank(BANK_TYPE_CHARACTER)
     ns:Debug("Retail character bank opened and scanned, tabs:", #cachedBankTabs)
 
-    local warbandLocked = C_Bank and C_Bank.FetchBankLockedReason and C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
-    ns:Debug("Warband bank locked reason:", tostring(warbandLocked))
-    if warbandLocked == nil then
+    -- The bank is open, so this is the authoritative moment: the probe inside
+    -- IsWarbandBankAvailable caches its answer here and the UI reads that cache.
+    if RetailBankScanner:IsWarbandBankAvailable() then
         RetailBankScanner:CacheBankTabs(BANK_TYPE_ACCOUNT)
         RetailBankScanner:ScanBank(BANK_TYPE_ACCOUNT)
         ns:Debug("Retail warband bank scanned, tabs:", #cachedWarbandTabs)
     else
-        ns:Debug("Warband bank is locked, skipping scan")
+        ns:Debug("Warband bank unavailable, skipping scan")
     end
 
     RetailBankScanner:SaveToDatabase()
@@ -839,8 +869,7 @@ if C_Bank then
     -- Warband bank tab slots changed
     Events:Register("PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED", function(event, tabIndex)
         ns:Debug("Warband bank tab slots changed, tab:", tabIndex)
-        local warbandLocked = C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
-        if isBankOpen and warbandLocked == nil and tabIndex then
+        if isBankOpen and RetailBankScanner:IsWarbandBankAvailable() and tabIndex then
             local containerID = Constants.WARBAND_BANK_TAB_IDS and Constants.WARBAND_BANK_TAB_IDS[tabIndex]
             if containerID then
                 dirtyBags[containerID] = true
@@ -854,8 +883,7 @@ if C_Bank then
         ns:Debug("Bank tabs changed")
         if isBankOpen then
             RetailBankScanner:CacheBankTabs(BANK_TYPE_CHARACTER)
-            local warbandLocked = C_Bank.FetchBankLockedReason(BANK_TYPE_ACCOUNT)
-            if warbandLocked == nil then
+            if RetailBankScanner:IsWarbandBankAvailable() then
                 RetailBankScanner:CacheBankTabs(BANK_TYPE_ACCOUNT)
             end
             -- Rescan bank to pick up new tab slots

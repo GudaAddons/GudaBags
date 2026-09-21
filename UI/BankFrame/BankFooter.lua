@@ -80,11 +80,86 @@ local function GetBankBagInfo(bankBagIndex)
     return itemID, texture, invSlot
 end
 
+-- Does this client's bank present Classic-style while really being a modern TAB
+-- bank underneath?
+--
+-- WoW: Forever is the case this exists for. Its bank containers genuinely are
+-- Enum.BagIndex.CharacterBankTab_N, but the client draws them the Classic way: the
+-- first tab as one big grid, and every tab you have not bought as a locked "bag
+-- slot" with a Purchase button. So the footer wants the Classic row SHAPE filled
+-- with TAB container ids -- never bank-bag ids, which on that client are not bank
+-- containers at all (id 5 is a carried bag there).
+--
+-- Deliberately not a flavor test: it asks the client for the tab ids and only
+-- claims this shape when they exist.
+local function GetTabBankRowIDs()
+    if not ns.IsRetail or ns.ExpansionFeatures.HasTabbedBank then return nil end
+    if not Constants.CHARACTER_BANK_TABS_ACTIVE then return nil end
+    local ids = Constants.CHARACTER_BANK_TAB_IDS
+    if not ids or #ids == 0 then return nil end
+    return ids
+end
+
+-- Is this footer button a CLASSIC bank bag slot -- one backed by an equipped bag in
+-- an inventory slot, which is what GetBankBagInfo and PickupInventoryItem need?
+--
+-- One predicate owns this, because the plain numeric form is actively dangerous. On
+-- a tab bank the containers are 6..14, so ids 6-11 sit INSIDE the Classic bank-bag
+-- range: `bagID >= 5 and bagID <= 11` matches the main bank container, computes
+-- bagID - 4 = 2, and picks up whatever bag happens to be in bank bag slot 2 -- an
+-- item the player never touched. Excluding tab slots is not enough; the main bank
+-- button carries no tabIndex and still has to be kept out.
+local function IsClassicBankBagSlot(button)
+    return button.bagID ~= nil
+        and not button.tabIndex
+        and not button.isMainBank
+        and button.bagID >= 5 and button.bagID <= 11
+end
+
+-- The icon to draw for a purchased bank tab, or nil to use the caller's fallback.
+--
+-- Only a STRING path is accepted. A tab bank presented Classic-style is a
+-- Vanilla-art client running the modern API, and the numeric fileID the bank tab
+-- data carries there does not resolve against its art -- SetTexture renders the red
+-- question mark instead. The scan's containerTexture is no better: ItemScanner
+-- derives it through GetBankBagInvSlot for ids 5..11, which on this client are bank
+-- TABS, so it borrows an unrelated bank bag's icon.
+--
+-- Restricted to this row, which only exists where HasTabbedBank is false, so Retail
+-- keeps using its real per-tab fileIDs.
+local function TabIconTexture(tab, containerID)
+    -- Prefer the real bag sitting in the slot. ContainerIDToInventoryID is the
+    -- client's own container -> inventory-slot mapping, so it needs no numeric
+    -- offset: deriving one (bagID - 4) is exactly what makes ItemScanner hand these
+    -- containers an unrelated bank bag's icon on a client whose bank tabs are 6..14.
+    if containerID and C_Container and C_Container.ContainerIDToInventoryID then
+        local invSlot = C_Container.ContainerIDToInventoryID(containerID)
+        if invSlot then
+            local tex = GetInventoryItemTexture("player", invSlot)
+            if tex then
+                return tex
+            end
+        end
+    end
+
+    -- Fall back to the tab's own icon, but only as a STRING path. The numeric
+    -- fileID this data carries does not resolve against Vanilla-era art and
+    -- SetTexture renders the red question mark instead.
+    local icon = tab and tab.icon
+    if type(icon) == "string" and icon ~= "" then
+        return icon
+    end
+    return nil
+end
+
 local function CreateMainBankButton(parent)
     local button = CreateFrame("Button", "GudaBankMainSlot", parent, "BackdropTemplate")
     button:SetSize(Constants.BAG_SLOT_SIZE, Constants.BAG_SLOT_SIZE)
     button:EnableMouse(true)
+    -- Default for the Classic bank. Init overwrites it with the first tab
+    -- container on a tab bank, which has no -1 container.
     button.bagID = -1
+    button.isMainBank = true
 
     button:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -113,7 +188,9 @@ local function CreateMainBankButton(parent)
 
         local ItemButton = ns:GetModule("ItemButton")
         if ItemButton and mainBankFrame and mainBankFrame.container then
-            ItemButton:HighlightBagSlots(-1, mainBankFrame.container)
+            -- self.bagID, not a literal -1: on a tab bank this button stands for
+            -- the first tab container.
+            ItemButton:HighlightBagSlots(self.bagID, mainBankFrame.container)
         end
     end)
 
@@ -174,7 +251,20 @@ local function CreateBagSlotButton(parent, index)
         if self.bagID then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             local bagID = self.bagID
-            if bagID >= 5 and bagID <= 11 then
+            if self.tabIndex then
+                -- Tab bank drawn Classic-style: this slot is an unbought bank tab.
+                if self.needPurchase then
+                    GameTooltip:SetText(ns.L["BANK_PURCHASE_TAB"])
+                    local scanner = ns:GetModule("RetailBankScanner")
+                    local cost = scanner and scanner.GetTabPurchaseCost
+                        and scanner:GetTabPurchaseCost(Enum and Enum.BankType and Enum.BankType.Character)
+                    if cost then
+                        GameTooltip:AddLine(FormatMoney(cost), 1, 1, 1)
+                    end
+                else
+                    GameTooltip:SetText(ns.L["TOOLTIP_BANK"])
+                end
+            elseif IsClassicBankBagSlot(self) then
                 local bankBagIndex = bagID - 4
 
                 if self.needPurchase then
@@ -213,7 +303,19 @@ local function CreateBagSlotButton(parent, index)
     end)
 
     button:SetScript("OnClick", function(self)
-        if self.bagID and self.bagID >= 5 and self.bagID <= 11 then
+        if self.tabIndex then
+            ns:Debug("BagSlot click: tabIndex=", self.tabIndex, "bagID=", self.bagID,
+                "needPurchase=", tostring(self.needPurchase),
+                "BankFrame=", tostring(ns:GetModule("BankFrame") ~= nil),
+                "BankType=", tostring(Enum and Enum.BankType and Enum.BankType.Character))
+            -- Deliberately does NOT open the purchase panel: that hides the bank and
+            -- resizes the frame, where this client just offers "Cost: n [Purchase]"
+            -- in the footer. Buying is the inline secure button's job (see
+            -- UpdateTabPurchase) -- C_Bank.PurchaseBankTab is protected, so a click
+            -- handler cannot do it here however it is worded.
+            return
+        end
+        if IsClassicBankBagSlot(self) then
             if self.needPurchase then
                 local cost = BankScanner:GetBankSlotCost()
                 if cost then
@@ -234,7 +336,7 @@ local function CreateBagSlotButton(parent, index)
     button:RegisterForDrag("LeftButton")
 
     button:SetScript("OnDragStart", function(self)
-        if self.bagID and self.bagID >= 5 and self.bagID <= 11 and not self.needPurchase then
+        if IsClassicBankBagSlot(self) and not self.needPurchase then
             local bankBagIndex = self.bagID - 4
             local itemID, texture, invSlot = GetBankBagInfo(bankBagIndex)
             if itemID then
@@ -244,7 +346,7 @@ local function CreateBagSlotButton(parent, index)
     end)
 
     button:SetScript("OnReceiveDrag", function(self)
-        if self.bagID and self.bagID >= 5 and self.bagID <= 11 and not self.needPurchase then
+        if IsClassicBankBagSlot(self) and not self.needPurchase then
             local bankBagIndex = self.bagID - 4
             local itemID, texture, invSlot = GetBankBagInfo(bankBagIndex)
             if CursorHasItem() then
@@ -726,16 +828,31 @@ function BankFooter:Init(parent)
     frame:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", Constants.FRAME.PADDING, Constants.FRAME.PADDING - 2)
     frame:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -Constants.FRAME.PADDING, Constants.FRAME.PADDING - 2)
 
+    -- Which containers this footer's slot row stands for. nil = the Classic bank.
+    local tabRowIDs = GetTabBankRowIDs()
+
     -- Create main bank slot button (bagID -1) with same style as BagSlots
     local mainBankButton = CreateMainBankButton(frame)
+    if tabRowIDs then
+        -- The first tab IS the big grid the player calls "the bank".
+        mainBankButton.bagID = tabRowIDs[1]
+    end
     mainBankButton:SetPoint("LEFT", frame, "LEFT", 0, 0)
     frame.mainBankButton = mainBankButton
     table.insert(bagSlotButtons, mainBankButton)
 
-    -- Create bank bag slots (bagIDs 5-11)
-    for i = 1, Constants.BANK_BAG_COUNT do
+    -- Slot row: bank bags 5-11 on Classic, or every tab after the first on a tab
+    -- bank -- exactly the ones that client draws as purchasable "bag slots".
+    -- The count comes from the client's own tab list, never a literal.
+    local slotCount = tabRowIDs and (#tabRowIDs - 1) or Constants.BANK_BAG_COUNT
+    for i = 1, slotCount do
         local button = CreateBagSlotButton(frame, i)
-        button.bagID = i + 4
+        if tabRowIDs then
+            button.bagID = tabRowIDs[i + 1]
+            button.tabIndex = i + 1  -- 1-based tab index this slot represents
+        else
+            button.bagID = i + 4
+        end
         button:SetPoint("LEFT", bagSlotButtons[i], "RIGHT", -1, 0)
         table.insert(bagSlotButtons, button)
     end
@@ -767,7 +884,11 @@ function BankFooter:Init(parent)
     -- Bank bag flyout (vertical, like BagSlots flyout)
     local bankFlyout = CreateFrame("Frame", "GudaBankBagFlyout", collapsedBankBtn, "BackdropTemplate")
     local flyoutBagSize = Constants.FLYOUT_BAG_SIZE
-    bankFlyout:SetSize(flyoutBagSize + 4, flyoutBagSize * (Constants.BANK_BAG_COUNT + 1) + 4)
+    -- The flyout mirrors the inline row exactly: main bank plus one entry per
+    -- purchasable slot. On a tab bank that is the tab id list; on Classic it is the
+    -- bank bags plus the -1 container.
+    local flyoutCount = tabRowIDs and #tabRowIDs or (Constants.BANK_BAG_COUNT + 1)
+    bankFlyout:SetSize(flyoutBagSize + 4, flyoutBagSize * flyoutCount + 4)
     bankFlyout:SetPoint("BOTTOMRIGHT", collapsedBankBtn, "BOTTOMLEFT", -5, -9)
     bankFlyout:SetFrameStrata("DIALOG")
     bankFlyout:SetFrameLevel(150)
@@ -785,7 +906,7 @@ function BankFooter:Init(parent)
 
     -- Flyout bag slots (main bank + bank bags)
     frame.flyoutSlots = {}
-    for i = 0, Constants.BANK_BAG_COUNT do
+    for i = 0, flyoutCount - 1 do
         local flySlot = CreateFrame("Button", nil, bankFlyout, "BackdropTemplate")
         flySlot:SetSize(flyoutBagSize, flyoutBagSize)
         flySlot:SetBackdrop({
@@ -809,8 +930,14 @@ function BankFooter:Init(parent)
         flySlot:SetPoint("BOTTOM", bankFlyout, "BOTTOM", 0, 2 + i * flyoutBagSize)
 
         if i == 0 then
-            flySlot.bagID = -1
+            -- The main bank: the -1 container on Classic, the first tab elsewhere.
+            flySlot.bagID = tabRowIDs and tabRowIDs[1] or -1
+            flySlot.isMainBank = true
             flyIcon:SetTexture("Interface\\Buttons\\Button-Backpack-Up")
+        elseif tabRowIDs then
+            flySlot.bagID = tabRowIDs[i + 1]
+            flySlot.tabIndex = i + 1
+            flyIcon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
         else
             flySlot.bagID = i + 4
             flyIcon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
@@ -818,8 +945,12 @@ function BankFooter:Init(parent)
 
         flySlot:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if self.bagID == -1 then
+            if self.isMainBank then
                 GameTooltip:SetText(ns.L["TOOLTIP_BANK"] or "Bank")
+            elseif self.tabIndex then
+                -- Numbered from the player's point of view: the first purchasable
+                -- slot is "1", even though it is tab 2.
+                GameTooltip:SetText(string.format(L["BANK_BAG_NUMBER"], self.tabIndex - 1))
             else
                 GameTooltip:SetText(string.format(L["BANK_BAG_NUMBER"], self.bagID - 4))
             end
@@ -853,7 +984,14 @@ function BankFooter:Init(parent)
         end)
 
         flySlot:SetScript("OnClick", function(self)
-            if self.bagID and self.bagID >= 5 and self.bagID <= 11 then
+            if self.tabIndex then
+                ns:Debug("Flyout click: tabIndex=", self.tabIndex, "bagID=", self.bagID,
+                    "needPurchase=", tostring(self.needPurchase))
+                -- Same as the inline row: buying is the footer's secure button, not
+                -- a takeover panel. See UpdateTabPurchase.
+                return
+            end
+            if IsClassicBankBagSlot(self) then
                 if self.needPurchase then
                     local cost = BankScanner:GetBankSlotCost()
                     if cost then
@@ -874,7 +1012,7 @@ function BankFooter:Init(parent)
         flySlot:RegisterForDrag("LeftButton")
 
         flySlot:SetScript("OnDragStart", function(self)
-            if self.bagID and self.bagID >= 5 and self.bagID <= 11 and not self.needPurchase then
+            if IsClassicBankBagSlot(self) and not self.needPurchase then
                 local bankBagIndex = self.bagID - 4
                 local itemID, _, invSlot = GetBankBagInfo(bankBagIndex)
                 if itemID then
@@ -884,7 +1022,7 @@ function BankFooter:Init(parent)
         end)
 
         flySlot:SetScript("OnReceiveDrag", function(self)
-            if self.bagID and self.bagID >= 5 and self.bagID <= 11 and not self.needPurchase then
+            if IsClassicBankBagSlot(self) and not self.needPurchase then
                 local bankBagIndex = self.bagID - 4
                 local _, _, invSlot = GetBankBagInfo(bankBagIndex)
                 if CursorHasItem() then
@@ -899,23 +1037,42 @@ function BankFooter:Init(parent)
     -- Refresh flyout slot icons and purchase state
     local function UpdateFlyoutSlots()
         if not frame.flyoutSlots then return end
-        local purchased = GetNumBankSlots and GetNumBankSlots() or 0
+
+        -- Owned count. On a tab bank these "slots" are bank tabs, so it is the
+        -- purchased tab count -- GetNumBankSlots does not exist on such a client and
+        -- would report every slot as unbought.
+        local purchased, tabs
+        if tabRowIDs then
+            local scanner = ns:GetModule("RetailBankScanner")
+            local bankTypeChar = Enum and Enum.BankType and Enum.BankType.Character
+            purchased = (scanner and scanner:GetNumPurchasedTabs(bankTypeChar)) or 0
+            tabs = scanner and scanner:GetCachedBankTabs(bankTypeChar)
+        else
+            purchased = GetNumBankSlots and GetNumBankSlots() or 0
+        end
+
         for idx, slot in pairs(frame.flyoutSlots) do
             if idx > 0 then
-                if idx > purchased then
+                -- idx is the 0-based row position; slot.tabIndex is the 1-based tab
+                -- it maps to, which is what the purchased count is measured in.
+                local ordinal = slot.tabIndex or idx
+                if ordinal > purchased then
                     slot.needPurchase = true
                     slot.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
                     slot:SetAlpha(0.4)
                 else
                     slot.needPurchase = false
                     slot:SetAlpha(1)
-                    -- Use shared GetBankBagInfo for correct inventory slot mapping
-                    local itemID, texture = GetBankBagInfo(idx)
-                    if itemID and texture then
-                        slot.icon:SetTexture(texture)
+                    local texture
+                    if slot.tabIndex then
+                        texture = TabIconTexture(tabs and tabs[slot.tabIndex], slot.bagID)
                     else
-                        slot.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
+                        -- Use shared GetBankBagInfo for correct inventory slot mapping
+                        local itemID
+                        itemID, texture = GetBankBagInfo(idx)
+                        if not itemID then texture = nil end
                     end
+                    slot.icon:SetTexture(texture or "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
                 end
             end
         end
@@ -955,6 +1112,39 @@ function BankFooter:Init(parent)
     end, BankFooter)
 
     -- Slot counter after bag containers (with tooltip frame for hover)
+    -- Inline "Cost: <n> [Purchase]" for a Classic-presented tab bank, matching how
+    -- that client draws it: in the footer beside the lock row, not as a panel that
+    -- takes over the bank.
+    --
+    -- The button has to be Blizzard's secure template because C_Bank.PurchaseBankTab
+    -- is protected -- a plain button, or a StaticPopup's OnAccept, is insecure and
+    -- the call is refused. Created here at frame-build time, before combat (Rule 3),
+    -- and template existence is probed because it is Retail-only.
+    if tabRowIDs then
+        local templateProbe = DoesTemplateExist
+            or (C_XMLUtil and C_XMLUtil.GetTemplateInfo)
+        local ok = templateProbe and select(2, pcall(templateProbe,
+            "BankPanelPurchaseButtonScriptTemplate"))
+        if ok then
+            -- Positioned in UpdateTabPurchase, not here: it trails slotInfoFrame,
+            -- which ApplyBagSlotMode re-anchors between the inline row and the
+            -- collapsed icon.
+            local costText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            frame.tabPurchaseCost = costText
+
+            local buyBtn = CreateFrame("Button", "GudaBankTabPurchaseBtn", frame,
+                "UIPanelButtonTemplate,BankPanelPurchaseButtonScriptTemplate")
+            buyBtn:SetSize(90, 20)
+            buyBtn:SetPoint("LEFT", costText, "RIGHT", 8, 0)
+            buyBtn:SetText(ns.L["BANK_PURCHASE_TAB"])
+            buyBtn:RegisterForClicks("AnyUp")
+            buyBtn:Hide()
+            frame.tabPurchaseBtn = buyBtn
+        else
+            ns:Debug("Bank tab purchase template missing; no inline purchase button")
+        end
+    end
+
     local slotInfoFrame = CreateFrame("Frame", nil, frame)
     slotInfoFrame:SetPoint("LEFT", bagSlotButtons[#bagSlotButtons], "RIGHT", 8, 0)
     slotInfoFrame:SetSize(60, 16)
@@ -998,8 +1188,18 @@ function BankFooter:Init(parent)
 
     frame.moneyFrame = Money:Init(frame)
 
-    -- Create Retail bank action buttons (only on Retail)
-    if ns.IsRetail then
+    -- Retail bank action buttons: deposit reagents/warbound, and the Warband money
+    -- transfer pair.
+    --
+    -- Keyed on HasTabbedBank rather than IsRetail. Every one of these is an
+    -- affordance of the retail bank UI -- three of them act on the account bank
+    -- specifically -- so on a client that presents a Classic bank they are offering
+    -- operations its own bank never shows. WoW: Forever is IsRetail and has no
+    -- account bank at all, which is where this surfaced.
+    --
+    -- Not created rather than created-and-hidden: every reference below is already
+    -- nil-guarded, and skipping them keeps five frames out of the footer entirely.
+    if ns.ExpansionFeatures.HasTabbedBank then
         depositReagentsButton = CreateDepositReagentsButton(frame)
         depositReagentsButton:SetPoint("LEFT", frame, "LEFT", 0, 0)
 
@@ -1098,7 +1298,7 @@ function BankFooter:Show()
     viewingCharacter = nil
 
     -- On Retail with bank open, show action buttons instead of bag slots
-    if ns.IsRetail and BankScanner and BankScanner:IsBankOpen() then
+    if ns.ExpansionFeatures.HasTabbedBank and BankScanner and BankScanner:IsBankOpen() then
         self:ShowRetailTabs(nil, true)  -- Bank is open
     else
         -- Hide retail tabs when showing live bank on Classic
@@ -1122,7 +1322,9 @@ function BankFooter:ShowLive(bankType)
     viewingCharacter = nil
     currentBankType = bankType or "character"
 
-    if ns.IsRetail then
+    -- HasTabbedBank, not IsRetail: a tab bank that presents Classic-style wants the
+    -- bag-slot row, filled with tab containers (see GetTabBankRowIDs).
+    if ns.ExpansionFeatures.HasTabbedBank then
         self:ShowRetailTabs(nil, true)  -- Bank is open
         self:UpdateRetailActionButtons(true, currentBankType)
     else
@@ -1162,15 +1364,32 @@ function BankFooter:Update()
         cachedBank = Database:GetNormalizedBank(viewingCharacter)
     end
 
-    local purchased = BankScanner:GetPurchasedBankSlots()
+    -- Owned count. On a Classic-presented tab bank the "slots" are bank tabs, so
+    -- the number you own is the number of tabs you have purchased.
+    local isTabRow = GetTabBankRowIDs() ~= nil
+    local purchased
+    if isTabRow then
+        local scanner = ns:GetModule("RetailBankScanner")
+        purchased = (scanner and scanner:GetNumPurchasedTabs(
+            Enum and Enum.BankType and Enum.BankType.Character)) or 0
+    else
+        purchased = BankScanner:GetPurchasedBankSlots()
+    end
+    ns:Debug("BankFooter:Update tabRow=", tostring(isTabRow), "purchased=", purchased,
+        "buttons=", #bagSlotButtons, "viewingCharacter=", tostring(viewingCharacter))
+
+    self:UpdateTabPurchase(isTabRow)
 
     for i, button in ipairs(bagSlotButtons) do
-        -- Skip main bank button (index 1, bagID -1) - uses different style
-        if button.bagID == -1 then
+        -- Skip main bank button - uses different style. Matched by flag, not by
+        -- bagID == -1: on a tab bank its id is the first tab container.
+        if button.isMainBank then
             -- Main bank button uses backdrop style, no update needed
         else
             local bagID = button.bagID
-            local bankBagIndex = bagID - 4
+            -- Which ordinal this slot is within its own row, for the
+            -- "have I bought this one yet" test.
+            local bankBagIndex = button.tabIndex or (bagID - 4)
 
             -- Try to get texture from cached data first
             if cachedBank and cachedBank[bagID] then
@@ -1193,12 +1412,21 @@ function BankFooter:Update()
                     -- Purchased slot
                     button.needPurchase = false
                     button:SetAlpha(1)
-                    local itemID, texture = GetBankBagInfo(bankBagIndex)
-                    if itemID and texture then
-                        button.icon:SetTexture(texture)
+                    local texture
+                    if button.tabIndex then
+                        -- A bought tab carries its own icon; GetBankBagInfo is an
+                        -- inventory-slot lookup and means nothing here.
+                        local scanner = ns:GetModule("RetailBankScanner")
+                        local tabs = scanner and scanner:GetCachedBankTabs(
+                            Enum and Enum.BankType and Enum.BankType.Character)
+                        local tab = tabs and tabs[button.tabIndex]
+                        texture = TabIconTexture(tab, button.bagID)
                     else
-                        button.icon:SetTexture("Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
+                        local itemID
+                        itemID, texture = GetBankBagInfo(bankBagIndex)
+                        if not itemID then texture = nil end
                     end
+                    button.icon:SetTexture(texture or "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
                 end
             else
                 -- Cached character but no data for this bag slot
@@ -1216,6 +1444,59 @@ function BankFooter:Update()
         else
             Money:Update()
         end
+    end
+end
+
+-- Drive the inline cost + Purchase pair. Shown only while the client says a tab can
+-- actually be bought right now, which is false away from a banker and false once
+-- every tab is owned -- so it appears and disappears the way the native one does.
+function BankFooter:UpdateTabPurchase(isTabRow)
+    local costText, buyBtn = frame and frame.tabPurchaseCost, frame and frame.tabPurchaseBtn
+    if not costText or not buyBtn then return end
+
+    local bankTypeChar = Enum and Enum.BankType and Enum.BankType.Character
+    local canBuy = isTabRow and not viewingCharacter and bankTypeChar
+        and C_Bank and C_Bank.CanPurchaseBankTab and C_Bank.CanPurchaseBankTab(bankTypeChar)
+
+    if not canBuy then
+        costText:SetText("")
+        buyBtn:Hide()
+        return
+    end
+
+    -- Trails the slot-count text, which ApplyBagSlotMode has already anchored to
+    -- whichever of the two row modes is showing.
+    costText:ClearAllPoints()
+    if frame.slotInfoFrame then
+        costText:SetPoint("LEFT", frame.slotInfoFrame, "RIGHT", 10, 0)
+    else
+        costText:SetPoint("LEFT", frame, "LEFT", 0, 0)
+    end
+
+    local scanner = ns:GetModule("RetailBankScanner")
+    local cost = scanner and scanner:GetTabPurchaseCost(bankTypeChar)
+    costText:SetText(cost and (ns.L["BANK_PURCHASE_COST"] .. " " .. FormatMoney(cost)) or "")
+    -- Attributes on a secure button may not be changed in combat.
+    if not InCombatLockdown() then
+        buyBtn:SetAttribute("overrideBankType", bankTypeChar)
+    end
+    buyBtn:Show()
+end
+
+-- What the slot row actually built, button by button. Reached from /guda bankdump.
+-- The row is the one place where "which container is this" and "have I bought it"
+-- have to agree with the client, so both are printed side by side.
+function BankFooter:DebugDumpSlotRow()
+    ns:Print("Footer slot row: " .. #bagSlotButtons .. " button(s), tabRow="
+        .. tostring(GetTabBankRowIDs() ~= nil))
+    for i, button in ipairs(bagSlotButtons) do
+        ns:Print("  [" .. i .. "] bagID=" .. tostring(button.bagID)
+            .. "  tabIndex=" .. tostring(button.tabIndex)
+            .. "  isMainBank=" .. tostring(button.isMainBank)
+            .. "  needPurchase=" .. tostring(button.needPurchase)
+            .. "  shown=" .. tostring(button:IsShown())
+            .. "  alpha=" .. string.format("%.2f", button:GetAlpha())
+            .. "  mouse=" .. tostring(button:IsMouseEnabled()))
     end
 end
 
@@ -1269,8 +1550,8 @@ function BankFooter:ShowCached(characterFullName)
     viewingCharacter = characterFullName
 
     -- On Retail, always show tabs instead of bag slots for cached bank viewing
-    -- On Classic, show traditional bag slots
-    if ns.IsRetail then
+    -- On a Classic-presented bank, show traditional bag slots
+    if ns.ExpansionFeatures.HasTabbedBank then
         -- Show tabs instead of bag slots (bank is NOT open when viewing cached)
         ns:Debug("  Calling ShowRetailTabs (cached, bank not open)")
         self:ShowRetailTabs(characterFullName, false)

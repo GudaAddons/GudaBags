@@ -123,6 +123,26 @@ Expansion.Features = {
     -- native UI already modern" must use this, not IsRetail.
     HasRetailFrameArt = Expansion.IsRetail and not Expansion.IsForever,
 
+    -- "Does this client PRESENT its bank as switchable tabs?"
+    --
+    -- A third axis, distinct from both the API and the art, and it is the one the
+    -- bank UI must ask. Retail presents a tab strip you click between, plus a
+    -- separate account bank. Classic Era, TBC and MoP present one grid of slots
+    -- plus a row of purchasable bag slots.
+    --
+    -- WoW: Forever runs the modern C_Bank API -- its bank containers really are
+    -- Enum.BagIndex.CharacterBankTab_N -- but it DRESSES them as the Classic bank:
+    -- one 48-slot grid for the tab you own and a "Bag Slots" lock row for the ones
+    -- you have not bought. Confirmed in game 2026-09-22. So IsRetail is true while
+    -- the correct presentation is Classic's, and rendering a retail tab strip there
+    -- shows tabs the player has no concept of.
+    --
+    -- Same value as HasRetailFrameArt today, deliberately kept separate: these
+    -- answer different questions and only coincide because Forever happens to be
+    -- the one client that splits API from presentation. A flavor that tabs its bank
+    -- behind Vanilla art, or vice versa, would need them to diverge.
+    HasTabbedBank = Expansion.IsRetail and not Expansion.IsForever,
+
     -- Account-bound items (heirlooms, "Bind to Account", Warbound) arrived in
     -- WotLK 3.2, so Classic Era and TBC have none at all. Gate on this rather than
     -- on the ITEM_ACCOUNTBOUND* global strings: Blizzard ships those globals to

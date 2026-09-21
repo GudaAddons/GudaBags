@@ -559,7 +559,7 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Pin a bag slot to protect it from sorting.
 Pinned slots are |cff00ccccskipped|r during Sort and Restack.
 The pin stays on the slot, not the item.
 A pin icon appears on the bottom-left corner.
-|cffff8800Retail:|r Requires |cff00ccccGudaBags Sort|r enabled in Settings.]]
+|cffff8800Retail and Forever:|r Requires |cff00ccccGudaBags Sort|r enabled in Settings.]]
 
 -- Profiles
 L["TAB_PROFILES"] = "Profiles"
