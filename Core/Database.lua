@@ -203,8 +203,46 @@ local function InitializeCharacterData()
     return true
 end
 
+-------------------------------------------------
+-- Account copy of the per-character data
+-------------------------------------------------
+-- WoW: Forever (beta) writes SavedVariables at logout but does not load them back,
+-- and the workaround players use (Forever Data Protect, which loads each addon's
+-- account file as a plain addon file) only covers account-wide SavedVariables. So at
+-- logout GudaBags_CharDB is also copied into GudaBags_DB.charCopies, keyed by the
+-- character's GUID, and both are stamped with savedAt; at load the newer one wins.
+-- Where SavedVariables load normally both carry the same stamp and nothing changes.
+
+local function CharCopyKey()
+    local guid = UnitGUID("player")
+    if type(guid) == "string" and guid ~= "" then return guid end
+    return GetPlayerFullName()
+end
+
+-- Before InitializeCharDB: the account copy replaces a missing or older CharDB
+local function RestoreCharCopy()
+    local copies = GudaBags_DB and GudaBags_DB.charCopies
+    local key = copies and CharCopyKey()
+    local copy = key and copies[key]
+    if type(copy) ~= "table" then return end
+    local own = GudaBags_CharDB
+    if type(own) == "table" and (tonumber(own.savedAt) or 0) >= (tonumber(copy.savedAt) or 0) then return end
+    GudaBags_CharDB = DeepCopy(copy)
+    ns:Debug("Character settings restored from the account copy")
+end
+
+local function SaveCharCopy()
+    if not (GudaBags_DB and GudaBags_CharDB) then return end
+    local key = CharCopyKey()
+    if not key then return end
+    GudaBags_CharDB.savedAt = time()
+    GudaBags_DB.charCopies = GudaBags_DB.charCopies or {}
+    GudaBags_DB.charCopies[key] = DeepCopy(GudaBags_CharDB)
+end
+
 function Database:Initialize()
     InitializeGlobalDB()
+    RestoreCharCopy()
     InitializeCharDB()
     -- Character data init moved to PLAYER_LOGIN for reliable player name
 end
@@ -954,6 +992,11 @@ end, Database)
 Events:OnPlayerLogin(function()
     Database:InitializeCharacter()
     Database:ScanAndSaveEquipment()
+end, Database)
+
+-- Also fires on /reload, just before the game writes SavedVariables
+Events:Register("PLAYER_LOGOUT", function()
+    SaveCharCopy()
 end, Database)
 
 -- Update cached equipment when gear changes
