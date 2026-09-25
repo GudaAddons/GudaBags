@@ -329,6 +329,11 @@ end
 -- so GetBagTypeFromFamily and CanItemGoInBag can identify the reagent bag.
 local REAGENT_BAG_MARKER = -1
 
+-- Set by ClassifyBags: true only when the current bag set has a bag carrying
+-- REAGENT_BAG_MARKER. On Forever, slot 5 can hold a vanilla profession bag
+-- (e.g. Mining Sack) instead, and then nothing should prefer "reagent".
+local hasReagentMarkerBag = false
+
 -- Heuristic: is this item a crafting reagent that belongs in the reagent bag?
 -- Uses classID 7 (Trade Goods) but excludes non-reagent subcategories.
 -- subClassID 2 = Explosives, 3 = Devices (engineering gadgets, not reagents)
@@ -386,7 +391,7 @@ end
 local function GetItemPreferredContainer(itemID)
     if not itemID then return nil end
     -- Retail: crafting reagents prefer the reagent bag
-    if Expansion.IsRetail and Constants.REAGENT_BAG then
+    if hasReagentMarkerBag then
         if IsReagentItem(itemID) then
             return "reagent"
         end
@@ -453,14 +458,25 @@ local function ClassifyBags(bagIDs)
     end
 
     local bagFamilies = {}
+    hasReagentMarkerBag = false
 
     for _, bagID in ipairs(bagIDs) do
+        -- Forever: slot 5 may hold a vanilla profession bag (Mining Sack etc.).
+        -- A non-zero family means it is NOT a reagent bag -- route by that family.
+        local family = nil
+        local isReagentSlot = Expansion.IsRetail and Constants.REAGENT_BAG and bagID == Constants.REAGENT_BAG
+        if isReagentSlot and Expansion.IsForever then
+            family = GetBagFamily(bagID)
+            if family ~= 0 then isReagentSlot = false end
+        end
+
         -- Retail: reagent bag identified by ID, uses marker for routing
-        if Expansion.IsRetail and Constants.REAGENT_BAG and bagID == Constants.REAGENT_BAG then
+        if isReagentSlot then
             bagFamilies[bagID] = REAGENT_BAG_MARKER
             containers.reagent[#containers.reagent + 1] = bagID
+            hasReagentMarkerBag = true
         else
-            local family = GetBagFamily(bagID)
+            family = family or GetBagFamily(bagID)
             bagFamilies[bagID] = family
             local bagType = GetBagTypeFromFamily(family)
             if bagType and containers[bagType] then
