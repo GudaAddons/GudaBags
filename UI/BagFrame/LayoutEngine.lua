@@ -496,6 +496,9 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                 isQuiverBag = (bagType == "quiver" or bagType == "ammo")
             end
         end
+        -- Reagent bag free slots only take reagents, so they are not "Empty" slots:
+        -- counting them made Empty claim free space while the ordinary bags were full.
+        local isReagentBag = bagInfo.isReagentBag
 
         if bagInfo.isKeyring then
             if isViewingCached and bagData then
@@ -585,7 +588,7 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                         if not firstQuiverEmptySlot then
                             firstQuiverEmptySlot = {bagID = bagID, slot = slot}
                         end
-                    else
+                    elseif not isReagentBag then
                         emptyCount = emptyCount + 1
                         if not firstEmptySlot then
                             firstEmptySlot = {bagID = bagID, slot = slot}
@@ -610,7 +613,7 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                             if not firstQuiverEmptySlot then
                                 firstQuiverEmptySlot = {bagID = bagID, slot = slot}
                             end
-                        else
+                        elseif not isReagentBag then
                             emptyCount = emptyCount + 1
                             if not firstEmptySlot then
                                 firstEmptySlot = {bagID = bagID, slot = slot}
@@ -646,7 +649,8 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                 if isQuiverBag == nil then isQuiverBag = (bagType == "quiver" or bagType == "ammo") end
             end
 
-            if not bagInfo.isKeyring then  -- Keyring already uses live data above
+            -- Reagent bag skipped for the same reason as in the pass above
+            if not bagInfo.isKeyring and not bagInfo.isReagentBag then  -- Keyring already uses live data above
                 local numSlots = C_Container.GetContainerNumSlots(bagID)
                 if numSlots and numSlots > 0 then
                     for slot = 1, numSlots do

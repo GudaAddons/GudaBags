@@ -159,6 +159,42 @@ local function InitializeCharDB()
     end
 end
 
+-- WoW: Forever reports a character name containing a space truncated at the space
+-- ("Dampa Lee" -> "Dampa"), and older sessions saved under the full name. The
+-- same character then owns two records: the live one and a frozen one that the
+-- dropdowns offer as if it were current, showing week-old bags and no bank. Fold
+-- the frozen record away. Matched on realm + class + race and one name being the
+-- other plus " <more>", in either direction in case the client ever reverts.
+local function IsNameAlias(a, b)
+    if not a or not b or a == b then return false end
+    return a:sub(1, #b + 1) == b .. " " or b:sub(1, #a + 1) == a .. " "
+end
+
+local function FoldForeverNameAliases(fullName, charData)
+    if not ns.IsForever then return end
+    local characters = GudaBags_DB.characters
+    local folded = false
+    for key, other in pairs(characters) do
+        if key ~= fullName and type(other) == "table"
+            and other.realm == charData.realm
+            and other.class == charData.class
+            and other.race == charData.race
+            and IsNameAlias(other.name, charData.name) then
+            characters[key] = nil
+            if GudaBags_DB.goldBlacklist then
+                GudaBags_DB.goldBlacklist[key] = nil
+            end
+            folded = true
+            ns:Debug("Removed stale Forever name alias", key, "of", fullName)
+        end
+    end
+    -- The live record was typically hidden as "the duplicate"; with the frozen
+    -- copy gone it is the only entry for this character, so show it again.
+    if folded and GudaBags_DB.goldBlacklist then
+        GudaBags_DB.goldBlacklist[fullName] = nil
+    end
+end
+
 local function InitializeCharacterData()
     local fullName = GetPlayerFullName()
     if not fullName then
@@ -198,6 +234,8 @@ local function InitializeCharacterData()
     if not charData.mailbox then
         charData.mailbox = {}
     end
+
+    FoldForeverNameAliases(fullName, charData)
 
     ns:Debug("Character data initialized for", fullName)
     return true

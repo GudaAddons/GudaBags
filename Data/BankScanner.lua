@@ -239,6 +239,13 @@ function BankScanner:GetAllItems()
 end
 
 function BankScanner:SaveToDatabase()
+    -- Delegate on Retail like the methods above. ns.OnBankClosed saves through this
+    -- module, and on Retail cachedBank is always empty, so without this every bank
+    -- close overwrote the saved bank with {} and the offline bank showed no data.
+    local retailScanner = GetRetailScanner()
+    if retailScanner then
+        return retailScanner:SaveToDatabase()
+    end
     Database:SaveBank(cachedBank)
 end
 
