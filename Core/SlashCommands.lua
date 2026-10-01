@@ -489,6 +489,14 @@ end
 -- Diagnostic, like status/apicheck: raw output for a bug report, not UI text.
 -- Answers "what does this client actually say its bank is", which is the question
 -- every wrong guess about the bank has come from.
+-- Arm a one-shot capture of the next item cooldown update (GCD-on-bag-items reports)
+commandHandlers["cdcheck"] = function()
+    local ItemButton = ns:GetModule("ItemButton")
+    if ItemButton and ItemButton.ArmCooldownCapture then
+        ItemButton:ArmCooldownCapture()
+    end
+end
+
 commandHandlers["bankdump"] = function()
     local Constants = ns.Constants
     local scanner = ns:GetModule("RetailBankScanner")
@@ -573,6 +581,41 @@ commandHandlers["bankdump"] = function()
     if footer and footer.DebugDumpSlotRow then
         footer:DebugDumpSlotRow()
     end
+
+    -- The inputs BankFrame:Refresh picks its data from, so an empty offline view can
+    -- be traced to the branch that produced it (live cache vs saved record).
+    local function Summarize(containers)
+        if type(containers) ~= "table" then return tostring(containers) end
+        local parts = {}
+        for bagID, bagData in pairs(containers) do
+            if type(bagData) == "table" then
+                local items = 0
+                for _ in pairs(bagData.slots or {}) do items = items + 1 end
+                parts[#parts + 1] = tostring(bagID) .. ":" .. tostring(bagData.numSlots) .. "/" .. items
+            end
+        end
+        return #parts > 0 and table.concat(parts, " ") or "empty"
+    end
+
+    local Database = ns:GetModule("Database")
+    local bankScanner = ns:GetModule("BankScanner")
+    local bankFrame = ns:GetModule("BankFrame")
+    ns:Print("--- offline view state ---")
+    ns:Print("bankOpen: " .. tostring(bankScanner and bankScanner:IsBankOpen())
+        .. "  viewing: " .. tostring(bankFrame and bankFrame:GetViewingCharacter())
+        .. "  bankType: " .. tostring(footer and footer:GetCurrentBankType())
+        .. "  tab: " .. tostring(scanner and scanner:GetSelectedTab())
+        .. "  view: " .. tostring(Database:GetSetting("bankViewType")))
+    if scanner and scanner.GetCloseWatchState then
+        local atBanker, watching = scanner:GetCloseWatchState()
+        ns:Print("atBanker: " .. tostring(atBanker) .. "  closeWatch: " .. tostring(watching))
+    end
+    local record = Database:GetBank()
+    ns:Print("record " .. tostring(Database:GetPlayerFullName())
+        .. "  isRetail: " .. tostring(record and record.isRetail)
+        .. "  containers: " .. Summarize(record and (record.containers or record)))
+    ns:Print("normalized: " .. Summarize(Database:GetNormalizedBank()))
+    ns:Print("scanner cache: " .. Summarize(bankScanner and bankScanner:GetCachedBank()))
 end
 
 commandHandlers["apicheck"] = function()

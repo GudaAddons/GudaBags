@@ -47,6 +47,43 @@ local SAVE_DELAY = 1.0
 local updateFrame = CreateFrame("Frame")
 updateFrame:Hide()
 
+-- Banker interaction watch. WoW: Forever sends neither BANKFRAME_CLOSED nor the
+-- interaction-hide event when the player walks away from the banker, so isBankOpen
+-- stayed true and the "offline" bank kept running as a live one. While the bank is
+-- open we poll the client's own answer instead. The poll is only trusted if the
+-- client said "yes, at a banker" when the bank opened -- a client where this API
+-- does not describe the bank keeps relying on the events alone.
+local BANKER_INTERACTION = Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.Banker
+local CLOSE_WATCH_INTERVAL = 0.5
+local closeWatcher = nil
+local HandleBankClosed  -- forward declaration, defined with the event handlers
+
+-- true/false from the client, nil when the API is unavailable
+local function IsAtBanker()
+    local pim = C_PlayerInteractionManager
+    if not (BANKER_INTERACTION and pim and pim.IsInteractingWithNpcOfType) then return nil end
+    return pim.IsInteractingWithNpcOfType(BANKER_INTERACTION) and true or false
+end
+
+local function StopCloseWatcher()
+    if closeWatcher then
+        closeWatcher:Cancel()
+        closeWatcher = nil
+    end
+end
+
+local function StartCloseWatcher()
+    StopCloseWatcher()
+    if IsAtBanker() ~= true or not C_Timer.NewTicker then return end
+    closeWatcher = C_Timer.NewTicker(CLOSE_WATCH_INTERVAL, function()
+        if not isBankOpen then
+            StopCloseWatcher()
+        elseif IsAtBanker() == false then
+            HandleBankClosed("interaction-lost")
+        end
+    end)
+end
+
 -------------------------------------------------
 -- Bank Type Management
 -------------------------------------------------
@@ -615,6 +652,11 @@ function RetailBankScanner:IsBankOpen()
     return isBankOpen
 end
 
+-- Diagnostics (/guda bankdump): client's banker answer and whether the watch runs
+function RetailBankScanner:GetCloseWatchState()
+    return IsAtBanker(), closeWatcher ~= nil
+end
+
 -------------------------------------------------
 -- Deposited Money (Warband Bank feature)
 -------------------------------------------------
@@ -780,13 +822,15 @@ Events:OnBankOpened(function()
     end
 
     RetailBankScanner:SaveToDatabase()
+    StartCloseWatcher()
 
     if ns.OnBankOpened then
         ns.OnBankOpened()
     end
 end, RetailBankScanner)
 
-local function HandleBankClosed(reason)
+HandleBankClosed = function(reason)
+    StopCloseWatcher()
     isBankOpen = false
     dirtyBags = {}
     ns:Debug("Retail bank closed", reason or "")

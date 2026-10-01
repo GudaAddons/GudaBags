@@ -1865,8 +1865,17 @@ function ItemButton:BackgroundGrowPool(parent, target, perTick, interval)
     end)
 end
 
+-- Longest base global cooldown. No real item cooldown is this short, so anything at
+-- or under it is the GCD showing through on bag items.
+local MAX_GCD_DURATION = 1.5
+
 -- Check if a cooldown is just the GCD (matches global cooldown start/duration)
 local function IsGlobalCooldown(start, duration)
+    -- WoW: Forever puts the GCD (1.5s) on bag items when wanding, but the GCD spell
+    -- 61304 does not report a matching cooldown there, so the comparison below
+    -- never matched and every item spun. Duration alone identifies it.
+    if duration <= MAX_GCD_DURATION + 0.01 then return true end
+    -- Keep the spell match for GCDs longer than the base value (TBC wand shots).
     if not GetSpellCooldown then return false end
     local gcdStart, gcdDuration = GetSpellCooldown(61304)  -- Global Cooldown spell
     if not gcdStart or gcdStart == 0 then return false end
@@ -3099,12 +3108,86 @@ function ItemButton:RefreshUpgradeTrackIcons()
     end
 end
 
+-- One-shot cooldown capture (/guda cdcheck): on the next BAG_UPDATE_COOLDOWN, print
+-- the GCD as the client reports it, what a few items report, the GCD filter's
+-- verdict, and every Cooldown frame on those buttons that is actually drawing.
+-- Tells "the filter missed" apart from "something else drew the sweep".
+local cooldownCaptureArmed = false
+
+function ItemButton:ArmCooldownCapture()
+    cooldownCaptureArmed = true
+    ns:Print("Cooldown capture armed: fire your wand (or any GCD ability) once.")
+end
+
+local function DescribeCooldownFrame(cd)
+    if not cd then return "nil" end
+    local s, d = 0, 0
+    if cd.GetCooldownTimes then
+        s, d = cd:GetCooldownTimes()
+        s, d = (s or 0) / 1000, (d or 0) / 1000
+    end
+    return (cd:GetName() or "?") .. " shown=" .. tostring(cd:IsShown())
+        .. " visible=" .. tostring(cd:IsVisible()) .. string.format(" times=%.3f/%.3f", s, d)
+end
+
+local function RunCooldownCapture()
+    local CompatAPI = ns:GetModule("Compatibility.API")
+    ns:Print(string.format("=== cdcheck  GetTime=%.3f  GetSpellCooldown source: %s",
+        GetTime(), tostring(CompatAPI and CompatAPI.resolvedSource and CompatAPI.resolvedSource.GetSpellCooldown)))
+    local gs, gd, ge = GetSpellCooldown and GetSpellCooldown(61304)
+    ns:Print(string.format("GCD 61304 (normalised): start=%s duration=%s enabled=%s",
+        tostring(gs), tostring(gd), tostring(ge)))
+    if C_Spell and C_Spell.GetSpellCooldown then
+        local info = C_Spell.GetSpellCooldown(61304)
+        if type(info) == "table" then
+            local parts = {}
+            for k, v in pairs(info) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(v) end
+            ns:Print("C_Spell 61304 raw: " .. table.concat(parts, " "))
+        end
+    end
+
+    local shown = 0
+    for button in buttonPool:EnumerateActive() do
+        local data = button.itemData
+        if shown < 3 and data and data.bagID and data.slot and not data.isEmptySlots then
+            local start, duration, enable = C_Container.GetContainerItemCooldown(data.bagID, data.slot)
+            if start and start > 0 then
+                shown = shown + 1
+                ns:Print(string.format("item %s (%d,%d): start=%s duration=%s enable=%s isGCD=%s readOnly=%s",
+                    tostring(data.name), data.bagID, data.slot, tostring(start), tostring(duration),
+                    tostring(enable), tostring(IsGlobalCooldown(start, duration)), tostring(button.isReadOnly)))
+                ns:Print("  ours: " .. DescribeCooldownFrame(button.cooldown))
+                if button.Cooldown and button.Cooldown ~= button.cooldown then
+                    ns:Print("  template .Cooldown: " .. DescribeCooldownFrame(button.Cooldown))
+                end
+                for _, child in ipairs({ button:GetChildren() }) do
+                    if child ~= button.cooldown and child.GetObjectType and child:GetObjectType() == "Cooldown" then
+                        ns:Print("  other child: " .. DescribeCooldownFrame(child))
+                    end
+                end
+            end
+        end
+    end
+    if shown == 0 then
+        ns:Print("No bag item reported a cooldown at this moment.")
+    end
+end
+
 -- Update cooldowns on all active buttons when BAG_UPDATE_COOLDOWN fires
 -- Without this, cooldowns (e.g. Hearthstone) only update during full bag refresh
 local Events = ns:GetModule("Events")
 if Events then
     Events:Register("BAG_UPDATE_COOLDOWN", function()
         if not buttonPool then return end
+        if cooldownCaptureArmed then
+            cooldownCaptureArmed = false
+            -- After this handler has applied (or filtered) the cooldowns. pcall: a
+            -- protected ("secret") cooldown value is itself the answer, so report it.
+            C_Timer.After(0, function()
+                local ok, err = pcall(RunCooldownCapture)
+                if not ok then ns:Print("cdcheck failed: " .. tostring(err)) end
+            end)
+        end
         for button in buttonPool:EnumerateActive() do
             if button.cooldown and button.itemData and button.itemData.bagID and button.itemData.slot
                 and not button.isReadOnly and not button.isEmptySlotButton and not button.isDropTargetButton
