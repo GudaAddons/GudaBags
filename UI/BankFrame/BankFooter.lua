@@ -116,6 +116,27 @@ local function IsClassicBankBagSlot(button)
         and button.bagID >= 5 and button.bagID <= 11
 end
 
+-- The inventory slot that holds the bag for a footer slot, or nil when the slot
+-- cannot hold one (unbought, or the main bank).
+--
+-- A bought tab on a Classic-presented tab bank IS a bank-bag slot -- the player puts
+-- a bag in it -- so it needs the same pickup/drop handling as a Classic one. Its slot
+-- comes from the client's own container -> inventory mapping, never bagID - 4.
+local function GetSlotBagInvSlot(button)
+    if button.needPurchase or button.isMainBank then return nil end
+    if button.tabIndex then
+        if button.bagID and C_Container and C_Container.ContainerIDToInventoryID then
+            return C_Container.ContainerIDToInventoryID(button.bagID)
+        end
+        return nil
+    end
+    if IsClassicBankBagSlot(button) then
+        local _, _, invSlot = GetBankBagInfo(button.bagID - 4)
+        return invSlot
+    end
+    return nil
+end
+
 -- The icon to draw for a purchased bank tab, or nil to use the caller's fallback.
 --
 -- Only a STRING path is accepted. A tab bank presented Classic-style is a
@@ -262,7 +283,12 @@ local function CreateBagSlotButton(parent, index)
                         GameTooltip:AddLine(FormatMoney(cost), 1, 1, 1)
                     end
                 else
-                    GameTooltip:SetText(ns.L["TOOLTIP_BANK"])
+                    local invSlot = GetSlotBagInvSlot(self)
+                    if invSlot and GetInventoryItemID("player", invSlot) then
+                        GameTooltip:SetInventoryItem("player", invSlot)
+                    else
+                        GameTooltip:SetText(ns.L["TOOLTIP_BANK"])
+                    end
                 end
             elseif IsClassicBankBagSlot(self) then
                 local bankBagIndex = bagID - 4
@@ -303,7 +329,7 @@ local function CreateBagSlotButton(parent, index)
     end)
 
     button:SetScript("OnClick", function(self)
-        if self.tabIndex then
+        if self.tabIndex and self.needPurchase then
             ns:Debug("BagSlot click: tabIndex=", self.tabIndex, "bagID=", self.bagID,
                 "needPurchase=", tostring(self.needPurchase),
                 "BankFrame=", tostring(ns:GetModule("BankFrame") ~= nil),
@@ -315,43 +341,32 @@ local function CreateBagSlotButton(parent, index)
             -- handler cannot do it here however it is worded.
             return
         end
-        if IsClassicBankBagSlot(self) then
-            if self.needPurchase then
-                local cost = BankScanner:GetBankSlotCost()
-                if cost then
-                    StaticPopup_Show("GUDABAGS_PURCHASE_BANK_SLOT", FormatMoney(cost))
-                end
-            else
-                local bankBagIndex = self.bagID - 4
-                local itemID, texture, invSlot = GetBankBagInfo(bankBagIndex)
-                if CursorHasItem() then
-                    PickupInventoryItem(invSlot)
-                elseif itemID then
-                    PickupInventoryItem(invSlot)
-                end
+        if IsClassicBankBagSlot(self) and self.needPurchase then
+            local cost = BankScanner:GetBankSlotCost()
+            if cost then
+                StaticPopup_Show("GUDABAGS_PURCHASE_BANK_SLOT", FormatMoney(cost))
             end
+            return
+        end
+        local invSlot = GetSlotBagInvSlot(self)
+        if invSlot and (CursorHasItem() or GetInventoryItemID("player", invSlot)) then
+            PickupInventoryItem(invSlot)
         end
     end)
 
     button:RegisterForDrag("LeftButton")
 
     button:SetScript("OnDragStart", function(self)
-        if IsClassicBankBagSlot(self) and not self.needPurchase then
-            local bankBagIndex = self.bagID - 4
-            local itemID, texture, invSlot = GetBankBagInfo(bankBagIndex)
-            if itemID then
-                PickupInventoryItem(invSlot)
-            end
+        local invSlot = GetSlotBagInvSlot(self)
+        if invSlot and GetInventoryItemID("player", invSlot) then
+            PickupInventoryItem(invSlot)
         end
     end)
 
     button:SetScript("OnReceiveDrag", function(self)
-        if IsClassicBankBagSlot(self) and not self.needPurchase then
-            local bankBagIndex = self.bagID - 4
-            local itemID, texture, invSlot = GetBankBagInfo(bankBagIndex)
-            if CursorHasItem() then
-                PickupInventoryItem(invSlot)
-            end
+        local invSlot = GetSlotBagInvSlot(self)
+        if invSlot and CursorHasItem() then
+            PickupInventoryItem(invSlot)
         end
     end)
 
@@ -984,50 +999,39 @@ function BankFooter:Init(parent)
         end)
 
         flySlot:SetScript("OnClick", function(self)
-            if self.tabIndex then
+            if self.tabIndex and self.needPurchase then
                 ns:Debug("Flyout click: tabIndex=", self.tabIndex, "bagID=", self.bagID,
                     "needPurchase=", tostring(self.needPurchase))
                 -- Same as the inline row: buying is the footer's secure button, not
                 -- a takeover panel. See UpdateTabPurchase.
                 return
             end
-            if IsClassicBankBagSlot(self) then
-                if self.needPurchase then
-                    local cost = BankScanner:GetBankSlotCost()
-                    if cost then
-                        StaticPopup_Show("GUDABAGS_PURCHASE_BANK_SLOT", FormatMoney(cost))
-                    end
-                else
-                    local bankBagIndex = self.bagID - 4
-                    local itemID, texture, invSlot = GetBankBagInfo(bankBagIndex)
-                    if CursorHasItem() then
-                        PickupInventoryItem(invSlot)
-                    elseif itemID then
-                        PickupInventoryItem(invSlot)
-                    end
+            if IsClassicBankBagSlot(self) and self.needPurchase then
+                local cost = BankScanner:GetBankSlotCost()
+                if cost then
+                    StaticPopup_Show("GUDABAGS_PURCHASE_BANK_SLOT", FormatMoney(cost))
                 end
+                return
+            end
+            local invSlot = GetSlotBagInvSlot(self)
+            if invSlot and (CursorHasItem() or GetInventoryItemID("player", invSlot)) then
+                PickupInventoryItem(invSlot)
             end
         end)
 
         flySlot:RegisterForDrag("LeftButton")
 
         flySlot:SetScript("OnDragStart", function(self)
-            if IsClassicBankBagSlot(self) and not self.needPurchase then
-                local bankBagIndex = self.bagID - 4
-                local itemID, _, invSlot = GetBankBagInfo(bankBagIndex)
-                if itemID then
-                    PickupInventoryItem(invSlot)
-                end
+            local invSlot = GetSlotBagInvSlot(self)
+            if invSlot and GetInventoryItemID("player", invSlot) then
+                PickupInventoryItem(invSlot)
             end
         end)
 
         flySlot:SetScript("OnReceiveDrag", function(self)
-            if IsClassicBankBagSlot(self) and not self.needPurchase then
-                local bankBagIndex = self.bagID - 4
-                local _, _, invSlot = GetBankBagInfo(bankBagIndex)
-                if CursorHasItem() then
-                    PickupInventoryItem(invSlot)
-                end
+            local invSlot = GetSlotBagInvSlot(self)
+            if invSlot and CursorHasItem() then
+                PickupInventoryItem(invSlot)
             end
         end)
 
@@ -1102,9 +1106,20 @@ function BankFooter:Init(parent)
 
     -- Repaint bag-slot textures when an equipped bank bag is swapped/added/removed.
     -- PLAYERBANKBAGSLOTS_CHANGED only reliably fires for slot purchases on Classic, so
-    -- we react to BAG_UPDATE for the bank-bag bagIDs (5-11) instead.
+    -- we react to BAG_UPDATE for the bank-bag bagIDs (5-11) instead. On a tab bank
+    -- the slots are the tab containers, and 5 is a carried bag there.
+    local tabRowSet
+    if tabRowIDs then
+        tabRowSet = {}
+        for _, id in ipairs(tabRowIDs) do tabRowSet[id] = true end
+    end
     Events:Register("BAG_UPDATE", function(event, bagID)
-        if not bagID or bagID < 5 or bagID > 11 then return end
+        if not bagID then return end
+        if tabRowSet then
+            if not tabRowSet[bagID] then return end
+        elseif bagID < 5 or bagID > 11 then
+            return
+        end
         if viewingCharacter then return end
         if not BankScanner:IsBankOpen() then return end
         BankFooter:Update()
