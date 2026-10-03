@@ -144,6 +144,10 @@ local function IsYellowColor(r, g, b)
     return r > threshold.min_r and g > threshold.min_g and b < threshold.max_b
 end
 
+-- Set when an in-combat scan saw red text it did not trust (see below). The
+-- PLAYER_REGEN_ENABLED handler re-resolves usability once combat ends.
+local combatRedDeferred = false
+
 -- Scan tooltip once and extract all needed information
 -- itemQuality: pass quality to skip hasSpecialProperties check for non-junk items
 local function ScanTooltipForItem(bagID, slot, classID, itemID, itemLink, itemQuality, itemLoaded)
@@ -304,6 +308,16 @@ local function ScanTooltipForItem(bagID, slot, classID, itemID, itemLink, itemQu
                 end
             end
         end
+    end
+
+    -- WoW: Forever adds a red "can't change equipment in combat" line to gear
+    -- while in combat. Its text is localized and has no known global, so in
+    -- combat any red line is untrusted: report usable, skip the cache, and let
+    -- PLAYER_REGEN_ENABLED re-resolve it.
+    if not isUsable and InCombatLockdown() then
+        combatRedDeferred = true
+        ns:ProfileStop("tooltip.scan")
+        return true, isQuestItem, isQuestStarter, hasSpecialProperties, hasDuration, isOpenable
     end
 
     ns:ProfileStop("tooltip.scan")
@@ -669,8 +683,9 @@ if Events then
             equipmentCacheDirty = false
             ItemScanner:ClearTooltipCache()
         end
-        if usabilityDirty then
+        if usabilityDirty or combatRedDeferred then
             usabilityDirty = false
+            combatRedDeferred = false
             InvalidateUsability()
         end
     end, ItemScanner)
