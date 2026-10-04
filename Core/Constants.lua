@@ -538,6 +538,7 @@ Constants.DEFAULTS = {
     equipmentBorders = true,
     otherBorders = true,
     markUnusableItems = true,
+    markCombatGear = true,  -- Yellow tint on worn gear that can't be equipped during combat
     markEquipmentSets = true,
     autoLockSetItems = true,  -- Prevent selling/deleting equipment set items
     showItemLevel = true,
