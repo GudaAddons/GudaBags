@@ -244,6 +244,7 @@ function SettingsSchema.GetIcons()
         -- Row 6 - BoA label (shares the corner with BoE; sits under it deliberately)
         { type = "row", children = {
             { type = "checkbox", key = "showBoaLabel", label = L["SETTINGS_SHOW_BOA_LABEL"], tooltip = L["SETTINGS_SHOW_BOA_LABEL_TIP"] },
+            { type = "checkbox", key = "markCombatGear", label = L["SETTINGS_MARK_COMBAT_GEAR"], tooltip = L["SETTINGS_MARK_COMBAT_GEAR_TIP"] },
         }},
     }
 end

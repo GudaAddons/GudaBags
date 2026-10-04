@@ -565,6 +565,40 @@ local function IsTool(itemName)
     return false
 end
 
+-- Worn gear that can't be put on during combat. Weapons, shields, off-hands,
+-- ranged and relics can still be swapped mid-fight, so they're left out, as are
+-- bags, quivers and ammo. Keyed by equipSlot, which isn't localized.
+local COMBAT_LOCKED_EQUIP = {
+    INVTYPE_HEAD = true, INVTYPE_NECK = true, INVTYPE_SHOULDER = true,
+    INVTYPE_BODY = true, INVTYPE_CHEST = true, INVTYPE_ROBE = true,
+    INVTYPE_WAIST = true, INVTYPE_LEGS = true, INVTYPE_FEET = true,
+    INVTYPE_WRIST = true, INVTYPE_HAND = true, INVTYPE_FINGER = true,
+    INVTYPE_TRINKET = true, INVTYPE_CLOAK = true, INVTYPE_TABARD = true,
+}
+
+-- Tracked from the events rather than InCombatLockdown(), which still reports
+-- false inside the PLAYER_REGEN_DISABLED handler that repaints the overlays.
+local inCombat = InCombatLockdown() or false
+
+-- Red when the character can't use the item; yellow (opt-in) for gear that is
+-- only blocked because of combat. Red always wins.
+local function ApplyUnusableOverlay(button, itemData, settings, isOnCooldown)
+    local overlay = button.unusableOverlay
+    if isOnCooldown then
+        overlay:Hide()
+    elseif settings.markUnusableItems and itemData.isUsable == false then
+        overlay:SetVertexColor(1, 0.1, 0.1, 0.4)
+        overlay:Show()
+    elseif settings.markCombatGear and inCombat
+        and not button.isReadOnly and not itemData.isGuildBank
+        and COMBAT_LOCKED_EQUIP[itemData.equipSlot] then
+        overlay:SetVertexColor(1, 0.8, 0, 0.35)
+        overlay:Show()
+    else
+        overlay:Hide()
+    end
+end
+
 local function IsJunkItem(itemData)
     if not itemData then return false end
 
@@ -1898,6 +1932,7 @@ local function GetCachedSettings()
             equipmentBorders = Database:GetSetting("equipmentBorders"),
             otherBorders = Database:GetSetting("otherBorders"),
             markUnusableItems = Database:GetSetting("markUnusableItems"),
+            markCombatGear = Database:GetSetting("markCombatGear"),
             markEquipmentSets = Database:GetSetting("markEquipmentSets"),
             showItemLevel = Database:GetSetting("showItemLevel"),
             showCharges = Database:GetSetting("showCharges"),
@@ -2274,11 +2309,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         ns:ProfileStop("si.cooldown")
 
-        if settings.markUnusableItems and itemData.isUsable == false and not isOnCooldown then
-            button.unusableOverlay:Show()
-        else
-            button.unusableOverlay:Hide()
-        end
+        button.itemOnCooldown = isOnCooldown
+        ApplyUnusableOverlay(button, itemData, settings, isOnCooldown)
 
         if button.junkIcon then
             if IsJunkItem(itemData) then
@@ -3210,7 +3242,7 @@ if Events then
         if key == "iconSize" or key == "bgAlpha" or key == "iconFontSize"
             or key == "grayoutJunk" or key == "equipmentBorders"
             or key == "otherBorders" or key == "markUnusableItems"
-            or key == "markEquipmentSets"
+            or key == "markCombatGear" or key == "markEquipmentSets"
             or key == "showItemLevel" or key == "showCharges"
             or key == "showBoeLabel" or key == "showBoaLabel" then
             ItemButton:InvalidateSettingsCache()
@@ -3219,6 +3251,30 @@ if Events then
 
     Events:Register("PROFILE_LOADED", function()
         cachedSettings = nil
+    end, ItemButton)
+
+    -- Combat start/end: flip only the overlay on worn gear. Touches no secure
+    -- attributes and acquires nothing, so it is safe under lockdown (Rule 3).
+    local function RefreshCombatGearOverlays()
+        if not buttonPool then return end
+        local settings = GetCachedSettings()
+        if not settings.markCombatGear then return end
+        for button in buttonPool:EnumerateActive() do
+            local itemData = button.itemData
+            if itemData and button.unusableOverlay and COMBAT_LOCKED_EQUIP[itemData.equipSlot] then
+                ApplyUnusableOverlay(button, itemData, settings, button.itemOnCooldown)
+            end
+        end
+    end
+
+    Events:Register("PLAYER_REGEN_DISABLED", function()
+        inCombat = true
+        RefreshCombatGearOverlays()
+    end, ItemButton)
+
+    Events:Register("PLAYER_REGEN_ENABLED", function()
+        inCombat = false
+        RefreshCombatGearOverlays()
     end, ItemButton)
 end
 
