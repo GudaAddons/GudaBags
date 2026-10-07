@@ -246,6 +246,12 @@ function SettingsSchema.GetIcons()
             { type = "checkbox", key = "showBoaLabel", label = L["SETTINGS_SHOW_BOA_LABEL"], tooltip = L["SETTINGS_SHOW_BOA_LABEL_TIP"] },
             { type = "checkbox", key = "markCombatGear", label = L["SETTINGS_MARK_COMBAT_GEAR"], tooltip = L["SETTINGS_MARK_COMBAT_GEAR_TIP"] },
         }},
+
+        -- Row 7 - Cosmetic items (hidden where the client has no cosmetic flag)
+        { type = "row", hidden = function() return not ns.ExpansionFeatures.HasCosmeticItems end,
+          children = {
+            { type = "checkbox", key = "markCosmeticItems", label = L["SETTINGS_MARK_COSMETIC"], tooltip = L["SETTINGS_MARK_COSMETIC_TIP"] },
+        }},
     }
 end
 

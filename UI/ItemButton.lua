@@ -32,6 +32,13 @@ local PAWN_ARROW_ATLAS = (C_Texture and C_Texture.GetAtlasInfo
     and C_Texture.GetAtlasInfo("bags-greenarrow")) and "bags-greenarrow" or nil
 local PAWN_ARROW_TEXTURE = "Interface\\AddOns\\Pawn\\Textures\\UpgradeArrow"
 
+-- Cosmetic marker: the client's purple four-corner frame. Both the atlas and
+-- the API are probed because neither is guaranteed on Classic flavors; with
+-- either missing the overlay texture is never created and every use no-ops.
+local COSMETIC_ATLAS = (C_Texture and C_Texture.GetAtlasInfo
+    and C_Texture.GetAtlasInfo("CosmeticIconFrame")) and "CosmeticIconFrame" or nil
+local C_Item_IsCosmeticItem = C_Item and C_Item.IsCosmeticItem
+
 local PawnCompat  -- resolved lazily to avoid load-order coupling
 
 -- Weapon/armor check. Keyed on classID because GetItemInfo's itemType is
@@ -514,6 +521,7 @@ local function ResetButton(pool, button)
     if button.itemLevelText then button.itemLevelText:Hide() end
     if button.chargesText then button.chargesText:Hide() end
     if button.boeText then button.boeText:Hide() end
+    if button.cosmeticOverlay then button.cosmeticOverlay:Hide() end
     if button.upgradeArrow then button.upgradeArrow:Hide() end
     HideTransmogIcon(button)
     HideUpgradeTrackIcon(button)
@@ -939,6 +947,17 @@ local function CreateButton(parent)
     craftingQualityIcon:Hide()
     button.craftingQualityFrame = craftingQualityFrame
     button.craftingQualityIcon = craftingQualityIcon
+
+    -- Cosmetic corners share the crafting-quality frame: it already sits above
+    -- the quality border (which would otherwise bury the corners) and its level
+    -- is re-asserted on resync, so no extra frame is needed.
+    if COSMETIC_ATLAS and C_Item_IsCosmeticItem then
+        local cosmeticOverlay = craftingQualityFrame:CreateTexture(nil, "OVERLAY", nil, 1)
+        cosmeticOverlay:SetAllPoints(button)
+        cosmeticOverlay:SetAtlas(COSMETIC_ATLAS)
+        cosmeticOverlay:Hide()
+        button.cosmeticOverlay = cosmeticOverlay
+    end
 
     -- Tracked/favorite icon shadow (for darker stroke effect, drawn behind the icon)
     local trackedIconShadow = button:CreateTexture(nil, "OVERLAY", nil, 2)
@@ -1938,6 +1957,7 @@ local function GetCachedSettings()
             showCharges = Database:GetSetting("showCharges"),
             showBoeLabel = Database:GetSetting("showBoeLabel"),
             showBoaLabel = Database:GetSetting("showBoaLabel"),
+            markCosmeticItems = Database:GetSetting("markCosmeticItems"),
         }
         cachedSettingsFrame = currentFrame
     end
@@ -2102,6 +2122,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
         if button.boeText then button.boeText:Hide() end
+        if button.cosmeticOverlay then button.cosmeticOverlay:Hide() end
         if button.upgradeArrow then button.upgradeArrow:Hide() end
         HideTransmogIcon(button)
         HideUpgradeTrackIcon(button)
@@ -2147,6 +2168,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.itemLevelText then button.itemLevelText:Hide() end
         if button.chargesText then button.chargesText:Hide() end
         if button.boeText then button.boeText:Hide() end
+        if button.cosmeticOverlay then button.cosmeticOverlay:Hide() end
         if button.upgradeArrow then button.upgradeArrow:Hide() end
         HideTransmogIcon(button)
         HideUpgradeTrackIcon(button)
@@ -2487,6 +2509,18 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         ns:ProfileStop("si.boe")
 
+        -- Cosmetic corners. Not gated on item class: the cosmetic flag is per
+        -- item, so any class predicate risks missing some. The lookup is a
+        -- single cheap client call. Items not yet cached answer false and are
+        -- picked up by the item-info repaint.
+        ns:ProfileStart("si.cosmetic")
+        if button.cosmeticOverlay then
+            local link = itemData.link
+            button.cosmeticOverlay:SetShown(settings.markCosmeticItems and link ~= nil
+                and C_Item_IsCosmeticItem(link) == true)
+        end
+        ns:ProfileStop("si.cosmetic")
+
         -- Upgrade arrow: Pawn (preferred) or SimpleItemLevel, when installed.
         -- Invisible without either addon. See ApplyUpgradeArrow above.
         ns:ProfileStart("si.upgrade")
@@ -2553,6 +2587,9 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         end
         if button.boeText then
             button.boeText:Hide()
+        end
+        if button.cosmeticOverlay then
+            button.cosmeticOverlay:Hide()
         end
         if button.upgradeArrow then
             button.upgradeArrow:Hide()
@@ -2743,6 +2780,9 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     end
     if button.boeText then
         button.boeText:Hide()
+    end
+    if button.cosmeticOverlay then
+        button.cosmeticOverlay:Hide()
     end
     if button.upgradeArrow then
         button.upgradeArrow:Hide()
@@ -3244,7 +3284,8 @@ if Events then
             or key == "otherBorders" or key == "markUnusableItems"
             or key == "markCombatGear" or key == "markEquipmentSets"
             or key == "showItemLevel" or key == "showCharges"
-            or key == "showBoeLabel" or key == "showBoaLabel" then
+            or key == "showBoeLabel" or key == "showBoaLabel"
+            or key == "markCosmeticItems" then
             ItemButton:InvalidateSettingsCache()
         end
     end, ItemButton)

@@ -149,6 +149,10 @@ Expansion.Features = {
     -- every flavor whether or not any item can carry the binding, so their
     -- existence proves nothing.
     HasAccountBoundItems = Expansion.IsRetail or Expansion.IsMoP,
+
+    -- Gated on the API itself, not the expansion: the cosmetic item flag only
+    -- exists where the client can answer for it, and Classic flavors may not.
+    HasCosmeticItems = C_Item ~= nil and C_Item.IsCosmeticItem ~= nil,
 }
 
 -- Convenience exports to namespace root
