@@ -89,6 +89,31 @@ local tonumber = tonumber
 local tinsert = table.insert
 local tconcat = table.concat
 
+-- Words that find a collectible by kind in a plain-text search. A toy has no
+-- item type or subtype saying so (most are Miscellaneous/Junk) -- the word only
+-- appears in its tooltip -- so without this, typing "toy" matches nothing.
+--
+-- Each kind gets the client's own word from Blizzard's global string, plus the
+-- English one, so "toy" works everywhere and a player can also type it natively.
+-- A global missing on some flavor just leaves the English entry.
+local function CollectibleLabels(globalName, english)
+    local labels = { english }
+    local localized = _G[globalName]
+    if type(localized) == "string" and localized ~= "" then
+        localized = utf8lower(localized)
+        if localized ~= english then
+            labels[2] = localized
+        end
+    end
+    return labels
+end
+
+local COLLECTIBLE_LABELS = {
+    toy   = CollectibleLabels("TOY", "toy"),
+    mount = CollectibleLabels("MOUNT", "mount"),
+    pet   = CollectibleLabels("PET", "pet"),
+}
+
 -- TooltipScanner loads at TOC 54, this file at 65, so file-scope is safe. Used
 -- only as a fallback -- the search path supplies the same module on `context`.
 local TooltipScannerFallback = ns:GetModule("TooltipScanner")
@@ -416,9 +441,13 @@ function SearchParser:MatchKeyword(keyword, itemData, context)
         return itemData.isOpenable == true
 
     elseif keyword == "learnable" then
-        -- Recipe item class (recipes/patterns/plans/formulae/schematics/manuals).
+        -- Everything you right-click to learn: the Recipe item class
+        -- (recipes/patterns/plans/formulae/schematics/manuals) plus toys, mounts
+        -- and pets. Not just recipes -- collectibles have no class of their own,
+        -- so a classID-only test silently leaves them out.
         -- Uses classID (locale-independent) rather than the localized itemType string.
-        return itemData.classID == 9
+        return itemData.classID == ns.Constants.ITEM_CLASS.RECIPE
+            or Utils:GetCollectibleKind(itemData) ~= nil
     end
 
     return false
@@ -440,6 +469,16 @@ function SearchParser:MatchesTextSearch(itemData, textSearch)
     end
     if itemData.itemSubType and strfind(utf8lower(itemData.itemSubType), textSearch, 1, true) then
         return true
+    end
+
+    -- Last: only items the three cheap tests rejected ask what kind they are.
+    local labels = COLLECTIBLE_LABELS[Utils:GetCollectibleKind(itemData)]
+    if labels then
+        for i = 1, #labels do
+            if strfind(labels[i], textSearch, 1, true) then
+                return true
+            end
+        end
     end
 
     return false
