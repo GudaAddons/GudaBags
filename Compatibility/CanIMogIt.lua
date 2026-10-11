@@ -28,6 +28,7 @@ ns:RegisterModule("Compatibility.CanIMogIt", CIMI)
 
 local Events = ns:GetModule("Events")
 local Constants = ns.Constants
+local Utils = ns:GetModule("Utils")
 
 -- [itemLink] = unmodifiedText for the LINK-ONLY query. That answer ignores which
 -- slot the item sits in, so it is stable per link and safe to memoise. The
@@ -60,11 +61,6 @@ local function OverlayEnabled()
     return ok and enabled
 end
 
--- Enum-probed so a flavor without these members degrades rather than errors.
-local BATTLEPET_CLASS = Enum and Enum.ItemClass and Enum.ItemClass.Battlepet
-local COMPANION_PET_SUBCLASS = Enum and Enum.ItemMiscellaneousSubclass
-    and Enum.ItemMiscellaneousSubclass.CompanionPet
-
 -- Items that can carry a collectible appearance. Mirrors the predicate
 -- Baganator uses for the same integration -- notably this is NOT just weapons
 -- and armor: toys, pets, mounts, decor and ensembles all have appearances, so
@@ -80,25 +76,14 @@ local function ComputeCollectible(itemData, link, itemID)
         return true
     end
 
-    if C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemID) ~= nil then
-        return true
-    end
-    if C_MountJournal and C_MountJournal.GetMountFromItem
-        and C_MountJournal.GetMountFromItem(itemID) ~= nil then
+    -- Toys, mounts and pets (caged or companion item). Deliberately NOT all of
+    -- Miscellaneous -- that class is mostly junk with no appearance.
+    if Utils:GetCollectibleKind(itemData) then
         return true
     end
     if C_Item and C_Item.IsDecorItem and C_Item.IsDecorItem(itemID) then
         return true
     end
-    -- Battle pets: a caged pet (its own item class, and a battlepet: link) or a
-    -- companion-pet Miscellaneous item. Deliberately NOT all of Miscellaneous --
-    -- that class is mostly junk with no appearance.
-    if BATTLEPET_CLASS and classID == BATTLEPET_CLASS then return true end
-    if COMPANION_PET_SUBCLASS and classID == Constants.ITEM_CLASS.MISCELLANEOUS
-        and itemData.subClassID == COMPANION_PET_SUBCLASS then
-        return true
-    end
-    if link:find("battlepet:", 1, true) then return true end
     if _G.CanIMogIt.IsItemEnsemble then
         local ok, isEnsemble = pcall(_G.CanIMogIt.IsItemEnsemble, _G.CanIMogIt, link)
         if ok and isEnsemble then return true end

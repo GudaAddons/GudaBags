@@ -356,6 +356,78 @@ function Utils:IsToolLike(itemData)
         and itemData.subClassID == toolSubClass
 end
 
+-------------------------------------------------
+-- Collectible Detection
+-- Items that are learned into a collection: toys, mounts and pets.
+-------------------------------------------------
+
+-- Enum-probed so a flavor without these members degrades rather than errors.
+local BATTLEPET_CLASS = Enum and Enum.ItemClass and Enum.ItemClass.Battlepet
+local COMPANION_PET_SUBCLASS = Enum and Enum.ItemMiscellaneousSubclass
+    and Enum.ItemMiscellaneousSubclass.CompanionPet
+
+-- [itemID] = "toy"/"mount"/"pet", or false. The kind is a static property of
+-- the item, so this never needs invalidating -- and search asks for every item
+-- on every keystroke.
+local collectibleKindCache = {}
+
+local function ComputeCollectibleKind(itemData, itemID)
+    if C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemID) ~= nil then
+        return "toy"
+    end
+    if C_MountJournal and C_MountJournal.GetMountFromItem
+        and C_MountJournal.GetMountFromItem(itemID) ~= nil then
+        return "mount"
+    end
+
+    -- Without a pet journal (Classic Era, TBC) a companion is an item you keep
+    -- and summon from the bag, not one you learn, so it is not a collectible.
+    if C_PetJournal then
+        if C_PetJournal.GetPetInfoByItemID
+            and C_PetJournal.GetPetInfoByItemID(itemID) ~= nil then
+            return "pet"
+        end
+        local classID = itemData.classID
+        if BATTLEPET_CLASS and classID == BATTLEPET_CLASS then return "pet" end
+        if COMPANION_PET_SUBCLASS and classID == ns.Constants.ITEM_CLASS.MISCELLANEOUS
+            and itemData.subClassID == COMPANION_PET_SUBCLASS then
+            return "pet"
+        end
+    end
+
+    return false
+end
+
+-- Returns "toy", "mount", "pet" or nil. The single detector for this question:
+-- the Learn filter, plain-text search and the CanIMogIt gate all ask here.
+--
+-- Deliberately API-driven rather than class-driven: toys have no item class or
+-- subclass of their own (most are Miscellaneous/Junk), so no classID test can
+-- find them.
+function Utils:GetCollectibleKind(itemData)
+    -- A caged pet's link is a battlepet: link, which GetItemInfo cannot
+    -- resolve, so its record carries the Miscellaneous placeholder class. Every
+    -- cage also shares one itemID, so this is answered from the link, uncached.
+    local link = itemData.link or itemData.itemLink
+    if link and strfind(link, "battlepet:", 1, true) then
+        return "pet"
+    end
+
+    local itemID = itemData.itemID
+    if not itemID then return nil end
+
+    local cached = collectibleKindCache[itemID]
+    if cached ~= nil then return cached or nil end
+
+    local kind = ComputeCollectibleKind(itemData, itemID)
+    -- An unresolved item has placeholder class fields; answer for now, but do
+    -- not pin a "not collectible" verdict on it.
+    if kind or not itemData.dataPending then
+        collectibleKindCache[itemID] = kind
+    end
+    return kind or nil
+end
+
 -- Format money with all denominations (for totals/summaries)
 function Utils:FormatMoneyFull(amount)
     if not amount or amount == 0 then return "" end
