@@ -2908,6 +2908,13 @@ function BankFrame:Show()
     -- below reconciles whatever the scan finds, so the scan's own update must not veto it.
     local canFast = self:CanFastReopen()
     if BankScanner:IsBankOpen() then
+        -- The scanner resets to the character bank on every open, but the footer
+        -- reopens on whichever type was last viewed. Re-sync before scanning so the
+        -- scan and the defaulted GetCachedBank() read the bank actually on screen.
+        if RetailBankScanner and BankFooter and Enum.BankType then
+            local bankType = BankFooter:GetCurrentBankType()
+            RetailBankScanner:SetCurrentBankType(bankType == "warband" and Enum.BankType.Account or Enum.BankType.Character)
+        end
         BankScanner:ScanAllBank()
     end
 

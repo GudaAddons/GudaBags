@@ -57,6 +57,8 @@ local BANKER_INTERACTION = Enum and Enum.PlayerInteractionType and Enum.PlayerIn
 local CLOSE_WATCH_INTERVAL = 0.5
 local closeWatcher = nil
 local HandleBankClosed  -- forward declaration, defined with the event handlers
+local GetBankTypeForBagID  -- forward declaration, defined with the event handlers
+local ScheduleDeferredSave  -- forward declaration, defined with the deferred save
 
 -- true/false from the client, nil when the API is unavailable
 local function IsAtBanker()
@@ -440,6 +442,11 @@ function RetailBankScanner:ScanAllBank()
     ns:ProfileStart("Bank.ScanAllBank")
     -- Scan current bank type
     local result = self:ScanBank(currentBankType)
+    -- ScanBank swaps in a fresh cache table, so the saved copy (which the tooltip
+    -- counts read) keeps pointing at the old one until something saves.
+    if isBankOpen then
+        ScheduleDeferredSave()
+    end
     ns:ProfileStop("Bank.ScanAllBank")
     return result
 end
@@ -449,11 +456,25 @@ function RetailBankScanner:ScanDirtyBags(bagIDs)
         return currentBankType == BANK_TYPE_ACCOUNT and cachedWarbandBank or cachedCharacterBank
     end
 
-    local cache = currentBankType == BANK_TYPE_ACCOUNT and cachedWarbandBank or cachedCharacterBank
+    -- Each bag goes to the cache of the bank it belongs to, not the one on screen:
+    -- a warband tab scanned into the character cache left the warband view and
+    -- the saved warband snapshot stale.
+    local warbandUnlocked = self:IsWarbandBankAvailable()
 
     for bagID in pairs(bagIDs) do
-        local numSlots = C_Container.GetContainerNumSlots(bagID)
-        if not numSlots or numSlots == 0 then
+        local bagBankType = GetBankTypeForBagID(bagID)
+        local cache
+        if bagBankType == BANK_TYPE_ACCOUNT then
+            -- A locked warband reports 0 slots; don't let that wipe the cached tabs
+            cache = warbandUnlocked and cachedWarbandBank or nil
+        elseif bagBankType then
+            cache = cachedCharacterBank
+        end
+
+        local numSlots = cache and C_Container.GetContainerNumSlots(bagID)
+        if not cache then
+            -- not a bank container, or the warband is locked
+        elseif not numSlots or numSlots == 0 then
             if cache[bagID] then
                 cache[bagID] = nil
             end
@@ -506,7 +527,7 @@ function RetailBankScanner:ScanDirtyBags(bagIDs)
         end
     end
 
-    return cache
+    return currentBankType == BANK_TYPE_ACCOUNT and cachedWarbandBank or cachedCharacterBank
 end
 
 function RetailBankScanner:GetCachedBank(bankType)
@@ -728,7 +749,7 @@ end
 -- Deferred Save
 -------------------------------------------------
 
-local function ScheduleDeferredSave()
+ScheduleDeferredSave = function()
     if saveTimer then
         saveTimer:Cancel()
     end
@@ -786,7 +807,7 @@ end
 -------------------------------------------------
 
 -- Determine if a bag ID belongs to character bank or warband bank
-local function GetBankTypeForBagID(bagID)
+GetBankTypeForBagID = function(bagID)
     if bagID == Enum.BagIndex.Bank or (bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX) then
         return BANK_TYPE_CHARACTER
     end
@@ -860,12 +881,11 @@ end
 Events:Register("BAG_UPDATE", function(event, bagID)
     if not bagID then return end
 
-    local bagBankType = GetBankTypeForBagID(bagID)
-    if bagBankType then
-        -- Only process if it's the current bank type being viewed
-        if bagBankType == currentBankType then
-            OnBankUpdate(bagID)
-        end
+    -- Both bank types are tracked, not just the one on screen: dropping the other
+    -- type's updates left the bag frame, the bank frame and the saved snapshot
+    -- (tooltip counts) stale whenever the scanner's view type drifted from the UI's.
+    if GetBankTypeForBagID(bagID) then
+        OnBankUpdate(bagID)
     end
 end, RetailBankScanner)
 
@@ -875,18 +895,14 @@ if not Constants.CHARACTER_BANK_TABS_ACTIVE then
     -- Only register these if old bank system is active
     if Enum.BagIndex.Bank then
         Events:Register("PLAYERBANKSLOTS_CHANGED", function()
-            if currentBankType == BANK_TYPE_CHARACTER then
-                OnBankUpdate(Enum.BagIndex.Bank)
-            end
+            OnBankUpdate(Enum.BagIndex.Bank)
         end, RetailBankScanner)
 
         Events:Register("PLAYERBANKBAGSLOTS_CHANGED", function()
-            if currentBankType == BANK_TYPE_CHARACTER then
-                for bagID = Constants.BANK_BAG_MIN, Constants.BANK_BAG_MAX do
-                    dirtyBags[bagID] = true
-                end
-                OnBankUpdate(nil)
+            for bagID = Constants.BANK_BAG_MIN, Constants.BANK_BAG_MAX do
+                dirtyBags[bagID] = true
             end
+            OnBankUpdate(nil)
         end, RetailBankScanner)
     end
 end
