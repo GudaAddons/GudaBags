@@ -1,0 +1,6 @@
+package-as: GudaBags
+
+ignore:
+  - docs
+  - tests
+  - README.md

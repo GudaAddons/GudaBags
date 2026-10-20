@@ -17,6 +17,7 @@
 ## SavedVariablesPerCharacter: GudaBags_CharDB
 ## IconTexture: Interface\AddOns\GudaBags\Assets\bags.png
 ## OptionalDeps: Masque, CanIMogIt, ItemUpgradeQualityIcons
+## X-Wago-ID: aND9L86o
 
 ## Category: Guda
 
