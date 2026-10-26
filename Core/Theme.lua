@@ -537,6 +537,39 @@ local function StyleButton(btn, useBlizzard, useMetal)
     end
 end
 
+--- Apply the theme's title-bar chrome: backdrop + color, anchoring inside the
+--- parent frame, close button size, and frame level above Blizzard/metal art.
+--- Shared by the bag, bank, guild bank and mail headers (it used to be copied
+--- into each one's SetBackdropAlpha).
+--- @param headerFrame table The title bar frame (child of its window)
+--- @param alpha number Background alpha for themes that draw a header backdrop
+function Theme:ApplyHeaderChrome(headerFrame, alpha)
+    local headerBackdrop = self:GetValue("headerBackdrop")
+    if headerBackdrop then
+        headerFrame:SetBackdrop(headerBackdrop)
+        local headerBg = self:GetValue("headerBg")
+        headerFrame:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], alpha)
+        headerFrame:ClearAllPoints()
+        headerFrame:SetPoint("TOPLEFT", headerFrame:GetParent(), "TOPLEFT", 4, -4)
+        headerFrame:SetPoint("TOPRIGHT", headerFrame:GetParent(), "TOPRIGHT", -4, -4)
+        if headerFrame.closeButton then headerFrame.closeButton:SetSize(22, 22) end
+    else
+        headerFrame:SetBackdrop(nil)
+        headerFrame:ClearAllPoints()
+        headerFrame:SetPoint("TOPLEFT", headerFrame:GetParent(), "TOPLEFT", 0, 1)
+        headerFrame:SetPoint("TOPRIGHT", headerFrame:GetParent(), "TOPRIGHT", 4, 0)
+        -- Art, not API: the 22px close button belongs to retail's own frame art.
+        -- WoW: Forever is IsRetail on Vanilla art, so it takes the 32px one.
+        local closeSize = ns.ExpansionFeatures.HasRetailFrameArt and 22 or 32
+        if headerFrame.closeButton then headerFrame.closeButton:SetSize(closeSize, closeSize) end
+        -- Raise header above blizzardBg's NineSlice or metalFrame overlay
+        local parent = headerFrame:GetParent()
+        if parent.blizzardBg or parent.metalFrame then
+            headerFrame:SetFrameLevel(parent:GetFrameLevel() + ns.Constants.FRAME_LEVELS.HEADER)
+        end
+    end
+end
+
 --- Apply theme-appropriate styling and spacing to header icon buttons.
 --- @param headerFrame table The title bar frame
 --- @param leftButtons table Ordered array of left-side icon buttons (nil entries skipped)
