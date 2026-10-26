@@ -578,8 +578,8 @@ function Header:ShowNavMenu(anchor)
             edgeSize = 10,
             insets = { left = 2, right = 2, top = 2, bottom = 2 },
         })
-        navMenu:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-        navMenu:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.9)
+        navMenu:SetBackdropColor(Theme:Color("panelBg", 0.1, 0.1, 0.1, 0.95))
+        navMenu:SetBackdropBorderColor(Theme:Color("panelBorder", 0.3, 0.3, 0.3, 0.9))
         navMenu:EnableMouse(true)
         navMenu:Hide()
     end

@@ -5,6 +5,7 @@ ns:RegisterModule("BankFrame.BankFooter", BankFooter)
 
 local Constants = ns.Constants
 local Font = ns:GetModule("Font")
+local Theme = ns:GetModule("Theme")
 local L = ns.L
 
 local frame = nil
@@ -188,8 +189,8 @@ local function CreateMainBankButton(parent)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    button:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.9))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(Constants.BAG_SLOT_SIZE - 2, Constants.BAG_SLOT_SIZE - 2)
@@ -255,8 +256,8 @@ local function CreateBagSlotButton(parent, index)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    button:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.9))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(Constants.BAG_SLOT_SIZE - 2, Constants.BAG_SLOT_SIZE - 2)
@@ -718,8 +719,8 @@ function BankFooter:Init(parent)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    collapsedBankBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    collapsedBankBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    collapsedBankBtn:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.9))
+    collapsedBankBtn:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
     local collapsedIcon = collapsedBankBtn:CreateTexture(nil, "ARTWORK")
     collapsedIcon:SetSize(Constants.BAG_SLOT_SIZE - 2, Constants.BAG_SLOT_SIZE - 2)
     collapsedIcon:SetPoint("CENTER")
@@ -750,8 +751,8 @@ function BankFooter:Init(parent)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    bankFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    bankFlyout:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.9)
+    bankFlyout:SetBackdropColor(Theme:Color("panelBg", 0.1, 0.1, 0.1, 0.95))
+    bankFlyout:SetBackdropBorderColor(Theme:Color("panelBorder", 0.3, 0.3, 0.3, 0.9))
     bankFlyout:EnableMouse(true)
     bankFlyout:Hide()
     frame.bankFlyout = bankFlyout
@@ -767,8 +768,8 @@ function BankFooter:Init(parent)
             edgeSize = 8,
             insets = {left = 2, right = 2, top = 2, bottom = 2},
         })
-        flySlot:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-        flySlot:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        flySlot:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.9))
+        flySlot:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
         local flyIcon = flySlot:CreateTexture(nil, "ARTWORK")
         flyIcon:SetSize(flyoutBagSize - 4, flyoutBagSize - 4)
         flyIcon:SetPoint("CENTER")
@@ -927,10 +928,10 @@ function BankFooter:Init(parent)
             if bankFlyoutExpanded then
                 UpdateFlyoutSlots()
                 bankFlyout:Show()
-                self:SetBackdropBorderColor(1, 0.82, 0, 1)
+                self:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
             else
                 bankFlyout:Hide()
-                self:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+                self:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
             end
         end
     end)
@@ -1488,11 +1489,11 @@ function BankFooter:UpdateBankTypeSelection()
     if bankTypeButtons.character then
         if currentBankType == "character" then
             bankTypeButtons.character.selected:Show()
-            bankTypeButtons.character:SetBackdropBorderColor(1, 0.82, 0, 1)
+            bankTypeButtons.character:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
             bankTypeButtons.character.text:SetTextColor(1, 0.82, 0)
         else
             bankTypeButtons.character.selected:Hide()
-            bankTypeButtons.character:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+            bankTypeButtons.character:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
             bankTypeButtons.character.text:SetTextColor(0.8, 0.8, 0.8)
         end
     end
@@ -1500,11 +1501,11 @@ function BankFooter:UpdateBankTypeSelection()
     if bankTypeButtons.warband then
         if currentBankType == "warband" then
             bankTypeButtons.warband.selected:Show()
-            bankTypeButtons.warband:SetBackdropBorderColor(1, 0.82, 0, 1)
+            bankTypeButtons.warband:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
             bankTypeButtons.warband.text:SetTextColor(1, 0.82, 0)
         else
             bankTypeButtons.warband.selected:Hide()
-            bankTypeButtons.warband:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+            bankTypeButtons.warband:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
             bankTypeButtons.warband.text:SetTextColor(0.8, 0.8, 0.8)
         end
     end

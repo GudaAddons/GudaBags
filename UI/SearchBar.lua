@@ -10,6 +10,7 @@ local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Font = ns:GetModule("Font")
 local Utils = ns:GetModule("Utils")
+local Theme = ns:GetModule("Theme")
 
 local instances = {}
 local searchOverlay = nil
@@ -475,14 +476,14 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-    bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+    bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
     btn.bg = bg
 
-    label:SetTextColor(0.55, 0.55, 0.55)
+    label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
 
     btn:SetScript("OnEnter", function(self)
         if not searchBar.filterState[filterCategory][chipDef.key] then
-            self.bg:SetVertexColor(0.25, 0.25, 0.25, 0.8)
+            self.bg:SetVertexColor(Theme:Color("chipHoverBg", 0.25, 0.25, 0.25, 0.8))
         end
         if self.tooltipText then
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -493,7 +494,7 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
 
     btn:SetScript("OnLeave", function(self)
         if not searchBar.filterState[filterCategory][chipDef.key] then
-            self.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+            self.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
         end
         if self.tooltipText then
             GameTooltip:Hide()
@@ -504,12 +505,12 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
         local state = searchBar.filterState
         if state[filterCategory][chipDef.key] then
             state[filterCategory][chipDef.key] = nil
-            self.label:SetTextColor(0.55, 0.55, 0.55)
-            self.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+            self.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+            self.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
         else
             state[filterCategory][chipDef.key] = true
             self.label:SetTextColor(1, 1, 1)
-            self.bg:SetVertexColor(activeColor[1], activeColor[2], activeColor[3], activeColor[4])
+            self.bg:SetVertexColor(Theme:Color(activeColor.key, activeColor[1], activeColor[2], activeColor[3], activeColor[4]))
         end
         NotifyFilterChanged(searchBar)
     end)
@@ -519,8 +520,9 @@ local function CreateFilterChip(chipStrip, chipDef, searchBar, filterCategory, a
     return btn
 end
 
-local TYPE_CHIP_COLOR = {0.7, 0.55, 0.0, 0.9}
-local SPECIAL_CHIP_COLOR = {0.2, 0.6, 0.8, 0.9}
+-- Active chip colors; `key` lets a theme override them (Theme:Color)
+local TYPE_CHIP_COLOR = {0.7, 0.55, 0.0, 0.9, key = "chipActiveType"}
+local SPECIAL_CHIP_COLOR = {0.2, 0.6, 0.8, 0.9, key = "chipActiveSpecial"}
 
 local function CreateTypeChip(chipStrip, chipDef, searchBar)
     return CreateFilterChip(chipStrip, chipDef, searchBar, "types", TYPE_CHIP_COLOR, chipDef.settingKey)
@@ -545,15 +547,15 @@ local function ResetChipVisuals(searchBar)
     -- Reset type chips
     if searchBar.typeChips then
         for _, chip in ipairs(searchBar.typeChips) do
-            chip.label:SetTextColor(0.55, 0.55, 0.55)
-            chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+            chip.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+            chip.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
         end
     end
     -- Reset special chips
     if searchBar.specialChips then
         for _, chip in ipairs(searchBar.specialChips) do
-            chip.label:SetTextColor(0.55, 0.55, 0.55)
-            chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+            chip.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+            chip.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
         end
     end
     -- Reset dropdown label
@@ -604,13 +606,13 @@ UpdateDropdownLabel = function(searchBar)
     if activeCount > 0 then
         dropdown.label:SetText((L["CHIP_TYPES_DROPDOWN"] or "Types") .. " (" .. activeCount .. ")")
         dropdown.label:SetTextColor(1, 1, 1)
-        dropdown.bg:SetVertexColor(0.7, 0.55, 0.0, 0.9)
+        dropdown.bg:SetVertexColor(Theme:Color("chipActiveType", 0.7, 0.55, 0.0, 0.9))
         if dropdown.icon then dropdown.icon:SetVertexColor(1, 1, 1) end
     else
         dropdown.label:SetText((L["CHIP_TYPES_DROPDOWN"] or "Types") .. "")
-        dropdown.label:SetTextColor(0.55, 0.55, 0.55)
-        dropdown.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
-        if dropdown.icon then dropdown.icon:SetVertexColor(0.55, 0.55, 0.55) end
+        dropdown.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+        dropdown.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
+        if dropdown.icon then dropdown.icon:SetVertexColor(Theme:Color("chipText", 0.55, 0.55, 0.55)) end
     end
     dropdown:SetWidth(iconWidth + dropdown.label:GetStringWidth() + 10)
 end
@@ -619,14 +621,14 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
     if not typesDropdownMenu then
         typesDropdownMenu = CreateFrame("Frame", "GudaBagsTypesDropdown", UIParent, "BackdropTemplate")
         typesDropdownMenu:SetFrameStrata("TOOLTIP")
-        typesDropdownMenu:SetBackdrop({
+        Theme:PaintBackdrop(typesDropdownMenu, "panelBackdrop", {
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
             edgeSize = 10,
             insets = { left = 2, right = 2, top = 2, bottom = 2 },
         })
-        typesDropdownMenu:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-        typesDropdownMenu:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.9)
+        Theme:Paint(typesDropdownMenu, "SetBackdropColor", "panelBg", 0.1, 0.1, 0.1, 0.95)
+        Theme:Paint(typesDropdownMenu, "SetBackdropBorderColor", "panelBorder", 0.3, 0.3, 0.3, 0.9)
         typesDropdownMenu:EnableMouse(true)  -- Block mouse from reaching items behind
         typesDropdownMenu:Hide()
         typesDropdownMenu.items = {}
@@ -680,7 +682,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
         -- Set visual state
         if searchBar.filterState.types[chipDef.key] then
             item.label:SetTextColor(1, 1, 1)
-            item.bg:SetVertexColor(0.7, 0.55, 0.0, 0.6)
+            item.bg:SetVertexColor(Theme:Color("chipActiveType", 0.7, 0.55, 0.0, 0.6))
         else
             item.label:SetTextColor(0.7, 0.7, 0.7)
             item.bg:SetVertexColor(0, 0, 0, 0)
@@ -688,7 +690,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
 
         item:SetScript("OnEnter", function(self)
             if not searchBar.filterState.types[self.chipKey] then
-                self.bg:SetVertexColor(0.25, 0.25, 0.25, 0.8)
+                self.bg:SetVertexColor(Theme:Color("chipHoverBg", 0.25, 0.25, 0.25, 0.8))
             end
         end)
         item:SetScript("OnLeave", function(self)
@@ -705,17 +707,17 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             else
                 state.types[self.chipKey] = true
                 self.label:SetTextColor(1, 1, 1)
-                self.bg:SetVertexColor(0.7, 0.55, 0.0, 0.6)
+                self.bg:SetVertexColor(Theme:Color("chipActiveType", 0.7, 0.55, 0.0, 0.6))
             end
             -- Also update inline chip visuals if they exist
             for _, chip in ipairs(searchBar.typeChips) do
                 if chip.chipKey == self.chipKey then
                     if state.types[self.chipKey] then
                         chip.label:SetTextColor(1, 1, 1)
-                        chip.bg:SetVertexColor(0.7, 0.55, 0.0, 0.9)
+                        chip.bg:SetVertexColor(Theme:Color("chipActiveType", 0.7, 0.55, 0.0, 0.9))
                     else
-                        chip.label:SetTextColor(0.55, 0.55, 0.55)
-                        chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+                        chip.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+                        chip.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
                     end
                 end
             end
@@ -763,7 +765,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
 
         if searchBar.filterState.specials[chipDef.key] then
             item.label:SetTextColor(1, 1, 1)
-            item.bg:SetVertexColor(0.2, 0.6, 0.8, 0.6)
+            item.bg:SetVertexColor(Theme:Color("chipActiveSpecial", 0.2, 0.6, 0.8, 0.6))
         else
             item.label:SetTextColor(0.7, 0.7, 0.7)
             item.bg:SetVertexColor(0, 0, 0, 0)
@@ -771,7 +773,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
 
         item:SetScript("OnEnter", function(self)
             if not searchBar.filterState.specials[self.chipKey] then
-                self.bg:SetVertexColor(0.25, 0.25, 0.25, 0.8)
+                self.bg:SetVertexColor(Theme:Color("chipHoverBg", 0.25, 0.25, 0.25, 0.8))
             end
         end)
         item:SetScript("OnLeave", function(self)
@@ -788,16 +790,16 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
             else
                 state.specials[self.chipKey] = true
                 self.label:SetTextColor(1, 1, 1)
-                self.bg:SetVertexColor(0.2, 0.6, 0.8, 0.6)
+                self.bg:SetVertexColor(Theme:Color("chipActiveSpecial", 0.2, 0.6, 0.8, 0.6))
             end
             for _, chip in ipairs(searchBar.specialChips) do
                 if chip.chipKey == self.chipKey then
                     if state.specials[self.chipKey] then
                         chip.label:SetTextColor(1, 1, 1)
-                        chip.bg:SetVertexColor(0.2, 0.6, 0.8, 0.9)
+                        chip.bg:SetVertexColor(Theme:Color("chipActiveSpecial", 0.2, 0.6, 0.8, 0.9))
                     else
-                        chip.label:SetTextColor(0.55, 0.55, 0.55)
-                        chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+                        chip.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+                        chip.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
                     end
                 end
             end
@@ -832,8 +834,27 @@ local CHIP_COLLAPSE_WIDTH = 420
 -- older spots in this file (ResetChipVisuals, the chip and dropdown OnClick handlers);
 -- new code goes through here so the colours have one home.
 local function SetChipInactive(chip)
-    chip.label:SetTextColor(0.55, 0.55, 0.55)
-    chip.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+    chip.label:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
+    chip.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
+end
+
+-- Re-derive every chip's colors from its filter state. Chip colors depend on
+-- state, so Theme:Paint can't repaint them on a theme switch; this does.
+local function RefreshChipColors(searchBar)
+    local state = searchBar.filterState
+    local function sync(chips, category, active)
+        for _, chip in ipairs(chips or {}) do
+            if state[category][chip.chipKey] then
+                chip.label:SetTextColor(1, 1, 1)
+                chip.bg:SetVertexColor(Theme:Color(active.key, active[1], active[2], active[3], active[4]))
+            else
+                SetChipInactive(chip)
+            end
+        end
+    end
+    sync(searchBar.typeChips, "types", TYPE_CHIP_COLOR)
+    sync(searchBar.specialChips, "specials", SPECIAL_CHIP_COLOR)
+    UpdateDropdownLabel(searchBar)
 end
 
 local function SetQualityDotInactive(dot)
@@ -1011,19 +1032,19 @@ local function CreateChipStrip(searchBar, parent)
     dropIcon:SetSize(10, 10)
     dropIcon:SetPoint("LEFT", typesDropdown, "LEFT", 4, 0)
     dropIcon:SetTexture("Interface\\AddOns\\GudaBags\\Assets\\more.png")
-    dropIcon:SetVertexColor(0.55, 0.55, 0.55)
+    dropIcon:SetVertexColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
     typesDropdown.icon = dropIcon
     -- Label
     local dropLabel = typesDropdown:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     Font:Override(dropLabel)
     dropLabel:SetPoint("LEFT", dropIcon, "RIGHT", 3, 0)
     dropLabel:SetText((L["CHIP_TYPES_DROPDOWN"] or "Types") .. "")
-    dropLabel:SetTextColor(0.55, 0.55, 0.55)
+    dropLabel:SetTextColor(Theme:Color("chipText", 0.55, 0.55, 0.55))
     typesDropdown.label = dropLabel
     local dropBg = typesDropdown:CreateTexture(nil, "BACKGROUND")
     dropBg:SetAllPoints()
     dropBg:SetTexture("Interface\\Buttons\\WHITE8x8")
-    dropBg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
+    dropBg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
     typesDropdown.bg = dropBg
     typesDropdown:SetWidth(dropIcon:GetWidth() + 3 + dropLabel:GetStringWidth() + 10)
     typesDropdown:Hide()
@@ -1031,7 +1052,7 @@ local function CreateChipStrip(searchBar, parent)
         local state = searchBar.filterState
         local hasActive = next(state.types) or next(state.specials)
         if not hasActive then
-            self.bg:SetVertexColor(0.25, 0.25, 0.25, 0.8)
+            self.bg:SetVertexColor(Theme:Color("chipHoverBg", 0.25, 0.25, 0.25, 0.8))
             if self.icon then self.icon:SetVertexColor(0.8, 0.8, 0.8) end
         end
     end)
@@ -1039,8 +1060,8 @@ local function CreateChipStrip(searchBar, parent)
         local state = searchBar.filterState
         local hasActive = next(state.types) or next(state.specials)
         if not hasActive then
-            self.bg:SetVertexColor(0.15, 0.15, 0.15, 0.8)
-            if self.icon then self.icon:SetVertexColor(0.55, 0.55, 0.55) end
+            self.bg:SetVertexColor(Theme:Color("chipBg", 0.15, 0.15, 0.15, 0.8))
+            if self.icon then self.icon:SetVertexColor(Theme:Color("chipText", 0.55, 0.55, 0.55)) end
         end
     end)
     typesDropdown:SetScript("OnClick", function(self)
@@ -1118,14 +1139,14 @@ local function CreateEquipSetDropdown()
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
     f:SetSize(DROPDOWN_WIDTH, 100)
-    f:SetBackdrop({
+    Theme:PaintBackdrop(f, "panelBackdrop", {
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         edgeSize = 14,
         insets = {left = 3, right = 3, top = 3, bottom = 3},
     })
-    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    Theme:Paint(f, "SetBackdropColor", "panelBg", 0.1, 0.1, 0.1, 0.95)
+    Theme:Paint(f, "SetBackdropBorderColor", "panelBorder", 0.4, 0.4, 0.4, 1)
     f:EnableMouse(true)
     f:SetClampedToScreen(true)
     f:Hide()
@@ -1328,14 +1349,14 @@ local function CreateSearchBar(parent)
     searchBar:SetHeight(Constants.FRAME.SEARCH_BAR_HEIGHT)
     searchBar:SetPoint("TOPLEFT", parent, "TOPLEFT", Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING))
     searchBar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -Constants.FRAME.PADDING, -(Constants.FRAME.TITLE_HEIGHT + Constants.FRAME.PADDING))
-    searchBar:SetBackdrop({
+    Theme:PaintBackdrop(searchBar, "panelBackdrop", {
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    searchBar:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
-    searchBar:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    Theme:Paint(searchBar, "SetBackdropColor", "searchBarBg", 0.1, 0.1, 0.1, 0.8)
+    Theme:Paint(searchBar, "SetBackdropBorderColor", "searchBarBorder", 0.3, 0.3, 0.3, 0.8)
 
     -- Equipment set dropdown button (left side of search bar)
     local equipSetButton = CreateFrame("Button", nil, searchBar)
@@ -1854,11 +1875,14 @@ if Events then
     Events:Register("SETTING_CHANGED", function(_, key)
         if key == "hiddenChips" or key == "showFilterChips" then
             SearchBar:RefreshChipVisibility()
+        elseif key == "theme" then
+            for _, instance in pairs(instances) do RefreshChipColors(instance) end
         end
     end, SearchBar)
 
     Events:Register("PROFILE_LOADED", function()
         SearchBar:RefreshChipVisibility()
+        for _, instance in pairs(instances) do RefreshChipColors(instance) end
     end, SearchBar)
 end
 

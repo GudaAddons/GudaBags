@@ -580,8 +580,8 @@ local function CreateSideTab(parent, index, isAllTab)
         edgeSize = 12,
         insets = {left = 3, right = 3, top = 3, bottom = 3},
     })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    button:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.9))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
@@ -754,8 +754,8 @@ local function CreatePurchaseTab(parent, bankTypeEnum)
         edgeSize = 12,
         insets = {left = 3, right = 3, top = 3, bottom = 3},
     })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    button:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.9))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(TAB_SIZE - 8, TAB_SIZE - 8)
@@ -883,7 +883,7 @@ function BankFrame:HidePurchasePrompt()
         frame.purchasePrompt:Hide()
     end
     if frame.purchaseTab then
-        frame.purchaseTab:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        frame.purchaseTab:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
     end
     -- Restore scroll frame state
     if frame.scrollFrame then
@@ -1189,9 +1189,9 @@ function BankFrame:UpdateSideTabSelection()
     for i, button in pairs(frame.sideTabs) do
         if button and button:IsShown() then
             if i == selectedTab and not showingPurchasePrompt then
-                button:SetBackdropBorderColor(1, 0.82, 0, 1)
+                button:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
             else
-                button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+                button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
             end
         end
     end
@@ -1201,7 +1201,7 @@ function BankFrame:UpdateSideTabSelection()
         if showingPurchasePrompt then
             frame.purchaseTab:SetBackdropBorderColor(0.3, 0.8, 0.3, 1)
         else
-            frame.purchaseTab:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+            frame.purchaseTab:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
         end
     end
 end
@@ -1306,15 +1306,15 @@ local function CreateBottomBankTypeTab(parent, bankType, label)
         edgeSize = 12,
         insets = {left = 3, right = 3, top = 0, bottom = 3},
     })
-    button:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    button:SetBackdropColor(Theme:Color("tabSelectedBg", 0.08, 0.08, 0.08, 0.95))
+    button:SetBackdropBorderColor(Theme:Color("tabBorder", 0.4, 0.4, 0.4, 1))
 
     -- Mask the top edge to blend with frame (create seamless connection)
     local topMask = button:CreateTexture(nil, "OVERLAY")
     topMask:SetPoint("TOPLEFT", button, "TOPLEFT", 1, 0)
     topMask:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, 0)
     topMask:SetHeight(3)
-    topMask:SetColorTexture(0.08, 0.08, 0.08, 0.95)
+    topMask:SetColorTexture(Theme:Color("tabSelectedBg", 0.08, 0.08, 0.08, 0.95))
     button.topMask = topMask
 
     -- Tab label
@@ -1437,16 +1437,19 @@ function BankFrame:UpdateBottomTabSelection()
         if button then
             if bankType == currentBankType then
                 button.selected:Show()
-                button:SetBackdropBorderColor(1, 0.82, 0, 1)
-                button:SetBackdropColor(0.08, 0.08, 0.08, bgAlpha)
-                button.text:SetTextColor(1, 0.82, 0)
-                button.topMask:SetColorTexture(0.08, 0.08, 0.08, bgAlpha)
+                button:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
+                -- RGB from the theme, alpha from the opacity setting (the selected
+                -- tab blends into the window background)
+                local r, g, b = Theme:Color("tabSelectedBg", 0.08, 0.08, 0.08)
+                button:SetBackdropColor(r, g, b, bgAlpha)
+                button.text:SetTextColor(Theme:Color("tabSelectedText", 1, 0.82, 0))
+                button.topMask:SetColorTexture(r, g, b, bgAlpha)
             else
                 button.selected:Hide()
-                button:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-                button:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
+                button:SetBackdropBorderColor(Theme:Color("tabBorder", 0.4, 0.4, 0.4, 1))
+                button:SetBackdropColor(Theme:Color("sideTabBg", 0.05, 0.05, 0.05, 0.9))
                 button.text:SetTextColor(0.6, 0.6, 0.6)
-                button.topMask:SetColorTexture(0.05, 0.05, 0.05, 0.9)
+                button.topMask:SetColorTexture(Theme:Color("sideTabBg", 0.05, 0.05, 0.05, 0.9))
             end
         end
     end

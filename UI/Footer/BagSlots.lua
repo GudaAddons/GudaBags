@@ -177,8 +177,8 @@ local function CreateBagFlyout(parent)
         edgeSize = 10,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    flyout:SetBackdropColor(0.12, 0.12, 0.12, 0.95)
-    flyout:SetBackdropBorderColor(0.30, 0.30, 0.30, 1)
+    flyout:SetBackdropColor(Theme:Color("panelBg", 0.12, 0.12, 0.12, 0.95))
+    flyout:SetBackdropBorderColor(Theme:Color("panelBorder", 0.30, 0.30, 0.30, 1))
 
     flyout.bagSlots = {}
 
@@ -402,7 +402,7 @@ function BagSlots:ToggleFlyout()
         self:UpdateFlyout()
         bagFlyout:Show()
         if frame.mainBagSlot then
-            frame.mainBagSlot:SetBackdropBorderColor(1, 0.82, 0, 1)
+            frame.mainBagSlot:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
         end
     else
         bagFlyout:Hide()

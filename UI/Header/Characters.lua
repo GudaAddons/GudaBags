@@ -5,6 +5,7 @@ ns:RegisterModule("Header.Characters", Characters)
 
 local Database = ns:GetModule("Database")
 local Font = ns:GetModule("Font")
+local Theme = ns:GetModule("Theme")
 
 local frame = nil
 local onCharacterSelected = nil
@@ -25,8 +26,8 @@ local function CreateDropdownFrame()
         edgeSize = 14,
         insets = {left = 3, right = 3, top = 3, bottom = 3},
     })
-    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    f:SetBackdropColor(Theme:Color("panelBg", 0.1, 0.1, 0.1, 0.95))
+    f:SetBackdropBorderColor(Theme:Color("panelBorder", 0.4, 0.4, 0.4, 1))
     f:EnableMouse(true)
     f:SetClampedToScreen(true)
     f:Hide()

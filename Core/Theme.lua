@@ -106,11 +106,37 @@ local themes = {
         bankTabSelected = {0.149, 0.149, 0.149, 1},
         footerButtonBg = {0.118, 0.118, 0.118, 1},
         footerButtonBorder = {0.165, 0.165, 0.165, 1},
-        -- Read by the tab/chip/slot styling that moves onto theme keys next
         accent = {0.247, 0.722, 0.686, 1},         -- #3FB8AF
         buttonHover = {0.149, 0.149, 0.149, 1},    -- #262626
         slotEmptyBorder = {0.165, 0.165, 0.165, 1},
         slotCommonBorder = {0.227, 0.227, 0.227, 1}, -- #3A3A3A
+        -- Theme:Color keys: chrome that other themes draw with call-site literals
+        panelBg = {0.071, 0.071, 0.071, 0.98},     -- dropdowns, menus
+        panelBorder = {0.165, 0.165, 0.165, 1},
+        searchBarBg = {0.102, 0.102, 0.102, 1},
+        searchBarBorder = {0.165, 0.165, 0.165, 1},
+        chipBg = {0.118, 0.118, 0.118, 1},
+        chipHoverBg = {0.149, 0.149, 0.149, 1},
+        chipText = {0.6, 0.6, 0.6, 1},
+        chipActiveType = {0.247, 0.722, 0.686, 0.9},
+        chipActiveSpecial = {0.247, 0.722, 0.686, 0.9},
+        tabBg = {0.118, 0.118, 0.118, 1},
+        tabBorder = {0.165, 0.165, 0.165, 1},
+        tabSelectedBorder = {0.247, 0.722, 0.686, 1},
+        tabSelectedBg = {0.071, 0.071, 0.071, 1},  -- = frameBg: the selected tab joins the window
+        tabSelectedText = {0.247, 0.722, 0.686, 1},
+        sideTabBg = {0.055, 0.055, 0.055, 0.95},
+        buttonBg = {0.118, 0.118, 0.118, 1},
+        buttonBorder = {0.165, 0.165, 0.165, 1},
+        categoryHeaderText = {0.85, 0.85, 0.85, 1},
+        categoryHeaderLine = {0.165, 0.165, 0.165, 1},
+        -- Theme:Backdrop keys: the rounded tooltip border becomes a 1px line
+        panelBackdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 1, right = 1, top = 1, bottom = 1},
+        },
         useBlizzardFrame = false,
         useFlatCloseButton = true,
         backdrop = {
@@ -817,14 +843,81 @@ function Theme:ApplyPopupTheme(f)
 end
 
 -------------------------------------------------
+-- Themed colors with call-site defaults
+-------------------------------------------------
+-- Most UI chrome (tabs, chips, dropdowns, footer buttons) was styled with literal
+-- colors. Each literal now goes through Theme:Color(key, <the literal>): a theme
+-- that defines `key` overrides it, every other theme gets the literal unchanged --
+-- so the guda/blizzard/retail look stays exactly what it was.
+
+--- @return number r, number g, number b, number a
+function Theme:Color(key, r, g, b, a)
+    local c = self:GetValue(key)
+    if c then
+        return c[1], c[2], c[3], c[4] or a or 1
+    end
+    return r, g, b, a or 1
+end
+
+-- Regions/frames painted once at creation, repainted when the theme changes.
+-- Weak keys: a released or garbage-collected element just drops out.
+local painted = setmetatable({}, { __mode = "k" })
+
+--- A backdrop table, overridable by a theme that defines `key`.
+function Theme:Backdrop(key, default)
+    return self:GetValue(key) or default
+end
+
+local function PaintEntries(target)
+    local entries = painted[target]
+    if not entries then
+        entries = {}
+        painted[target] = entries
+    end
+    return entries
+end
+
+--- Apply a themed color now and again on every theme change.
+--- Only for static colors -- a color that also changes with state (hover,
+--- active) is set from Theme:Color in its handlers instead.
+--- @param target table Frame or texture
+--- @param method string "SetBackdropColor", "SetBackdropBorderColor", "SetVertexColor", "SetColorTexture" or "SetTextColor"
+function Theme:Paint(target, method, key, r, g, b, a)
+    PaintEntries(target)[method] = { key, r, g, b, a }
+    target[method](target, self:Color(key, r, g, b, a))
+end
+
+--- Apply a themed backdrop now and again on every theme change.
+--- Call before PaintBackdrop's colors: SetBackdrop resets them.
+function Theme:PaintBackdrop(target, key, default)
+    PaintEntries(target).backdrop = { key, default }
+    target:SetBackdrop(self:Backdrop(key, default))
+end
+
+local function RepaintAll()
+    for target, entries in pairs(painted) do
+        -- Backdrop first: SetBackdrop resets the backdrop colors painted below
+        local bd = entries.backdrop
+        if bd then target:SetBackdrop(Theme:Backdrop(bd[1], bd[2])) end
+        for method, e in pairs(entries) do
+            if method ~= "backdrop" then
+                target[method](target, Theme:Color(e[1], e[2], e[3], e[4], e[5]))
+            end
+        end
+    end
+end
+
+-------------------------------------------------
 -- Cache Invalidation
 -------------------------------------------------
 Events:Register("SETTING_CHANGED", function(event, key)
     if key == "theme" then
         cachedTheme = nil
+        RepaintAll()
     end
 end, Theme)
 
 Events:Register("PROFILE_LOADED", function()
     cachedTheme = nil
+    RepaintAll()
 end, Theme)
