@@ -47,6 +47,7 @@ Core\SlashCommands.lua
 Compatibility\API.lua
 Compatibility\Pawn.lua
 Compatibility\CanIMogIt.lua
+Compatibility\BagConflicts.lua
 Compatibility\ItemUpgradeQualityIcons.lua
 
 # Category System
