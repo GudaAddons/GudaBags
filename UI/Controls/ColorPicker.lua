@@ -61,8 +61,9 @@ function ColorPicker:Create(parent, config)
     label:SetPoint("LEFT", swatch, "RIGHT", 8, 0)
     label:SetText(config.label)
 
+    -- Compact: the row shares its width with another control
     local reset = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
-    reset:SetSize(60, 20)
+    reset:SetSize(50, 20)
     reset:SetPoint("LEFT", label, "RIGHT", 10, 0)
     reset:SetText(ns.L["RESET"])
 

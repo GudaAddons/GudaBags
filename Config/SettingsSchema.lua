@@ -27,12 +27,6 @@ function SettingsSchema.GetGeneral()
             end
             return opts
         end)()},
-        -- Flat only: the tab is rebuilt on every theme change, so this appears and
-        -- disappears with the theme
-        { type = "color", key = "flatAccentColor", label = L["SETTINGS_ACCENT_COLOR"],
-          tooltip = L["SETTINGS_ACCENT_COLOR_TIP"],
-          default = ns:GetModule("Theme"):GetDefaultFlatAccent(),
-          hidden = function() return ns:GetModule("Database"):GetSetting("theme") ~= "flat" end },
         -- Locale-aware: only fonts the client can actually render are offered,
         -- so a CJK/Korean player cannot pick a Latin-only font and turn every
         -- string in the addon into boxes.
@@ -42,9 +36,19 @@ function SettingsSchema.GetGeneral()
         { type = "row", children = {
             { type = "checkbox", key = "retailEmptySlots", label = L["SETTINGS_RETAIL_EMPTY_SLOTS"], tooltip = L["SETTINGS_RETAIL_EMPTY_SLOTS_TIP"],
               -- Same reasoning as the theme option: only pointless where the
-              -- client's own slot art is already Retail's.
-              hidden = function() return ns.ExpansionFeatures.HasRetailFrameArt end },
+              -- client's own slot art is already Retail's. Also moot under Flat,
+              -- which always draws its own flat slots.
+              hidden = function()
+                  return ns.ExpansionFeatures.HasRetailFrameArt
+                      or ns:GetModule("Database"):GetSetting("theme") == "flat"
+              end },
             { type = "checkbox", key = "minimalEmptySlots", label = L["SETTINGS_MINIMAL_EMPTY_SLOTS"], tooltip = L["SETTINGS_MINIMAL_EMPTY_SLOTS_TIP"] },
+            -- Flat only: the tab is rebuilt on every theme change, so this appears and
+            -- disappears with the theme
+            { type = "color", key = "flatAccentColor", label = L["SETTINGS_ACCENT_COLOR"],
+              tooltip = L["SETTINGS_ACCENT_COLOR_TIP"],
+              default = ns:GetModule("Theme"):GetDefaultFlatAccent(),
+              hidden = function() return ns:GetModule("Database"):GetSetting("theme") ~= "flat" end },
         }},
 
         { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },
