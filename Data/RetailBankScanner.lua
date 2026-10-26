@@ -491,13 +491,18 @@ function RetailBankScanner:ScanDirtyBags(bagIDs)
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                     local cachedItem = existingBag.slots[slot]
 
+                    -- Compare link too: same-itemID items can differ in ilvl/bonus IDs
+                    -- (see BagScanner), so an itemID-only check misses their swap.
                     local currentItemID = itemInfo and itemInfo.itemID
                     local cachedItemID = cachedItem and cachedItem.itemID
+                    local currentLink = itemInfo and itemInfo.hyperlink
+                    local cachedLink = cachedItem and cachedItem.link
 
                     -- A record captured while the item was still loading compares
                     -- equal forever, so ask whether it is finished before
                     -- trusting "unchanged".
-                    if currentItemID ~= cachedItemID or ItemScanner:IsRecordIncomplete(cachedItem) then
+                    if currentItemID ~= cachedItemID or currentLink ~= cachedLink
+                        or ItemScanner:IsRecordIncomplete(cachedItem) then
                         if itemInfo then
                             local itemData = ItemScanner:ScanSlotFast(bagID, slot)
                             if not itemData then

@@ -7,6 +7,7 @@ local Constants = ns.Constants
 local Database = ns:GetModule("Database")
 local Events = ns:GetModule("Events")
 local Font = ns:GetModule("Font")
+local ItemButton = ns:GetModule("ItemButton")
 local Utils = ns:GetModule("Utils")
 
 -- WoW: Forever has no global GetItemInfo/GetItemSpell; resolved in
@@ -371,7 +372,7 @@ local function CreateFlyout(parent)
                             mainButton.slotID = slot
                             if bagID and slot then
                                 local start, duration, enable = C_Container.GetContainerItemCooldown(bagID, slot)
-                                if start and duration and duration > 0 then
+                                if start and duration and duration > 0 and not ItemButton:IsGlobalCooldown(start, duration) then
                                     mainButton.cooldown:SetCooldown(start, duration)
                                 else
                                     mainButton.cooldown:Clear()
@@ -523,7 +524,7 @@ local function UpdateButton(button, itemData)
     -- Update cooldown
     if bagID and slot then
         local start, duration, enable = C_Container.GetContainerItemCooldown(bagID, slot)
-        if start and duration and duration > 0 then
+        if start and duration and duration > 0 and not ItemButton:IsGlobalCooldown(start, duration) then
             button.cooldown:SetCooldown(start, duration)
         else
             button.cooldown:Clear()
@@ -1029,7 +1030,7 @@ Events:OnPlayerLogin(function()
 end, QuestBar)
 
 -- Handle setting changes directly (don't rely on BagFrame which may not be open)
-Events:Register("SETTING_CHANGED", function(key)
+Events:Register("SETTING_CHANGED", function(_, key)
     if key == "questBarSize" or key == "questBarColumns" or key == "questBarSpacing" then
         QuestBar:UpdateSize()
     elseif key == "iconFontSize" then

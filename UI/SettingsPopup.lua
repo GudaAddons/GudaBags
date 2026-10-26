@@ -171,6 +171,7 @@ local groupHeaders = {}
 local groupDropZones = {}
 local collapsedGroups = {}  -- Track collapsed state per group
 local categoriesScrollChild
+local RefreshCategoriesList  -- defined below; forward-declared so it isn't a global
 local draggedRow = nil
 local dropIndicator = nil
 
@@ -1034,7 +1035,7 @@ local function ReleaseFrame(frame)
     -- child frames and cause issues with WoW's frame system
 end
 
-function RefreshCategoriesList()
+RefreshCategoriesList = function()
     if not categoriesScrollChild then return end
 
     -- Ensure scroll child has proper width

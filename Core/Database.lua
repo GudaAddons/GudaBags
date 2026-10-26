@@ -271,6 +271,12 @@ end
 
 local function SaveCharCopy()
     if not (GudaBags_DB and GudaBags_CharDB) then return end
+    -- Only Forever needs the copy. Elsewhere it doubled every character's data in the
+    -- account file and deep-copied it on each logout/reload, so drop any old copies.
+    if not ns.IsForever then
+        GudaBags_DB.charCopies = nil
+        return
+    end
     local key = CharCopyKey()
     if not key then return end
     GudaBags_CharDB.savedAt = time()

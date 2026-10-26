@@ -163,7 +163,8 @@ function MailHeader:SetBackdropAlpha(alpha)
         frame:ClearAllPoints()
         frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
         frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
-        local closeSize = ns.IsRetail and 22 or 32
+        -- Art, not API: WoW: Forever is IsRetail on Vanilla art (see BankHeader)
+        local closeSize = ns.ExpansionFeatures.HasRetailFrameArt and 22 or 32
         if frame.closeButton then frame.closeButton:SetSize(closeSize, closeSize) end
         local parent = frame:GetParent()
         if parent.blizzardBg or parent.metalFrame then

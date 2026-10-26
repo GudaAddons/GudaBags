@@ -8,7 +8,9 @@ local Utils = ns:GetModule("Utils")
 local Database = ns:GetModule("Database")
 local Font = ns:GetModule("Font")
 
-local moneyFrame = nil
+-- Each footer (bags, bank) owns its own money frame from Init and passes it back
+-- into every method. A single module-level frame meant the last Init won, so the
+-- bag footer's alt-gold and font updates landed on the bank's frame.
 
 local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:10|t"
 local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:10|t"
@@ -244,7 +246,7 @@ function Money:Init(parent)
     moneyFrameCount = moneyFrameCount + 1
     local frameName = "GudaBagsMoneyFrame" .. moneyFrameCount
 
-    moneyFrame = CreateFrame("Frame", frameName, parent, "SmallMoneyFrameTemplate")
+    local moneyFrame = CreateFrame("Frame", frameName, parent, "SmallMoneyFrameTemplate")
     moneyFrame:SetPoint("RIGHT", parent, "RIGHT", 14, 0)
     moneyFrame.frameName = frameName
     moneyFrame:EnableMouse(true)
@@ -299,26 +301,26 @@ function Money:Init(parent)
     return moneyFrame
 end
 
-function Money:Show()
+function Money:Show(moneyFrame)
     if moneyFrame then
         moneyFrame:Show()
     end
 end
 
-function Money:Hide()
+function Money:Hide(moneyFrame)
     CloseGoldMenu()
     if moneyFrame then
         moneyFrame:Hide()
     end
 end
 
-function Money:Update()
+function Money:Update(moneyFrame)
     if not moneyFrame then return end
     local money = GetMoney()
     MoneyFrame_Update(moneyFrame.frameName, money)
 end
 
-function Money:SetFontSize(size)
+function Money:SetFontSize(moneyFrame, size)
     if not moneyFrame then return end
     local coinButtons = {"GoldButton", "SilverButton", "CopperButton"}
     for _, buttonName in ipairs(coinButtons) do
@@ -333,18 +335,14 @@ function Money:SetFontSize(size)
     end
 end
 
-function Money:GetFrame()
-    return moneyFrame
-end
-
-function Money:UpdateCached(characterFullName)
+function Money:UpdateCached(moneyFrame, characterFullName)
     if not moneyFrame then return end
     local money = Database:GetMoney(characterFullName)
     MoneyFrame_Update(moneyFrame.frameName, money)
 end
 
 -- Update with Warband bank money (Retail only)
-function Money:UpdateWarband()
+function Money:UpdateWarband(moneyFrame)
     if not moneyFrame then return end
     local money = 0
     -- Try different APIs to get Warband bank money

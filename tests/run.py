@@ -2,12 +2,13 @@
 """
 GudaBags offline test runner.
 
-Three passes:
+Passes:
   1. Syntax-checks every .lua file in the addon (pure-Python Lua parser).
   2. Runs the locale matrix harness against a real Lua interpreter, loading the
      addon's actual rule code with the WoW API stubbed out.
   3. Runs the expansion matrix harness, which loads the real Core/Expansion.lua
      against every client flavor the TOC claims plus WoW: Forever.
+  4. Runs the search parser and category manager harnesses (see README.md).
 
 Requires:  pip install luaparser lupa
 
@@ -79,7 +80,7 @@ def main():
     if not syntax_only:
         # Lua writes straight to the C stdout, so flush Python's buffer first
         # or the passes interleave out of order.
-        for name in ("locale_matrix", "expansion_matrix"):
+        for name in ("locale_matrix", "expansion_matrix", "search_parser", "category_manager"):
             print("")
             sys.stdout.flush()
             failures += harness_pass(name)

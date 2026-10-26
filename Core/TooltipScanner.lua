@@ -23,7 +23,9 @@ local RETRIEVING = RETRIEVING_ITEM_INFO
 -------------------------------------------------
 
 local scanningTooltip = nil
-local TOOLTIP_NAME = "GudaBagsScanningTooltip"
+-- Must differ from ItemScanner's "GudaBagsScanningTooltip": both read their lines
+-- back through _G[name .. "TextLeft" .. i], so a shared name crosses the streams.
+local TOOLTIP_NAME = "GudaBagsTooltipScannerTooltip"
 
 function TooltipScanner:GetTooltip()
     if not scanningTooltip then

@@ -494,7 +494,12 @@ local function CreateBagFrame()
     -- Initialize search bar component
     f.searchBar = SearchBar:Init(f)
     SearchBar:SetSearchCallback(f, function(text)
-        BagFrame:Refresh()
+        -- Search only dims buttons, so a live layout just needs its states re-applied
+        if layoutCached and frame and frame:IsShown() then
+            ItemButton:ApplySearchStates(frame, itemButtons)
+        else
+            BagFrame:Refresh()
+        end
     end)
 
     -- Transfer button callbacks
@@ -545,6 +550,7 @@ local function CreateBagFrame()
             Header:SetViewingCharacter(nil, nil)
         end
         -- Close any open character dropdown
+        local Characters = ns:GetModule("Header.Characters")
         if Characters then
             Characters:Hide()
         end
@@ -1414,6 +1420,8 @@ function BagFrame:Show()
         ns:ProfileStart("fast.show")
         frame:Show()
         ns:ProfileStop("fast.show")
+        -- Cooldown updates skip hidden buttons; catch up on any that started while closed
+        ItemButton:RefreshCooldowns()
         return
     end
 
