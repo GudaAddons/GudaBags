@@ -622,6 +622,13 @@ local function IsJunkItem(itemData)
         end
     end
 
+    -- Only gray and white items can be junk below; answer the rest before IsTool
+    -- (a lowercase + ~10 string.find per call, run for every rendered item)
+    local quality = itemData.quality
+    if quality ~= 0 and quality ~= 1 then
+        return false
+    end
+
     -- Profession tools are never junk
     if IsTool(itemData.name) then
         return false
@@ -660,6 +667,49 @@ local function IsJunkItem(itemData)
 
     return false
 end
+
+-- One shared hover watcher instead of an OnUpdate on every button. The per-button
+-- script ran every frame on every shown button (hundreds with bags + bank open)
+-- only to notice a Shift change or move the drop indicator on the ONE hovered
+-- button. OnEnter starts this, OnLeave stops it. It is a plain frame and never
+-- touches the secure buttons' scripts or visibility, so it is combat-safe.
+local hoveredButton = nil
+local hoverWatcher = CreateFrame("Frame")
+hoverWatcher:Hide()
+hoverWatcher:SetScript("OnUpdate", function(watcher)
+    local self = hoveredButton
+    if not self or not self:IsVisible() then
+        hoveredButton = nil
+        watcher:Hide()
+        return
+    end
+
+    -- Track shift key state for tooltip refresh
+    if self:IsMouseOver() then
+        local shiftDown = IsShiftKeyDown()
+        if self.lastShiftState ~= shiftDown then
+            self.lastShiftState = shiftDown
+            -- Refresh tooltip when shift state changes (for stack price vs single price).
+            -- Replay OnEnter so the refresh uses the same path as the initial hover
+            -- (Blizzard-driven for live slots) instead of a second insecure SetBagItem,
+            -- which would re-taint GameTooltip's money frame. Skip with a held cursor
+            -- (see the OnUpdate replay note below re: CursorUpdate desaturation).
+            if self.itemData and not self.isEmptySlotButton and not self.isDropTargetButton
+                and not self.itemData.isEmptySlots and not GetCursorInfo() then
+                local onEnter = self:GetScript("OnEnter")
+                if onEnter then onEnter(self) end
+            end
+        end
+    end
+
+    -- Update drag-drop indicator position
+    if self.categoryId and self.containerFrame and self:IsMouseOver() then
+        local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
+        if CategoryDropIndicator and CategoryDropIndicator:IsShown() then
+            CategoryDropIndicator:OnItemButtonUpdate(self)
+        end
+    end
+end)
 
 local function CreateButton(parent)
     -- Count newly-created secure buttons. A high count during a bank open means the
@@ -1108,6 +1158,8 @@ local function CreateButton(parent)
         local success, err = pcall(function()
             -- Initialize shift state tracking for tooltip refresh
             self.lastShiftState = IsShiftKeyDown()
+            hoveredButton = self
+            hoverWatcher:Show()
 
             -- A "live slot" is a real, currently-accessible container slot whose
             -- button IDs map to bagID/slot (set in SetItem), so Blizzard's secure
@@ -1231,6 +1283,10 @@ local function CreateButton(parent)
         local success, err = pcall(function()
             -- Clear shift state tracking
             self.lastShiftState = nil
+            if hoveredButton == self then
+                hoveredButton = nil
+                hoverWatcher:Hide()
+            end
 
             -- Call Blizzard's handler to clear cursor state (may not exist on retail)
             if ContainerFrameItemButton_OnLeave then
@@ -1251,35 +1307,10 @@ local function CreateButton(parent)
         end
     end)
 
-    -- Update indicator position while hovering with dragged item
-    -- Also refresh tooltip when shift key state changes (for price display)
-    button:SetScript("OnUpdate", function(self)
-        -- Track shift key state for tooltip refresh
-        if self:IsMouseOver() then
-            local shiftDown = IsShiftKeyDown()
-            if self.lastShiftState ~= shiftDown then
-                self.lastShiftState = shiftDown
-                -- Refresh tooltip when shift state changes (for stack price vs single price).
-                -- Replay OnEnter so the refresh uses the same path as the initial hover
-                -- (Blizzard-driven for live slots) instead of a second insecure SetBagItem,
-                -- which would re-taint GameTooltip's money frame. Skip with a held cursor
-                -- (see the OnUpdate replay note below re: CursorUpdate desaturation).
-                if self.itemData and not self.isEmptySlotButton and not self.isDropTargetButton
-                    and not self.itemData.isEmptySlots and not GetCursorInfo() then
-                    local onEnter = self:GetScript("OnEnter")
-                    if onEnter then onEnter(self) end
-                end
-            end
-        end
-
-        -- Update drag-drop indicator position
-        if self.categoryId and self.containerFrame and self:IsMouseOver() then
-            local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
-            if CategoryDropIndicator and CategoryDropIndicator:IsShown() then
-                CategoryDropIndicator:OnItemButtonUpdate(self)
-            end
-        end
-    end)
+    -- Hover-time work (Shift tooltip refresh, drop-indicator tracking) runs in the
+    -- shared hoverWatcher above. Clear the template's OnUpdate explicitly: this
+    -- used to be replaced by our own, so leaving it would revive the template's.
+    button:SetScript("OnUpdate", nil)
 
     -- Disable template's tooltip update mechanism
     button.UpdateTooltip = nil
@@ -2056,6 +2087,41 @@ local function EnsureButtonSize(button, size)
     UpdateSlotBackgroundSize(button, size)
 end
 
+-- Show the inner shadow glow in a color. The 4 gradient textures only depend on
+-- the color, so cache the last-applied color on the button and skip the 4
+-- SetGradient calls when it's unchanged AND the glow is still shown. The
+-- IsShown() check makes this robust against the other code paths that hide
+-- innerShadow directly (ResetButton/SetEmpty/pseudo) without touching them.
+-- File-level (not per-SetItem closures) so a render doesn't allocate two
+-- closures per button.
+local function ShowInnerShadow(button, color)
+    if ns.suspectDisabled and ns.suspectDisabled.glow then
+        if button.innerShadow then
+            for _, tex in pairs(button.innerShadow) do tex:Hide() end
+        end
+        return
+    end
+    if button.innerShadow then
+        local r, g, b = color[1], color[2], color[3]
+        if button._glowR == r and button._glowG == g and button._glowB == b
+            and button.innerShadow.top:IsShown() then
+            return  -- already showing this exact glow — nothing to rebuild
+        end
+        button._glowR, button._glowG, button._glowB = r, g, b
+        button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+        button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
+        button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
+        button.innerShadow.right:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
+        for _, tex in pairs(button.innerShadow) do tex:Show() end
+    end
+end
+
+local function HideInnerShadow(button)
+    if button.innerShadow then
+        for _, tex in pairs(button.innerShadow) do tex:Hide() end
+    end
+end
+
 function ItemButton:SetItem(button, itemData, size, isReadOnly)
     ns:ProfileBump("SetItem.calls")
     -- Hide Blizzard template's built-in textures (they may re-show from events)
@@ -2220,15 +2286,18 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         if button.IconBorder then button.IconBorder:Hide() end
         if button.IconOverlay then button.IconOverlay:Hide() end
 
+        -- Junk is read three times below; evaluate it once
+        local isJunk = IsJunkItem(itemData)
+
         -- Apply gray overlay for junk items
-        if settings.grayoutJunk and IsJunkItem(itemData) then
+        if settings.grayoutJunk and isJunk then
             button.junkOverlay:Show()
         else
             button.junkOverlay:Hide()
         end
 
         -- Determine quest indicator status (used for both border and quest icons below)
-        local showQuestIndicator = not (itemData.quality == 0 and IsJunkItem(itemData)) and (itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID)))
+        local showQuestIndicator = not (itemData.quality == 0 and isJunk) and (itemData.isQuestItem or (itemData.hasDuration and itemData.itemID and GetItemSpell(itemData.itemID)))
 
         -- Quality border (quest items override with golden border)
         -- These are quality indicators that coexist with Masque's button chrome
@@ -2241,57 +2310,25 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             showBorder = settings.otherBorders
         end
 
-        -- Helper to show inner shadow with color. The 4 gradient textures only
-        -- depend on the color, so cache the last-applied color on the button and skip
-        -- the 4 SetGradient calls when it's unchanged AND the glow is still shown.
-        -- The IsShown() check makes this robust against the other code paths that hide
-        -- innerShadow directly (ResetButton/SetEmpty/pseudo) without touching them.
-        local function ShowInnerShadow(color)
-            if ns.suspectDisabled and ns.suspectDisabled.glow then
-                if button.innerShadow then
-                    for _, tex in pairs(button.innerShadow) do tex:Hide() end
-                end
-                return
-            end
-            if button.innerShadow then
-                local r, g, b = color[1], color[2], color[3]
-                if button._glowR == r and button._glowG == g and button._glowB == b
-                    and button.innerShadow.top:IsShown() then
-                    return  -- already showing this exact glow — nothing to rebuild
-                end
-                button._glowR, button._glowG, button._glowB = r, g, b
-                button.innerShadow.top:SetGradient("VERTICAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
-                button.innerShadow.bottom:SetGradient("VERTICAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
-                button.innerShadow.left:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.5), CreateColor(r, g, b, 0))
-                button.innerShadow.right:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.5))
-                for _, tex in pairs(button.innerShadow) do tex:Show() end
-            end
-        end
-        local function HideInnerShadow()
-            if button.innerShadow then
-                for _, tex in pairs(button.innerShadow) do tex:Hide() end
-            end
-        end
-
         ns:ProfileStart("setitem.glow")
         if showQuestIndicator then
             local questColor = itemData.isQuestStarter and Constants.COLORS.QUEST_STARTER or Constants.COLORS.QUEST
             button.border:SetVertexColor(questColor[1], questColor[2], questColor[3], 1)
             button.border:Show()
-            ShowInnerShadow(questColor)
+            ShowInnerShadow(button, questColor)
         elseif showBorder and itemData.quality ~= nil then
             local color = Constants.QUALITY_COLORS[itemData.quality]
             if color then
                 button.border:SetVertexColor(color[1], color[2], color[3], 1)
                 button.border:Show()
-                ShowInnerShadow(color)
+                ShowInnerShadow(button, color)
             else
                 button.border:Hide()
-                HideInnerShadow()
+                HideInnerShadow(button)
             end
         else
             button.border:Hide()
-            HideInnerShadow()
+            HideInnerShadow(button)
         end
         ns:ProfileStop("setitem.glow")
 
@@ -2341,7 +2378,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         ApplyUnusableOverlay(button, itemData, settings, isOnCooldown)
 
         if button.junkIcon then
-            if IsJunkItem(itemData) then
+            if isJunk then
                 button.junkIcon:Show()
             else
                 button.junkIcon:Hide()

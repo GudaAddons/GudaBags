@@ -327,11 +327,12 @@ local function ProcessBatchedBankUpdates()
     -- Schedule deferred save instead of immediate save
     ScheduleDeferredSave()
 
-    ns:Debug("Bank batched scan complete, bags:", table.concat((function()
+    -- Guarded: the argument is built eagerly (closure + table + concat per batch)
+    if ns.debugMode then
         local keys = {}
         for k in pairs(bagsToScan) do table.insert(keys, tostring(k)) end
-        return keys
-    end)(), ","))
+        ns:Debug("Bank batched scan complete, bags:", table.concat(keys, ","))
+    end
 
     if ns.OnBankUpdated then
         ns.OnBankUpdated(bagsToScan)

@@ -29,7 +29,9 @@ function CategoryManager:EvaluateRule(rule, itemData, bagID, slotID, isOtherChar
     return RuleEngine:Evaluate(rule, itemData, context)
 end
 
-function CategoryManager:EvaluateCategoryRules(categoryDef, itemData, bagID, slotID, isOtherChar)
+-- context: optional prebuilt RuleEngine context. CategorizeItem passes one built
+-- once per item rather than allocating a fresh table for every category it tries.
+function CategoryManager:EvaluateCategoryRules(categoryDef, itemData, bagID, slotID, isOtherChar, context)
     if not categoryDef.enabled then
         return false
     end
@@ -45,7 +47,7 @@ function CategoryManager:EvaluateCategoryRules(categoryDef, itemData, bagID, slo
         return false
     end
 
-    local context = RuleEngine:BuildContext(bagID, slotID, isOtherChar)
+    context = context or RuleEngine:BuildContext(bagID, slotID, isOtherChar)
     local matchMode = categoryDef.matchMode or "any"
 
     return RuleEngine:EvaluateAll(rules, itemData, context, matchMode)
@@ -388,10 +390,12 @@ function CategoryManager:CategorizeItem(itemData, bagID, slotID, isOtherChar)
     local canCache = cacheKey and dataLoaded
 
     local sortedCats = self:GetCategoriesByPriority()
+    local RuleEngine = ns:GetModule("RuleEngine")
+    local context = RuleEngine and RuleEngine:BuildContext(bagID, slotID, isOtherChar)
 
     for _, entry in ipairs(sortedCats) do
         if not entry.def.isFallback then
-            if self:EvaluateCategoryRules(entry.def, itemData, bagID, slotID, isOtherChar) then
+            if self:EvaluateCategoryRules(entry.def, itemData, bagID, slotID, isOtherChar, context) then
                 -- Cache the result
                 if canCache then
                     categoryResultCache[cacheKey] = entry.id

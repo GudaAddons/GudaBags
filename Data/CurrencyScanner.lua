@@ -54,11 +54,21 @@ function CurrencyScanner:ScanCurrencies()
     -- Collapsed headers hide their child currencies from the list API. Expand them
     -- all first. Iterate downward so expanding (which inserts rows AFTER index i)
     -- never invalidates a not-yet-visited index.
+    --
+    -- The expanded state is shared with Blizzard's currency tab, and this runs after
+    -- every CURRENCY_DISPLAY_UPDATE, so remember which headers were collapsed and
+    -- collapse them again once the list has been read (below). It all happens in
+    -- one script run, so the tab never draws the expanded state.
+    local reCollapse = nil
     if ExpandList then
         for i = (GetListSize() or 0), 1, -1 do
-            local _, isHeader, isExpanded = NormalizeListInfo(GetListInfo(i))
+            local name, isHeader, isExpanded = NormalizeListInfo(GetListInfo(i))
             if isHeader and isExpanded == false then
                 ExpandList(i, true)
+                if name then
+                    reCollapse = reCollapse or {}
+                    reCollapse[name] = true
+                end
             end
         end
     end
@@ -71,6 +81,17 @@ function CurrencyScanner:ScanCurrencies()
             local currencyID = GetCurrencyIDFromLink(GetListLink and GetListLink(i))
             if currencyID and quantity and quantity > 0 then
                 result[currencyID] = quantity
+            end
+        end
+    end
+
+    -- Restore the player's collapsed headers. Downward again: collapsing removes
+    -- rows AFTER index i, so lower indices stay valid.
+    if reCollapse then
+        for i = (GetListSize() or 0), 1, -1 do
+            local name, isHeader, isExpanded = NormalizeListInfo(GetListInfo(i))
+            if isHeader and isExpanded and name and reCollapse[name] then
+                ExpandList(i, false)
             end
         end
     end

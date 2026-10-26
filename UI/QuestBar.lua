@@ -90,7 +90,8 @@ local function ScanForUsableQuestItems()
         local bagData = cachedBags[bagID]
         if bagData and bagData.slots then
             for slot, itemData in pairs(bagData.slots) do
-                local isQuestBarItem = itemData and IsUsableItem(itemData.itemID) and (itemData.isQuestItem or itemData.hasDuration)
+                -- Cached flags first: GetItemSpell only runs for quest/timed items
+                local isQuestBarItem = itemData and (itemData.isQuestItem or itemData.hasDuration) and IsUsableItem(itemData.itemID)
                 if isQuestBarItem then
                     -- Check if we already have this itemID in the list
                     local found = false
@@ -147,6 +148,48 @@ local function GetItemCount(itemID)
         end
     end
     return count
+end
+
+-- Bag index (itemID -> total count / first bag+slot) built in one pass over every
+-- slot and reused until the bags change. UpdateButton used to walk all slots twice
+-- per button (count + location) on every bag and cooldown event.
+local indexCount, indexBag, indexSlot = {}, {}, {}
+local bagIndexDirty = true
+
+local function EnsureBagIndex()
+    if not bagIndexDirty then return end
+    bagIndexDirty = false
+    wipe(indexCount)
+    wipe(indexBag)
+    wipe(indexSlot)
+    for _, bagID in ipairs(Constants.BAG_IDS) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for slot = 1, numSlots do
+            local info = C_Container.GetContainerItemInfo(bagID, slot)
+            local itemID = info and info.itemID
+            if itemID then
+                indexCount[itemID] = (indexCount[itemID] or 0) + (info.stackCount or 1)
+                -- Same first-match order as FindItemInBags
+                if not indexBag[itemID] then
+                    indexBag[itemID] = bagID
+                    indexSlot[itemID] = slot
+                end
+            end
+        end
+    end
+end
+
+local function UpdateButtonCooldown(button, bagID, slot)
+    if bagID and slot then
+        local start, duration, enable = C_Container.GetContainerItemCooldown(bagID, slot)
+        if start and duration and duration > 0 and not ItemButton:IsGlobalCooldown(start, duration) then
+            button.cooldown:SetCooldown(start, duration)
+        else
+            button.cooldown:Clear()
+        end
+    else
+        button.cooldown:Clear()
+    end
 end
 
 -------------------------------------------------
@@ -488,9 +531,9 @@ local function UpdateButton(button, itemData)
     button.itemID = itemID
 
     local itemName, itemLink, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemID)
-    local count = GetItemCount(itemID)
-
-    local bagID, slot = FindItemInBags(itemID)
+    EnsureBagIndex()
+    local count = indexCount[itemID] or 0
+    local bagID, slot = indexBag[itemID], indexSlot[itemID]
 
     button.bagID = bagID
     button.slotID = slot
@@ -521,17 +564,7 @@ local function UpdateButton(button, itemData)
         button.count:Hide()
     end
 
-    -- Update cooldown
-    if bagID and slot then
-        local start, duration, enable = C_Container.GetContainerItemCooldown(bagID, slot)
-        if start and duration and duration > 0 and not ItemButton:IsGlobalCooldown(start, duration) then
-            button.cooldown:SetCooldown(start, duration)
-        else
-            button.cooldown:Clear()
-        end
-    else
-        button.cooldown:Clear()
-    end
+    UpdateButtonCooldown(button, bagID, slot)
 
     -- Sunny yellow-gold color for border and inner shadow
     -- Quality borders coexist with Masque's button chrome
@@ -669,6 +702,9 @@ function QuestBar:Refresh()
         HideFlyoutFrame()
         return
     end
+
+    -- Each refresh reads the bags once, fresh
+    bagIndexDirty = true
 
     -- Scan for usable quest items
     local previousItems = questItems
@@ -987,17 +1023,41 @@ end
 -- Event Handlers
 -------------------------------------------------
 
+-- BAG_UPDATE fires once per bag and BAGS_UPDATED follows it, so coalesce them
+-- into a single Refresh on the next frame.
+local refreshQueued = false
+local function QueueRefresh()
+    if refreshQueued then return end
+    refreshQueued = true
+    C_Timer.After(0, function()
+        refreshQueued = false
+        if frame then QuestBar:Refresh() end
+    end)
+end
+
 local function OnBagUpdate()
     if not frame then return end
+    bagIndexDirty = true
     -- Skip refreshes during sort (will refresh once via BAGS_UPDATED when sort completes)
     local SortEngine = ns:GetModule("SortEngine")
     if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then return end
-    QuestBar:Refresh()
+    QueueRefresh()
+end
+
+-- Cooldowns don't move items, so only the cooldown swipes need updating. This
+-- fires on every GCD; a full Refresh rescanned every bag slot each time (and
+-- returned early in combat, so swipes never updated mid-fight).
+local function UpdateCooldownIfShown(button)
+    if button and button.itemID and button:IsShown() then
+        UpdateButtonCooldown(button, button.bagID, button.slotID)
+    end
 end
 
 local function OnCooldownUpdate()
     if not frame then return end
-    QuestBar:Refresh()
+    UpdateCooldownIfShown(mainButton)
+    for _, button in ipairs(gridButtons) do UpdateCooldownIfShown(button) end
+    for _, button in ipairs(flyoutButtons) do UpdateCooldownIfShown(button) end
 end
 
 local function OnQuestLogUpdate()
@@ -1049,7 +1109,8 @@ end, QuestBar)
 Events:Register("BAG_UPDATE", OnBagUpdate, QuestBar)
 Events:Register("BAG_UPDATE_COOLDOWN", OnCooldownUpdate, QuestBar)
 Events:Register("BAGS_UPDATED", function()
-    if frame then QuestBar:Refresh() end
+    bagIndexDirty = true
+    if frame then QueueRefresh() end
 end, QuestBar)
 Events:Register("QUEST_LOG_UPDATE", OnQuestLogUpdate, QuestBar)
 Events:Register("QUEST_ACCEPTED", OnQuestLogUpdate, QuestBar)

@@ -54,18 +54,43 @@ local function FindItemInBags(itemID)
     return nil, nil, nil
 end
 
-local function GetItemCount(itemID)
-    local count = 0
+-- Per-refresh bag index (itemID -> total count / first bag+slot), built in one
+-- pass over every slot. UpdateButton used to walk all slots twice per tracked
+-- item (count + location), on every bag and cooldown event.
+local indexCount, indexBag, indexSlot = {}, {}, {}
+
+local function BuildBagIndex()
+    wipe(indexCount)
+    wipe(indexBag)
+    wipe(indexSlot)
     for _, bagID in ipairs(Constants.BAG_IDS) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         for slot = 1, numSlots do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
-            if info and info.itemID == itemID then
-                count = count + (info.stackCount or 1)
+            local itemID = info and info.itemID
+            if itemID then
+                indexCount[itemID] = (indexCount[itemID] or 0) + (info.stackCount or 1)
+                -- Same first-match order as FindItemInBags
+                if not indexBag[itemID] then
+                    indexBag[itemID] = bagID
+                    indexSlot[itemID] = slot
+                end
             end
         end
     end
-    return count
+end
+
+local function UpdateButtonCooldown(button, bagID, slot)
+    if bagID and slot then
+        local start, duration, enable = C_Container.GetContainerItemCooldown(bagID, slot)
+        if start and duration and duration > 0 and not ItemButton:IsGlobalCooldown(start, duration) then
+            button.cooldown:SetCooldown(start, duration)
+        else
+            button.cooldown:Clear()
+        end
+    else
+        button.cooldown:Clear()
+    end
 end
 
 -------------------------------------------------
@@ -292,10 +317,9 @@ local function UpdateButton(button, itemID)
     button.itemID = itemID
 
     local itemName, itemLink, itemQuality, _, _, _, _, _, _, itemTexture = GetItemInfo(itemID)
-    local count = GetItemCount(itemID)
-
-    -- Find item location for cooldown and quest detection
-    local bagID, slot = FindItemInBags(itemID)
+    -- Count and location (for cooldown and quest detection) from this refresh's bag index
+    local count = indexCount[itemID] or 0
+    local bagID, slot = indexBag[itemID], indexSlot[itemID]
 
     -- Store on button for OnClick handler (like Guda does)
     button.bagID = bagID
@@ -328,17 +352,7 @@ local function UpdateButton(button, itemID)
         button.count:Hide()
     end
 
-    -- Update cooldown
-    if bagID and slot then
-        local start, duration, enable = C_Container.GetContainerItemCooldown(bagID, slot)
-        if start and duration and duration > 0 and not ItemButton:IsGlobalCooldown(start, duration) then
-            button.cooldown:SetCooldown(start, duration)
-        else
-            button.cooldown:Clear()
-        end
-    else
-        button.cooldown:Clear()
-    end
+    UpdateButtonCooldown(button, bagID, slot)
 
     -- Check for quest items (using cached data)
     local isQuestItem = false
@@ -447,6 +461,10 @@ function TrackedBar:Refresh()
     -- Calculate rows and columns
     local numRows = math.ceil(visibleCount / maxColumns)
     local numCols = math.min(visibleCount, maxColumns)
+
+    if visibleCount > 0 then
+        BuildBagIndex()
+    end
 
     for i = 1, MAX_BUTTONS do
         local itemID = trackedItems[i]
@@ -684,21 +702,39 @@ end
 -- Event Handlers
 -------------------------------------------------
 
+-- BAG_UPDATE fires once per bag and BAGS_UPDATED follows it, so coalesce them
+-- into a single Refresh on the next frame.
+local refreshQueued = false
+local function QueueRefresh()
+    if refreshQueued then return end
+    refreshQueued = true
+    C_Timer.After(0, function()
+        refreshQueued = false
+        if frame then TrackedBar:Refresh() end
+    end)
+end
+
 local function OnBagUpdate()
     if not frame then return end
     -- Skip refreshes during sort (will refresh once via BAGS_UPDATED when sort completes)
     local SortEngine = ns:GetModule("SortEngine")
     if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then return end
-    TrackedBar:Refresh()
+    QueueRefresh()
     -- Schedule a full refresh after combat for layout/attribute updates
     if InCombatLockdown() then
         pendingRefresh = true
     end
 end
 
+-- Cooldowns don't move items, so only the cooldown swipes need updating (this
+-- fires on every GCD; a full Refresh rescanned every bag slot each time)
 local function OnCooldownUpdate()
     if not frame then return end
-    TrackedBar:Refresh()
+    for _, button in ipairs(itemButtons) do
+        if button.itemID then
+            UpdateButtonCooldown(button, button.bagID, button.slotID)
+        end
+    end
 end
 
 -------------------------------------------------
@@ -735,5 +771,5 @@ end, TrackedBar)
 Events:Register("BAG_UPDATE", OnBagUpdate, TrackedBar)
 Events:Register("BAG_UPDATE_COOLDOWN", OnCooldownUpdate, TrackedBar)
 Events:Register("BAGS_UPDATED", function()
-    if frame then TrackedBar:Refresh() end
+    if frame then QueueRefresh() end
 end, TrackedBar)
