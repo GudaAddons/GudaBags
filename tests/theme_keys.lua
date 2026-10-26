@@ -125,6 +125,10 @@ T.check("title bar is a darker shade", hr < 0.5 and hr > er)
 T.check("border is a clearly darker shade of the same color",
     er < hr and math.abs(er / eg - 0.5 / 0.2) < 1e-6 and math.abs(eb / er - 0.8 / 0.5) < 1e-6)
 T.check("header line matches the border shade", lr == er)
+local sfr = Theme:Color("slotEmptyFill", 0, 0, 0, 1)
+local sor, sog = Theme:Color("slotEmptyBorder", 0, 0, 0, 1)
+T.check("empty slot fill is a darker shade of the window color", sfr < 0.5 and sfr > sor)
+T.check("empty slot outline is darker still, same hue", math.abs(sor / sog - 0.5 / 0.2) < 1e-6)
 local tr = Theme:Color("tabSelectedBorder", 0, 0, 0, 1)
 T.check("selected tabs keep the fixed teal", math.abs(tr - 0.247) < 1e-6)
 currentTheme = "guda"

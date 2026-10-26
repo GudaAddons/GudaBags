@@ -181,6 +181,8 @@ local cachedThemeName = nil
 -- color. Text gets a shadow under Flat (textShadow) to stay legible on light picks.
 local HEADER_SHADE = 0.8
 local BORDER_SHADE = 0.55
+local SLOT_FILL_SHADE = 0.7     -- empty slots sit a step darker than the window
+local SLOT_OUTLINE_SHADE = 0.45 -- and their 1px outline darker still
 
 local function Shade(color, factor, alpha)
     return { color[1] * factor, color[2] * factor, color[3] * factor, alpha or 1 }
@@ -194,6 +196,8 @@ local function ApplyFlatWindowColor(base, color)
     view.headerBg = Shade(color, HEADER_SHADE)
     view.frameBorder = Shade(color, BORDER_SHADE)
     view.headerLine = Shade(color, BORDER_SHADE)
+    view.slotEmptyFill = Shade(color, SLOT_FILL_SHADE)
+    view.slotEmptyBorder = Shade(color, SLOT_OUTLINE_SHADE)
     return view
 end
 

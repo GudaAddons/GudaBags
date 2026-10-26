@@ -3404,6 +3404,7 @@ if Events then
 end
 
 -- Invalidate settings cache when relevant settings change
+local slotRepaintQueued = false
 if Events then
     Events:Register("SETTING_CHANGED", function(event, key, value)
         -- Invalidate cache for any setting that affects item buttons
@@ -3415,6 +3416,16 @@ if Events then
             or key == "showBoeLabel" or key == "showBoaLabel"
             or key == "markCosmeticItems" then
             ItemButton:InvalidateSettingsCache()
+        elseif key == "flatWindowColor" then
+            -- Empty slots take darker shades of the Flat window color. The color
+            -- picker fires this on every drag tick: repaint once per frame.
+            if not slotRepaintQueued then
+                slotRepaintQueued = true
+                C_Timer.After(0, function()
+                    slotRepaintQueued = false
+                    ItemButton:ApplyThemeTextures()
+                end)
+            end
         end
     end, ItemButton)
 
