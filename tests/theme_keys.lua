@@ -129,6 +129,13 @@ local sfr = Theme:Color("slotEmptyFill", 0, 0, 0, 1)
 local sor, sog = Theme:Color("slotEmptyBorder", 0, 0, 0, 1)
 T.check("empty slot fill is a darker shade of the window color", sfr < 0.5 and sfr > sor)
 T.check("empty slot outline is darker still, same hue", math.abs(sor / sog - 0.5 / 0.2) < 1e-6)
+local allHue = true
+for _, key in ipairs({"footerButtonBg", "footerButtonBorder", "buttonBg", "chipBg", "tabBg",
+        "panelBg", "searchBarBg", "categoryHeaderLine"}) do
+    local r, g = Theme:Color(key, 0, 0, 0, 1)
+    if not (r < 0.5 and math.abs(r / g - 0.5 / 0.2) < 1e-6) then allHue = false end
+end
+T.check("footer bag slots, buttons, chips, tabs and menus follow the window hue, darker", allHue)
 local tr = Theme:Color("tabSelectedBorder", 0, 0, 0, 1)
 T.check("selected tabs keep the fixed teal", math.abs(tr - 0.247) < 1e-6)
 currentTheme = "guda"

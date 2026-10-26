@@ -1875,7 +1875,8 @@ if Events then
     Events:Register("SETTING_CHANGED", function(_, key)
         if key == "hiddenChips" or key == "showFilterChips" then
             SearchBar:RefreshChipVisibility()
-        elseif key == "theme" then
+        elseif key == "theme" or key == "flatWindowColor" then
+            -- Flat chips are shades of the window color
             for _, instance in pairs(instances) do RefreshChipColors(instance) end
         end
     end, SearchBar)

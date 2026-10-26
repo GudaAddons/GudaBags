@@ -179,25 +179,29 @@ local cachedThemeName = nil
 -- chosen color exactly; the title bar is a slightly darker shade and the border
 -- and header line a clearly darker one, so the frame still reads as edged on any
 -- color. Text gets a shadow under Flat (textShadow) to stay legible on light picks.
-local HEADER_SHADE = 0.8
-local BORDER_SHADE = 0.55
-local SLOT_FILL_SHADE = 0.7     -- empty slots sit a step darker than the window
-local SLOT_OUTLINE_SHADE = 0.45 -- and their 1px outline darker still
+-- Every Flat chrome key as a shade of the window color (1 = the color itself).
+-- Controls sit a step darker than the window, edges darker again, so the whole
+-- window reads as one hue. Alpha comes from the theme's own value for the key.
+local FLAT_SHADES = {
+    frameBg = 1, tabSelectedBg = 1,            -- the selected tab joins the window
+    headerBg = 0.8, searchBarBg = 0.8,
+    buttonHover = 0.9, chipHoverBg = 0.9,
+    footerButtonBg = 0.75, buttonBg = 0.75, chipBg = 0.75, tabBg = 0.75,
+    slotEmptyFill = 0.7,                       -- empty slots a step darker than the window
+    panelBg = 0.6, sideTabBg = 0.6,            -- menus and unselected side tabs
+    frameBorder = 0.55, headerLine = 0.55, categoryHeaderLine = 0.55,
+    footerButtonBorder = 0.45, buttonBorder = 0.45, tabBorder = 0.45, panelBorder = 0.45,
+    searchBarBorder = 0.45, slotEmptyBorder = 0.45, -- outlines the darkest
+}
 
-local function Shade(color, factor, alpha)
-    return { color[1] * factor, color[2] * factor, color[3] * factor, alpha or 1 }
-end
-
--- A view of `base` with the window keys recolored; everything else falls through
+-- A view of `base` with the chrome keys recolored; everything else falls through
 local function ApplyFlatWindowColor(base, color)
     if type(color) ~= "table" or not color[1] then return base end
     local view = setmetatable({}, { __index = base })
-    view.frameBg = { color[1], color[2], color[3], 1 }
-    view.headerBg = Shade(color, HEADER_SHADE)
-    view.frameBorder = Shade(color, BORDER_SHADE)
-    view.headerLine = Shade(color, BORDER_SHADE)
-    view.slotEmptyFill = Shade(color, SLOT_FILL_SHADE)
-    view.slotEmptyBorder = Shade(color, SLOT_OUTLINE_SHADE)
+    for key, factor in pairs(FLAT_SHADES) do
+        local alpha = base[key] and base[key][4] or 1
+        view[key] = { color[1] * factor, color[2] * factor, color[3] * factor, alpha }
+    end
     return view
 end
 
