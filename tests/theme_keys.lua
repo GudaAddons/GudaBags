@@ -58,7 +58,7 @@ local CHROME_KEYS = {"panelBg", "panelBorder", "panelBackdrop", "searchBarBg", "
     "chipBg", "chipHoverBg", "chipText", "chipActiveType", "chipActiveSpecial", "tabBg", "tabBorder",
     "tabSelectedBorder", "tabSelectedBg", "tabSelectedText", "sideTabBg", "buttonBg", "buttonBorder",
     "buttonHover", "categoryHeaderText", "categoryHeaderLine", "slotEmptyBorder", "slotEmptyFill",
-    "flatSlots"}
+    "flatSlots", "headerLine"}
 for _, name in ipairs({"guda", "blizzard", "retail"}) do
     currentTheme = name
     local stray = {}
@@ -109,11 +109,12 @@ T.check("no setting -> default teal", ar == def[1] and ag == def[2] and ab == de
 accentSetting = {1, 0, 0}
 handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
 local allRed = true
-for _, key in ipairs({"accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText"}) do
+for _, key in ipairs({"accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText",
+        "frameBorder", "headerLine"}) do
     local r, g, b = Theme:Color(key, 0, 0, 0, 1)
     if not (r == 1 and g == 0 and b == 0) then allRed = false end
 end
-T.check("picked color reaches all five accent keys", allRed)
+T.check("picked color reaches every accent key, window border and header line included", allRed)
 local _, _, _, chipAlpha = Theme:Color("chipActiveType", 0, 0, 0, 1)
 T.check("each key keeps its own alpha (chips 0.9)", chipAlpha == 0.9)
 local nr = Theme:Color("chipBg", 0, 0, 0, 1)

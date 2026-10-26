@@ -3656,10 +3656,22 @@ local resizeSettings = {
     hiddenChips = true,  -- hiding the last chip collapses the strip, changing frame height
 }
 
+local accentRefreshQueued = false
+
 local function OnSettingChanged(event, key, value)
-    -- Accent color: repainted by Theme (tabs pick it up on their next update); the
-    -- color picker fires this on every drag tick, so never reach the full Refresh
-    if key == "flatAccentColor" then return end
+    -- Accent color (window border + header line): one cheap appearance pass per
+    -- frame (tabs pick it up on their next update). The color picker fires this on
+    -- every drag tick, so never reach the full Refresh.
+    if key == "flatAccentColor" then
+        if not accentRefreshQueued then
+            accentRefreshQueued = true
+            C_Timer.After(0, function()
+                accentRefreshQueued = false
+                if frame and frame:IsShown() then UpdateFrameAppearance(true) end
+            end)
+        end
+        return
+    end
 
     -- A setting changed while holding a hidden layout invalidates the fast reopen
     -- (size/columns/view/appearance won't have been applied to the retained buttons).

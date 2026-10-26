@@ -1824,10 +1824,22 @@ local appearanceSettings = {
 }
 
 -- Handle setting changes (live update)
+local accentRefreshQueued = false
+
 local function OnSettingChanged(event, key, value)
     if not frame or not frame:IsShown() then return end
-    -- Accent color: repainted by Theme; fired on every color-picker drag tick
-    if key == "flatAccentColor" then return end
+    -- Accent color (window border + header line): one cheap appearance pass per
+    -- frame -- the color picker fires this on every drag tick
+    if key == "flatAccentColor" then
+        if not accentRefreshQueued then
+            accentRefreshQueued = true
+            C_Timer.After(0, function()
+                accentRefreshQueued = false
+                if frame and frame:IsShown() then UpdateFrameAppearance(true) end
+            end)
+        end
+        return
+    end
 
     if appearanceSettings[key] then
         UpdateFrameAppearance()  -- no rebuild here, so restyle the buttons

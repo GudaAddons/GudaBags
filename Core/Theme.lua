@@ -97,8 +97,9 @@ local themes = {
     -- backdrop); only the close button has a flat style of its own.
     flat = {
         frameBg = {0.071, 0.071, 0.071, 1},        -- #121212
-        frameBorder = {0.165, 0.165, 0.165, 1},    -- #2A2A2A
+        frameBorder = {0.247, 0.722, 0.686, 1},    -- accent: the window wears the accent color
         headerBg = {0.102, 0.102, 0.102, 1},       -- #1A1A1A
+        headerLine = {0.247, 0.722, 0.686, 1},     -- accent line under the title bar
         titleColor = {1, 1, 1, 1},
         slotBgColor = {0.055, 0.055, 0.055, 1},    -- #0E0E0E
         bankTabBg = {0.118, 0.118, 0.118, 1},      -- #1E1E1E
@@ -175,7 +176,8 @@ local cachedThemeName = nil
 
 -- Flat keys that take the player's accent color (setting "flatAccentColor").
 -- Each keeps its own alpha from the theme table.
-local FLAT_ACCENT_KEYS = { "accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText" }
+local FLAT_ACCENT_KEYS = { "accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText",
+    "frameBorder", "headerLine" }
 
 -- A view of `base` with the accent keys recolored; everything else falls through
 local function ApplyFlatAccent(base, color)
@@ -706,6 +708,24 @@ function Theme:ApplyHeaderChrome(headerFrame, alpha)
         if parent.blizzardBg or parent.metalFrame then
             headerFrame:SetFrameLevel(parent:GetFrameLevel() + ns.Constants.FRAME_LEVELS.HEADER)
         end
+    end
+
+    -- Optional 1px line under the title bar (Flat: the accent color). Follows the
+    -- "show borders" setting like the window border does.
+    local line = self:GetValue("headerLine")
+    if line and Database:GetSetting("showBorders") ~= false then
+        if not headerFrame._themeLine then
+            local tex = headerFrame:CreateTexture(nil, "OVERLAY")
+            tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+            tex:SetHeight(1)
+            tex:SetPoint("BOTTOMLEFT", headerFrame, "BOTTOMLEFT", 0, 0)
+            tex:SetPoint("BOTTOMRIGHT", headerFrame, "BOTTOMRIGHT", 0, 0)
+            headerFrame._themeLine = tex
+        end
+        headerFrame._themeLine:SetVertexColor(line[1], line[2], line[3], line[4] or 1)
+        headerFrame._themeLine:Show()
+    elseif headerFrame._themeLine then
+        headerFrame._themeLine:Hide()
     end
 end
 
