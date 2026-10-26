@@ -194,13 +194,27 @@ local FLAT_SHADES = {
     searchBarBorder = 0.45, slotEmptyBorder = 0.45, -- outlines the darkest
 }
 
--- A view of `base` with the chrome keys recolored; everything else falls through
-local function ApplyFlatWindowColor(base, color)
-    if type(color) ~= "table" or not color[1] then return base end
+-- Flat chrome that sits on the window background and so fades with the
+-- "Background opacity" setting, like the window and its empty slots do
+local FLAT_FADE_KEYS = {
+    "searchBarBg", "searchBarBorder", "footerButtonBg", "footerButtonBorder", "buttonBg", "buttonBorder",
+}
+
+-- A view of `base` with the chrome keys recolored (window color) and faded
+-- (background opacity); everything else falls through
+local function ApplyFlatWindowColor(base, color, opacity)
     local view = setmetatable({}, { __index = base })
-    for key, factor in pairs(FLAT_SHADES) do
-        local alpha = base[key] and base[key][4] or 1
-        view[key] = { color[1] * factor, color[2] * factor, color[3] * factor, alpha }
+    if type(color) == "table" and color[1] then
+        for key, factor in pairs(FLAT_SHADES) do
+            local alpha = base[key] and base[key][4] or 1
+            view[key] = { color[1] * factor, color[2] * factor, color[3] * factor, alpha }
+        end
+    end
+    if opacity < 1 then
+        for _, key in ipairs(FLAT_FADE_KEYS) do
+            local c = view[key]
+            if c then view[key] = { c[1], c[2], c[3], (c[4] or 1) * opacity } end
+        end
     end
     return view
 end
@@ -227,7 +241,8 @@ function Theme:Get()
     cachedThemeName = themeName
     cachedTheme = themes[themeName] or themes.guda
     if themeName == "flat" then
-        cachedTheme = ApplyFlatWindowColor(cachedTheme, Database:GetSetting("flatWindowColor"))
+        local opacity = (Database:GetSetting("bgAlpha") or 100) / 100
+        cachedTheme = ApplyFlatWindowColor(cachedTheme, Database:GetSetting("flatWindowColor"), opacity)
     end
     return cachedTheme
 end
@@ -975,7 +990,8 @@ end
 -- Cache Invalidation
 -------------------------------------------------
 Events:Register("SETTING_CHANGED", function(event, key)
-    if key == "theme" or key == "flatWindowColor" then
+    -- bgAlpha: Flat chrome fades with the background opacity
+    if key == "theme" or key == "flatWindowColor" or key == "bgAlpha" then
         cachedTheme = nil
         RepaintAll()
     end

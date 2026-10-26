@@ -6,9 +6,11 @@ local ns, LoadFile = Stubs.NewAddon()
 
 local currentTheme = "guda"
 local windowSetting = nil
+local opacitySetting = 100
 ns:RegisterModule("Database", {GetSetting = function(_, key)
     if key == "theme" then return currentTheme end
     if key == "flatWindowColor" then return windowSetting end
+    if key == "bgAlpha" then return opacitySetting end
 end})
 -- Every listener per event (Font and Theme both watch SETTING_CHANGED)
 local handlers = {}
@@ -146,6 +148,28 @@ currentTheme = "flat"
 settingChanged("flatWindowColor")
 local rr = Theme:Color("frameBg", 0, 0, 0, 1)
 T.check("Reset (setting cleared) restores the dark default", rr == def[1])
+
+print("Background opacity:")
+currentTheme = "flat"
+opacitySetting = 50
+settingChanged("bgAlpha")
+local _, _, _, sa = Theme:Color("searchBarBg", 0, 0, 0, 1)
+local _, _, _, fa = Theme:Color("footerButtonBg", 0, 0, 0, 1)
+local _, _, _, fba = Theme:Color("footerButtonBorder", 0, 0, 0, 1)
+T.check("flat search bar fades with opacity", math.abs(sa - 0.5) < 1e-6)
+T.check("flat footer buttons and their outline fade with opacity", math.abs(fa - 0.5) < 1e-6 and math.abs(fba - 0.5) < 1e-6)
+local _, _, _, wa = Theme:Color("frameBg", 0, 0, 0, 1)
+T.check("window background is not faded twice (it gets the opacity separately)", wa == 1)
+windowSetting = {0.5, 0.2, 0.8}
+settingChanged("flatWindowColor")
+local _, _, _, ca = Theme:Color("searchBarBg", 0, 0, 0, 1)
+T.check("fade also applies on top of a window color", math.abs(ca - 0.5) < 1e-6)
+currentTheme = "guda"
+local _, _, _, ga = Theme:Color("footerButtonBg", 0, 0, 0, 1)
+T.check("other themes keep their footer buttons solid", ga == 1)
+opacitySetting = 100
+windowSetting = nil
+settingChanged("bgAlpha")
 
 -- Text shadow: on under Flat, and leaving Flat restores each string's OWN shadow
 -- (GameFont templates ship one) rather than clearing it.
