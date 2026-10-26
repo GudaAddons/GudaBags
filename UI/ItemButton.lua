@@ -444,8 +444,31 @@ local function UseMinimalSlots()
     return false
 end
 
+-- Clear the item icon on an empty slot. On Retail, SetItemButtonTexture(nil)
+-- does not leave the icon blank: the template puts its empty-slot atlas
+-- ("bags-item-slot64") on it, in ARTWORK -- above the minimal fill and outline,
+-- which is why minimal slots never showed on Retail. Minimal / Flat slots want
+-- no slot art, so drop it; every other look keeps the client's own.
+local function ClearItemIcon(button)
+    SetItemButtonTexture(button, nil)
+    if UseMinimalSlots() then
+        local icon = button.icon or button.Icon
+        if icon then icon:SetTexture(nil) end
+    end
+end
+
+-- A plain empty slot (not a real item, not a category pseudo button)
+local function IsPlainEmptySlot(button)
+    local itemData = button.itemData
+    return itemData and not itemData.itemID and not itemData.isEmptySlots
+        and not itemData.isDropTarget and not button.isEmptySlotButton and not button.isDropTargetButton
+end
+
 -- Apply retail/default slot textures to a single button
 local function ApplyThemeToButton(button, slotTex)
+    -- A setting/theme switch reaches buttons that are already empty: redo their
+    -- icon so Retail's empty-slot atlas comes off (minimal) or back (otherwise)
+    if IsPlainEmptySlot(button) then ClearItemIcon(button) end
     if UseMinimalSlots() then
         -- Minimal mode: flat fill + thin border outline, no slot icon. The outline
         -- is what the setting always promised; on its own the faint fill all but
@@ -528,7 +551,7 @@ local function ResetButton(pool, button)
     end
 
     -- Clear visual state to prevent texture bleeding
-    SetItemButtonTexture(button, nil)
+    ClearItemIcon(button)
     SetItemButtonCount(button, 0)
     SetItemButtonDesaturated(button, false)
     if button.border then button.border:Hide() end
@@ -2631,7 +2654,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.wrapper:SetID(0)
         button:SetID(0)
 
-        SetItemButtonTexture(button, nil)
+        ClearItemIcon(button)
         SetItemButtonCount(button, 0)
         button.icon:SetVertexColor(1, 1, 1, 1)
         button.border:Hide()
@@ -2823,7 +2846,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
 
     button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, settings.bgAlpha)
 
-    SetItemButtonTexture(button, nil)
+    ClearItemIcon(button)
     SetItemButtonCount(button, 0)
     button.border:Hide()
     if button.innerShadow then
