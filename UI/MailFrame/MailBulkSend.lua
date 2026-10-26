@@ -180,6 +180,13 @@ local function Finish(messageKey, ...)
     end
 end
 
+-- Only MAIL_SEND_SUCCESS / MAIL_FAILED advance or end the batch. If neither ever
+-- arrives (mailbox closed mid-send, disconnect) isRunning would stay true and every
+-- later Start would print BUSY until /reload, so give up after SEND_TIMEOUT.
+-- The token makes a timer from an earlier round a no-op.
+local SEND_TIMEOUT = 15
+local sendToken = 0
+
 local function SendCurrentMail()
     local subject = GetSubject()
     if subject == "" then
@@ -189,6 +196,14 @@ local function SendCurrentMail()
     -- MailScanner hooks SendMail, so its predicted-mail bookkeeping for known alts
     -- updates from this call automatically.
     SendMail(batchRecipient, subject, GetBody())
+
+    sendToken = sendToken + 1
+    local token = sendToken
+    C_Timer.After(SEND_TIMEOUT, function()
+        if isRunning and token == sendToken then
+            Finish("MAIL_BULK_STOPPED", mailsSent)
+        end
+    end)
 end
 
 -- Verify what actually landed in the attachment slots, then either send or stop.
@@ -265,6 +280,7 @@ Step = function()
 end
 
 local function OnSendSuccess()
+    sendToken = sendToken + 1  -- answered: retire this send's timeout
     mailsSent = mailsSent + 1
 
     -- Deferred by a frame: Blizzard's reset runs during this same event dispatch, and frame
@@ -282,6 +298,7 @@ local function OnSendSuccess()
 end
 
 local function OnSendFailed()
+    sendToken = sendToken + 1  -- answered: retire this send's timeout
     Finish("MAIL_BULK_STOPPED", mailsSent)
 end
 

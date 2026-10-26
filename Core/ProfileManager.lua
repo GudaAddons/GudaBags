@@ -152,7 +152,14 @@ local function Serialize(tbl)
     return table.concat(parts)
 end
 
-local function DeserializeValue(data, pos)
+-- Import strings are pasted by the user, so the element counts inside them are
+-- untrusted: "{999999999;" used to spin that many empty iterations and freeze the
+-- client. Each entry takes at least two bytes and real profiles nest a few levels,
+-- so anything beyond these limits is malformed. Errors are caught by ImportProfile's pcall.
+local MAX_IMPORT_DEPTH = 32
+
+local function DeserializeValue(data, pos, depth)
+    depth = depth or 0
     if pos > #data then
         return nil, pos
     end
@@ -184,11 +191,13 @@ local function DeserializeValue(data, pos)
         local count = tonumber(string.sub(data, pos, semi - 1))
         if not count then return nil, pos end
         pos = semi + 1
+        if depth >= MAX_IMPORT_DEPTH then error("profile data nested too deeply") end
+        if count < 0 or count * 2 > #data - pos + 1 then error("profile data is truncated or malformed") end
         local tbl = {}
         for _ = 1, count do
             local key, val
-            key, pos = DeserializeValue(data, pos)
-            val, pos = DeserializeValue(data, pos)
+            key, pos = DeserializeValue(data, pos, depth + 1)
+            val, pos = DeserializeValue(data, pos, depth + 1)
             if key ~= nil then
                 tbl[key] = val
             end

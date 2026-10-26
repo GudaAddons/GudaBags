@@ -49,6 +49,60 @@ local inInteraction  = false   -- True between any interaction-open and its matc
 local heldHidden = false        -- frame is hidden but buttons/layout retained
 local dirtyWhileHidden = false  -- bags/settings changed since being hidden
 
+-- Single/split button recycling across Refresh (mirrors BankFrame's bankRecycle)
+local bagRecycle = nil          -- array of buttons available to reuse this refresh
+local bagRecycleIdx = 0         -- how many have been handed out
+local bagParked = {}            -- hidden surplus buttons kept for reuse
+local lastRefreshViewType = nil -- recycle only within the same view type
+
+-- Hand out a recycled button, or acquire a new one. Parked buttons were hidden,
+-- so ensure the reused one is shown. Only reuse a button the bag frame still owns:
+-- one that went back to the shared pool (ResetButton clears owner) may belong to
+-- the bank now, and showing it here would paint the same button in two frames.
+local function AcquireBagButton()
+    if bagRecycle then
+        bagRecycleIdx = bagRecycleIdx + 1
+        local b = bagRecycle[bagRecycleIdx]
+        if b and b.owner == frame.container then
+            b:SetShown(true)
+            if b.wrapper then b.wrapper:SetShown(true) end
+            return b
+        elseif b then
+            ns:Debug("Bag recycle: skipped a button no longer owned by the bags")
+        end
+    end
+    return ItemButton:Acquire(frame.container)
+end
+
+-- Park recycle-pool buttons that weren't reused (the slot count shrank): hide them
+-- and keep them acquired, avoiding ResetButton + Masque churn now and the acquire
+-- when the count grows back.
+local function ParkBagRecycleLeftovers()
+    if not bagRecycle then return end
+    for i = bagRecycleIdx + 1, #bagRecycle do
+        local b = bagRecycle[i]
+        if b.owner == frame.container then
+            b:SetShown(false)
+            if b.wrapper then b.wrapper:SetShown(false) end
+            bagParked[#bagParked + 1] = b
+        end
+    end
+    bagRecycle = nil
+    bagRecycleIdx = 0
+end
+
+-- One owner for "hand every bag button back to the shared pool": releasing without
+-- also dropping itemButtons/bagParked would leave this file holding freed buttons
+-- that the next single/split Refresh would try to recycle.
+local function ReleaseAllBagButtons()
+    if not frame then return end
+    ItemButton:ReleaseAll(frame.container)
+    itemButtons = {}
+    bagParked = {}
+    bagRecycle = nil
+    bagRecycleIdx = 0
+end
+
 -- Cached container anchor (UpdateFrameAppearance). Re-anchoring the container
 -- moves the reference point for all ~190 child buttons, forcing a full relayout on
 -- the next frame:Show(). We skip the SetPoint when the computed anchor is unchanged.
@@ -653,11 +707,26 @@ function BagFrame:Refresh()
     local lastViewType = lastLayoutSettings and lastLayoutSettings.viewType
     local viewTypeChanged = lastViewType and lastViewType ~= viewType
 
+    -- Single/split views reuse last refresh's buttons in place (plus parked surplus)
+    -- instead of ReleaseAll + Acquire, same as BankFrame: SetItem/SetEmpty fully
+    -- restyle a reused button and it keeps its Masque registration, so a search,
+    -- settings or capacity Refresh no longer unregisters and re-skins every button.
+    -- Tracked separately from lastLayoutSettings, which ReleaseHeld clears.
+    local recycle = (viewType == "single" or viewType == "split")
+        and lastRefreshViewType == viewType
+    lastRefreshViewType = viewType
+    if recycle then
+        -- itemButtons is reset to {} below, so handing it over here is safe
+        bagRecycle = itemButtons
+        for i = 1, #bagParked do bagRecycle[#bagRecycle + 1] = bagParked[i] end
+        bagParked = {}
+        bagRecycleIdx = 0
+        buttonsByItemKey = {}
     -- For category view (staying in category), preserve buttonsByItemKey for reuse optimization
     -- RefreshCategoryView will handle selective release/acquire
     -- But if switching TO category from another view, release all first
-    if viewType ~= "category" or viewTypeChanged then
-        ItemButton:ReleaseAll(frame.container)
+    elseif viewType ~= "category" or viewTypeChanged then
+        ReleaseAllBagButtons()
         buttonsByItemKey = {}
     end
     -- else: RefreshCategoryView handles button release/acquire with key-based reuse
@@ -777,6 +846,8 @@ function BagFrame:Refresh()
     else
         self:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isViewingCached)
     end
+    -- Hide + keep any reused buttons left over when the slot count shrank
+    ParkBagRecycleLeftovers()
     ns:ProfileStop("Refresh.render")
 
     -- Update slot info (show regular bags only, special bags in tooltip)
@@ -831,7 +902,7 @@ function BagFrame:RefreshSingleView(bags, bagsToShow, settings, hasSearch, isVie
     -- Render buttons
     for i, slotInfo in ipairs(allSlots) do
         ns:ProfileStart("render.acquire")
-        local button = ItemButton:Acquire(frame.container)
+        local button = AcquireBagButton()
         ns:ProfileStop("render.acquire")
         local slotKey = slotInfo.bagID .. ":" .. slotInfo.slot
 
@@ -929,7 +1000,7 @@ function BagFrame:RefreshSplitView(bags, bagsToShow, settings, hasSearch, isView
 
         for slot = 1, numSlots do
             local itemData = bagData and bagData.slots and bagData.slots[slot]
-            local button = ItemButton:Acquire(frame.container)
+            local button = AcquireBagButton()
             local slotKey = bagID .. ":" .. slot
 
             if itemData then
@@ -1375,7 +1446,7 @@ function BagFrame:ReleaseHeld()
     heldHidden = false
     dirtyWhileHidden = false
     if not frame then return end
-    ItemButton:ReleaseAll(frame.container)
+    ReleaseAllBagButtons()
     ReleaseAllCategoryHeaders()
     buttonsBySlot = {}
     buttonsByBag = {}
@@ -1442,7 +1513,7 @@ function BagFrame:Show()
         if RecentItems:CleanupStale() then needsFullRefresh = true end
     end
     if needsFullRefresh then
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBagButtons()
         buttonsByItemKey = {}
     end
     self:Refresh()
@@ -2608,7 +2679,7 @@ local function OnSettingChanged(event, key, value)
     elseif key == "groupIdenticalItems" then
         -- Force full release when toggling item grouping to prevent visual artifacts
         -- Item structure changes fundamentally (grouped vs individual) but keys stay same
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBagButtons()
         buttonsByItemKey = {}
         BagFrame:Refresh()
     else
@@ -2667,7 +2738,7 @@ function BagFrame:RestackAndClean()
             C_Timer.After(0.1, function()
                 if frame and frame:IsShown() then
                     -- Release all buttons first (they would be orphaned otherwise)
-                    ItemButton:ReleaseAll(frame.container)
+                    ReleaseAllBagButtons()
 
                     -- Clear all layout caches (removes ghost slots)
                     buttonsBySlot = {}
@@ -2703,7 +2774,7 @@ function BagFrame:Clean()
     if not frame then return end
 
     -- Release all buttons (they would be orphaned otherwise)
-    ItemButton:ReleaseAll(frame.container)
+    ReleaseAllBagButtons()
 
     -- Clear all layout caches (removes ghost slots)
     buttonsBySlot = {}
@@ -2769,7 +2840,7 @@ Events:Register("SETTING_CHANGED", OnSettingChanged, BagFrame)
 Events:Register("CATEGORIES_UPDATED", function()
     if frame and frame:IsShown() then
         -- Release all buttons to force full refresh (category assignments changed)
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBagButtons()
         buttonsByItemKey = {}
         BagFrame:Refresh()
     end
@@ -3153,7 +3224,7 @@ local function RefreshForInteractionWindow()
         -- *because* the window is open, which is exactly when we do want to rebuild.
         if not Database:GetSetting("groupIdenticalItems") then return end
         -- Force full refresh since grouping state changed
-        ItemButton:ReleaseAll(frame.container)
+        ReleaseAllBagButtons()
         buttonsByItemKey = {}
         BagFrame:Refresh()
     end

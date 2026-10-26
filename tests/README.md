@@ -61,7 +61,12 @@ hand-built item records.
 - "Name contains" / icon rules never throw on user text that is not a valid
   Lua pattern (`[`, `(13`), and valid patterns keep working
 
-`stubs.lua` holds the WoW API stubs and loader these two share.
+**Profile import** (`profile_import.lua`) — export → import round trip through
+the real `Core/ProfileManager.lua`, and that hostile import strings (a huge
+element count, absurd nesting, garbage) are rejected immediately instead of
+freezing the client.
+
+`stubs.lua` holds the WoW API stubs and loader these harnesses share.
 
 ## Regression check
 

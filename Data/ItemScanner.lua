@@ -111,6 +111,11 @@ local function SetCachedTooltipResult(cacheKey, result)
     tooltipCache[cacheKey] = result
 end
 
+-- itemIDs a scan met before their data had loaded. GET_ITEM_INFO_RECEIVED fires
+-- for every item the client resolves (auction house, quest log, other addons), so
+-- the handler below only does work for these.
+local pendingItemIDs = {}
+
 -- Clear tooltip cache (call when player stats change that could affect usability)
 function ItemScanner:ClearTooltipCache()
     tooltipCache = {}
@@ -164,6 +169,7 @@ local function ScanTooltipForItem(bagID, slot, classID, itemID, itemLink, itemQu
     -- frames re-scan affected slots when GET_ITEM_INFO_RECEIVED arrives.
     if itemID and C_Item and C_Item.IsItemDataCachedByID
         and not C_Item.IsItemDataCachedByID(itemID) then
+        pendingItemIDs[itemID] = true
         if C_Item.RequestLoadItemDataByID then
             C_Item.RequestLoadItemDataByID(itemID)
         end
@@ -175,6 +181,7 @@ local function ScanTooltipForItem(bagID, slot, classID, itemID, itemLink, itemQu
     -- doesn't reflect the live per-instance tooltip). Scanning now risks a red
     -- "Retrieving item information" line marking it unusable — defer, no cache.
     if itemLoaded == false then
+        if itemID then pendingItemIDs[itemID] = true end
         return true, false, false, false, false, false
     end
 
@@ -474,8 +481,11 @@ function ItemScanner:ScanSlot(bagID, slot)
     -- the record pending so the scanners know to look again.
     local itemLink = itemInfo.hyperlink
     local dataPending = not itemLink
-    if dataPending and C_Item and C_Item.RequestLoadItemDataByID and itemInfo.itemID then
-        C_Item.RequestLoadItemDataByID(itemInfo.itemID)
+    if dataPending and itemInfo.itemID then
+        pendingItemIDs[itemInfo.itemID] = true
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(itemInfo.itemID)
+        end
     end
 
     local itemName, _, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, maxStack, equipSlot, itemTexture, sellPrice, classID, subClassID
@@ -695,6 +705,10 @@ if Events then
     local categoryClearPending = false
     Events:Register("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
         if not success or not itemID then return end
+        -- Unrelated items (AH browsing, quest log, other addons) have nothing of
+        -- ours to drop: unresolved scans are never cached, so skip the sweep.
+        if not pendingItemIDs[itemID] then return end
+        pendingItemIDs[itemID] = nil
         local needle = "item:" .. itemID .. ":"
         for key in pairs(tooltipCache) do
             if type(key) == "string" and key:find(needle, 1, true) then

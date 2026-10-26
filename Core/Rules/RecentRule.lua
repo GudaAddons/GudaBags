@@ -338,15 +338,61 @@ local function GetItemIDFromLink(itemLink)
     return itemID and tonumber(itemID)
 end
 
+-- Turn a Blizzard format string ("You receive loot: %s.") into an anchored Lua
+-- pattern: magic characters escaped, %s / %d (and positional %1$s) as wildcards.
+local function FormatToPattern(fmt)
+    local p = fmt:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+    p = p:gsub("%%%%%d%%%$s", ".+"):gsub("%%%%%d%%%$d", "%%d+")
+    p = p:gsub("%%%%s", ".+"):gsub("%%%%d", "%%d+")
+    return "^" .. p
+end
+
+-- Messages that mean "this item came to you": looted, pushed (quest reward,
+-- purchase), won on a roll, bonus roll. The client's own global strings, so every
+-- locale matches -- the old English-only "^You receive"/"^You won" test meant no
+-- non-English client ever marked anything Recent. "You create" (conjured/crafted)
+-- is deliberately not in the list, as before.
+local LOOT_MESSAGE_GLOBALS = {
+    "LOOT_ITEM_SELF", "LOOT_ITEM_SELF_MULTIPLE",
+    "LOOT_ITEM_PUSHED_SELF", "LOOT_ITEM_PUSHED_SELF_MULTIPLE",
+    "LOOT_ROLL_YOU_WON",
+    "LOOT_ITEM_BONUS_ROLL_SELF", "LOOT_ITEM_BONUS_ROLL_SELF_MULTIPLE",
+}
+local lootPatterns = nil
+
+local function GetLootPatterns()
+    if lootPatterns then return lootPatterns end
+    lootPatterns = {}
+    for _, name in ipairs(LOOT_MESSAGE_GLOBALS) do
+        local fmt = _G[name]
+        if type(fmt) == "string" and fmt ~= "" then
+            table.insert(lootPatterns, FormatToPattern(fmt))
+        end
+    end
+    -- A client defining none of them keeps the original English behaviour
+    if #lootPatterns == 0 then
+        lootPatterns = { "^You receive", "^You won" }
+    end
+    return lootPatterns
+end
+
 -- Handle loot event - mark looted items as recent
 local function OnLootReceived(event, msg, ...)
     if not msg then return end
 
+    local patterns = GetLootPatterns()
     -- Detaint: CHAT_MSG_LOOT msg can be a tainted secret string
     -- Use string.find/match (not method syntax) with pcall to handle tainted values
     local ok, itemID = pcall(function()
         -- Only process actual loot messages, not created/conjured items
-        if not (string.find(msg, "^You receive") or string.find(msg, "^You won")) then return nil end
+        local isLoot = false
+        for i = 1, #patterns do
+            if string.find(msg, patterns[i]) then
+                isLoot = true
+                break
+            end
+        end
+        if not isLoot then return nil end
         return string.match(msg, "|Hitem:(%d+)")
     end)
 
@@ -354,10 +400,8 @@ local function OnLootReceived(event, msg, ...)
         MarkItemRecent(tonumber(itemID))
     else
         -- Two very different failures share this branch, so name which one: a
-        -- tainted/erroring msg (ok == false), or a message the prefix test rejected.
-        -- That test is English-only ("^You receive" / "^You won"), so on any other
-        -- client every loot lands here and nothing is ever marked Recent.
-        ns:Debug("Recent: CHAT_MSG_LOOT not marked -", ok and "no prefix/link match" or "pcall failed")
+        -- tainted/erroring msg (ok == false), or a message that isn't one of ours.
+        ns:Debug("Recent: CHAT_MSG_LOOT not marked -", ok and "no loot-message/link match" or "pcall failed")
     end
 end
 

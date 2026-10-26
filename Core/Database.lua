@@ -452,11 +452,25 @@ function Database:GetPlayerFullName()
     return GetPlayerFullName()
 end
 
+-- Tooltip item counts (CountItemAcrossCharacters), memoized per itemID. Counting
+-- walks every character's bags/bank/mail plus the warband and guild banks, and
+-- tooltips rebuild several times per hover (multiple hooks + Blizzard's ~5 Hz
+-- refresh). Scanners mutate the saved tables in place and save on a debounce, so
+-- the cache is cleared on the bag/equipment events and every Save* below, with a
+-- short TTL as a backstop for anything else arriving between saves.
+local itemCountCache = {}
+local ITEM_COUNT_TTL = 2
+
+local function InvalidateItemCounts()
+    wipe(itemCountCache)
+end
+
 function Database:SaveBags(bagData)
     local charData = self:GetCurrentCharacter()
     if not charData then return end
     charData.bags = bagData
     charData.lastUpdate = time()
+    InvalidateItemCounts()
 end
 
 function Database:GetBags(fullName)
@@ -508,6 +522,7 @@ function Database:SaveBank(bankData)
     if not charData then return end
     charData.bank = bankData
     charData.lastUpdate = time()
+    InvalidateItemCounts()
 end
 
 function Database:GetBank(fullName)
@@ -555,6 +570,7 @@ function Database:SaveWarbandBank(warbandData)
     if not GudaBags_DB then return end
     GudaBags_DB.warbandBank = warbandData
     GudaBags_DB.warbandBank.lastUpdate = time()
+    InvalidateItemCounts()
 end
 
 function Database:GetWarbandBank()
@@ -589,6 +605,7 @@ function Database:SaveMailbox(mailData)
     if not charData then return end
     charData.mailbox = mailData
     charData.lastUpdate = time()
+    InvalidateItemCounts()
 end
 
 function Database:GetMailbox(fullName)
@@ -616,6 +633,7 @@ function Database:ScanAndSaveEquipment()
         end
     end
     charData.equipped = equipped
+    InvalidateItemCounts()
 end
 
 function Database:GetEquipment(fullName)
@@ -641,6 +659,7 @@ function Database:SaveGuildBank(guildName, guildBankData)
 
     GudaBags_DB.guildBanks[guildName] = guildBankData
     GudaBags_DB.guildBanks[guildName].lastUpdate = time()
+    InvalidateItemCounts()
 end
 
 function Database:GetGuildBank(guildName)
@@ -835,6 +854,7 @@ function Database:ToggleGoldBlacklist(fullName)
     else
         GudaBags_DB.goldBlacklist[fullName] = true
     end
+    InvalidateItemCounts()
 end
 
 -- Count items in a container collection (bags or bank)
@@ -864,6 +884,15 @@ end
 -- Returns: totalCount, characterCounts (table of {name, class, count, bagCount, bankCount, ...}), warbandCount
 function Database:CountItemAcrossCharacters(itemID, includeExcluded)
     if not itemID then return 0, {}, 0 end
+
+    -- Callers only read the returned tables. includeExcluded (/guda count) is rare
+    -- and answers differently, so it always recomputes.
+    if not includeExcluded then
+        local cached = itemCountCache[itemID]
+        if cached and (GetTime() - cached.time) < ITEM_COUNT_TTL then
+            return cached.total, cached.chars, cached.warband, cached.guilds
+        end
+    end
 
     local currentFullName = GetPlayerFullName()
     local characterCounts = {}
@@ -960,7 +989,19 @@ function Database:CountItemAcrossCharacters(itemID, includeExcluded)
         return a.name < b.name
     end)
 
+    if not includeExcluded then
+        itemCountCache[itemID] = {
+            time = GetTime(), total = totalCount, chars = characterCounts,
+            warband = warbandCount, guilds = guildBankCounts,
+        }
+    end
+
     return totalCount, characterCounts, warbandCount, guildBankCounts
+end
+
+-- Bank/mail/guild changes are covered by their Save* calls and the TTL.
+for _, event in ipairs({"BAG_UPDATE", "PLAYER_EQUIPMENT_CHANGED"}) do
+    Events:Register(event, InvalidateItemCounts, itemCountCache)
 end
 
 -------------------------------------------------

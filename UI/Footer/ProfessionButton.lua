@@ -64,6 +64,9 @@ local function BuildButton(instance)
     highlight:SetBlendMode("ADD")
 
     button:SetScript("OnEnter", function(self)
+        -- Dimmed to alpha 0 by HideButton in combat (Hide() is blocked there):
+        -- the button is still under the mouse, but there is nothing to describe.
+        if self:GetAlpha() == 0 then return end
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(L[cfg.tooltipKey] or cfg.defaultName)
         GameTooltip:AddLine(L[cfg.tooltipDescKey] or "", 0.7, 0.7, 0.7)

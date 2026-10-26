@@ -663,8 +663,47 @@ local slotChangeCanImplyOpen = not (Expansion and Expansion.Features.HasInteract
 -- Debounce timer for guild bank slot changes
 local slotChangeTimer = nil
 local scanTimer = nil
-local isQueryingTabs = false  -- Track when we initiated queries (to ignore resulting events)
-local queryStartTime = 0
+
+-- Our own tab queries are answered with more GUILDBANKBAGSLOTS_CHANGED events.
+-- Those used to be ignored only for a fixed ~0.4s, so any answer arriving later
+-- (latency) looked like fresh guild traffic and started another query-all + rescan
+-- cycle -- forever, on a slow connection. Now everything within QUERY_COOLDOWN of
+-- a query just rescans (the event means the data has arrived), and re-querying
+-- waits until the cooldown has passed.
+local QUERY_COOLDOWN = 2
+local lastQueryTime = nil
+local lastQueryTab = nil  -- tab of the last query; nil = all tabs were queried
+
+-- Debounced rescan: a burst of answers collapses into one scan after the last.
+-- tabIndex limits it to one tab; nil scans every tab.
+local function ScheduleScan(delay, tabIndex)
+    if scanTimer then
+        scanTimer:Cancel()
+    end
+    scanTimer = C_Timer.NewTimer(delay, function()
+        scanTimer = nil
+        if not isGuildBankOpen then return end
+
+        if tabIndex then
+            ns:Debug("  Scanning tab", tabIndex)
+            GuildBankScanner:ScanTab(tabIndex)
+        else
+            local numTabs = GuildBankScanner:GetNumTabs()
+            ns:Debug("  Scanning", numTabs, "tabs")
+            for i = 1, numTabs do
+                GuildBankScanner:ScanTab(i)
+            end
+        end
+
+        -- Save to database
+        ScheduleDeferredSave()
+
+        -- Notify UI to refresh
+        if ns.OnGuildBankUpdated then
+            ns.OnGuildBankUpdated()
+        end
+    end)
+end
 
 Events:Register("GUILDBANKBAGSLOTS_CHANGED", function()
     -- Guild bank data with no open event *may* mean this client never fires
@@ -685,25 +724,23 @@ Events:Register("GUILDBANKBAGSLOTS_CHANGED", function()
     end
 
     local now = GetTime()
-    ns:Debug("GUILDBANKBAGSLOTS_CHANGED fired, querying:", isQueryingTabs, "elapsed:", now - queryStartTime)
+    ns:Debug("GUILDBANKBAGSLOTS_CHANGED fired, since last query:", lastQueryTime and (now - lastQueryTime))
 
-    -- If this event is from our own query (within 0.5s), ignore it
-    if isQueryingTabs and (now - queryStartTime) < 0.5 then
-        ns:Debug("  Ignoring event from our own query")
+    -- Answers to our own query (or traffic right behind it): the data is here, so
+    -- just rescan -- re-querying now is what used to loop.
+    if lastQueryTime and (now - lastQueryTime) < QUERY_COOLDOWN then
+        ScheduleScan(0.2, lastQueryTab)
         return
     end
 
-    -- Cancel any pending timers
+    -- Cancel any pending query; a pending scan is replaced by ScheduleScan below
     if slotChangeTimer then
         slotChangeTimer:Cancel()
         slotChangeTimer = nil
     end
-    if scanTimer then
-        scanTimer:Cancel()
-        scanTimer = nil
-    end
 
-    -- First phase: Query all tabs to request fresh data from server
+    -- First phase: Query all tabs to request fresh data from server (another
+    -- member may have changed a tab we are not looking at)
     slotChangeTimer = C_Timer.NewTimer(0.1, function()
         slotChangeTimer = nil
 
@@ -712,36 +749,17 @@ Events:Register("GUILDBANKBAGSLOTS_CHANGED", function()
         local numTabs = GuildBankScanner:GetNumTabs()
         ns:Debug("  Querying", numTabs, "tabs for fresh data")
 
-        isQueryingTabs = true
-        queryStartTime = GetTime()
+        lastQueryTime = GetTime()
+        lastQueryTab = nil
 
         -- Query all tabs
         for i = 1, numTabs do
             QueryViewableTab(i)
         end
 
-        -- Second phase: After queries, scan the data
-        scanTimer = C_Timer.NewTimer(0.3, function()
-            scanTimer = nil
-            isQueryingTabs = false
-
-            if not isGuildBankOpen then return end
-
-            ns:Debug("  Scanning", numTabs, "tabs after query")
-
-            -- Scan all tabs
-            for i = 1, numTabs do
-                GuildBankScanner:ScanTab(i)
-            end
-
-            -- Save to database
-            ScheduleDeferredSave()
-
-            -- Notify UI to refresh
-            if ns.OnGuildBankUpdated then
-                ns.OnGuildBankUpdated()
-            end
-        end)
+        -- Second phase: scan once the answers have had time to land (late ones
+        -- reschedule this through the cooldown branch above)
+        ScheduleScan(0.3)
     end)
 end, GuildBankScanner)
 
@@ -773,34 +791,13 @@ Events:Register("GUILDBANK_ITEM_LOCK_CHANGED", function(event, tabIndex, slotInd
         -- Query the specific tab
         if targetTab and QueryGuildBankTab then
             ns:Debug("  Querying tab", targetTab, "after item lock change")
-            isQueryingTabs = true
-            queryStartTime = GetTime()
+            lastQueryTime = GetTime()
+            lastQueryTab = targetTab
             QueryViewableTab(targetTab)
         end
 
-        -- Scan after query
-        scanTimer = C_Timer.NewTimer(0.2, function()
-            scanTimer = nil
-            isQueryingTabs = false
-
-            if not isGuildBankOpen then return end
-
-            -- Rescan all tabs
-            local numTabs = GuildBankScanner:GetNumTabs()
-            ns:Debug("  Scanning", numTabs, "tabs after lock change")
-
-            for i = 1, numTabs do
-                GuildBankScanner:ScanTab(i)
-            end
-
-            -- Save to database
-            ScheduleDeferredSave()
-
-            -- Notify UI to refresh
-            if ns.OnGuildBankUpdated then
-                ns.OnGuildBankUpdated()
-            end
-        end)
+        -- Only the locked tab changed; nil (unknown tab) scans them all
+        ScheduleScan(0.2, targetTab)
     end)
 end, GuildBankScanner)
 

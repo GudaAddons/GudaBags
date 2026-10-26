@@ -17,7 +17,12 @@ ns:RegisterModule("Compatibility.Pawn", Pawn)
 local Events = ns:GetModule("Events")
 
 local upgradeCache = {}   -- [itemLink] = true/false
-local pending = {}        -- [itemLink] = true (awaiting a definitive answer)
+local pending = {}        -- [itemLink] = GetTime() it was first deferred
+
+-- The drain runs every frame while anything is pending. An item whose data never
+-- loads (or a Pawn that never reports ready) kept it running forever, so give up
+-- on a link after this long and cache "no arrow" until the next invalidation.
+local PENDING_MAX_AGE = 30
 
 -- Same compute budget Pawn uses internally: 2 frames of 60fps worth of work
 -- per quarter second. Spending our own keeps us off Pawn's shared budget.
@@ -39,9 +44,13 @@ end
 local drainFrame = CreateFrame("Frame")
 drainFrame:Hide()
 drainFrame:SetScript("OnUpdate", function(self)
-    for itemLink in pairs(pending) do
+    local now = GetTime()
+    for itemLink, since in pairs(pending) do
         if Pawn:GetUpgradeStatus(itemLink) ~= nil then
             pending[itemLink] = nil
+        elseif now - since > PENDING_MAX_AGE then
+            pending[itemLink] = nil
+            upgradeCache[itemLink] = false
         end
     end
     if next(pending) == nil then
@@ -51,7 +60,8 @@ drainFrame:SetScript("OnUpdate", function(self)
 end)
 
 local function Defer(itemLink)
-    pending[itemLink] = true
+    -- Keep the first-deferred time: the drain re-defers the same link every frame
+    pending[itemLink] = pending[itemLink] or GetTime()
     drainFrame:Show()
 end
 
@@ -99,7 +109,7 @@ function Pawn:GetUpgradeStatus(itemLink)
 
     -- Item data is loaded but Pawn still says nil -> treat as not-an-upgrade so
     -- it doesn't stay unresolved forever.
-    if C_Item.IsItemDataCachedByID(itemLink) then
+    if not (C_Item and C_Item.IsItemDataCachedByID) or C_Item.IsItemDataCachedByID(itemLink) then
         upgradeCache[itemLink] = false
         return false
     end
