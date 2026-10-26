@@ -2055,30 +2055,3 @@ function SearchBar:UpdateTransferState(parent)
         UpdateTransferButton(instance)
     end
 end
-
--- Legacy compatibility: plain text matching
-function SearchBar:ItemMatchesSearch(itemData, searchText)
-    if not searchText or searchText == "" then
-        return true
-    end
-
-    if not itemData then
-        return false
-    end
-
-    local searchLower = Utils:UTF8Lower(searchText)
-
-    if itemData.name and strfind(Utils:UTF8Lower(itemData.name), searchLower, 1, true) then
-        return true
-    end
-
-    if itemData.itemType and strfind(Utils:UTF8Lower(itemData.itemType), searchLower, 1, true) then
-        return true
-    end
-
-    if itemData.itemSubType and strfind(Utils:UTF8Lower(itemData.itemSubType), searchLower, 1, true) then
-        return true
-    end
-
-    return false
-end

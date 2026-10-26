@@ -220,11 +220,6 @@ local function ResolveButtonIcon(itemData)
     return UNRESOLVED_ICON
 end
 
--- No-op: UIErrorsFrame hooking was removed to prevent taint propagation
--- that would break Blizzard's secure unit frame code (maxHealth comparisons, etc.)
-local function SuppressItemErrors()
-end
-
 -- Check if an item is protected from selling/deleting (user-locked or in equipment set)
 local function IsItemProtected(itemID)
     if not itemID then return false end
@@ -1660,8 +1655,8 @@ local function CreateButton(parent)
     -- Also update pseudo-item slots to use current empty slot
     -- NOTE: On Retail, skip these operations to avoid tainting the secure click handler
     button:HookScript("PreClick", function(self, mouseButton)
-        -- Suppress spurious "Item isn't ready yet" errors on retail
-        SuppressItemErrors()
+        -- (UIErrorsFrame suppression was removed: hooking it tainted Blizzard's
+        -- secure unit frame code, maxHealth comparisons etc.)
 
         -- Intercept right-click to deposit into warband bank instead of character bank
         -- The secure template calls UseContainerItem without bankType, defaulting to character bank
@@ -2947,29 +2942,6 @@ function ItemButton:HighlightBagSlots(bagID, owner)
             SetItemButtonDesaturated(button, true)
             if button.slotBackground then
                 button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha * 0.25)
-            end
-        end
-    end
-end
-
-function ItemButton:ClearHighlightedSlots(parentFrame)
-    if not buttonPool then return end
-    local SearchBar = ns:GetModule("SearchBar")
-    local hasSearch = (SearchBar and parentFrame) and SearchBar:HasActiveFilters(parentFrame) or false
-    local bgAlpha = Database:GetSetting("bgAlpha") / 100
-
-    for button in buttonPool:EnumerateActive() do
-        if hasSearch then
-            -- Respect search filter with spotlight effect
-            local isMatch = button.itemData and SearchBar:ItemMatchesFilters(parentFrame, button.itemData)
-            ItemButton:SetSearchState(button, isMatch)
-            if button.slotBackground then
-                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, isMatch and bgAlpha or bgAlpha * 0.4)
-            end
-        else
-            ItemButton:ClearSearchState(button)
-            if button.slotBackground then
-                button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, bgAlpha)
             end
         end
     end
