@@ -45,9 +45,9 @@ function SettingsSchema.GetGeneral()
             { type = "checkbox", key = "minimalEmptySlots", label = L["SETTINGS_MINIMAL_EMPTY_SLOTS"], tooltip = L["SETTINGS_MINIMAL_EMPTY_SLOTS_TIP"] },
             -- Flat only: the tab is rebuilt on every theme change, so this appears and
             -- disappears with the theme
-            { type = "color", key = "flatAccentColor", label = L["SETTINGS_ACCENT_COLOR"],
-              tooltip = L["SETTINGS_ACCENT_COLOR_TIP"],
-              default = ns:GetModule("Theme"):GetDefaultFlatAccent(),
+            { type = "color", key = "flatWindowColor", label = L["SETTINGS_WINDOW_COLOR"],
+              tooltip = L["SETTINGS_WINDOW_COLOR_TIP"],
+              default = ns:GetModule("Theme"):GetDefaultFlatWindowColor(),
               hidden = function() return ns:GetModule("Database"):GetSetting("theme") ~= "flat" end },
         }},
 

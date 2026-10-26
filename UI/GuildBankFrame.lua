@@ -1828,9 +1828,9 @@ local accentRefreshQueued = false
 
 local function OnSettingChanged(event, key, value)
     if not frame or not frame:IsShown() then return end
-    -- Accent color (window border + header line): one cheap appearance pass per
+    -- Window color: one cheap appearance pass per
     -- frame -- the color picker fires this on every drag tick
-    if key == "flatAccentColor" then
+    if key == "flatWindowColor" then
         if not accentRefreshQueued then
             accentRefreshQueued = true
             C_Timer.After(0, function()

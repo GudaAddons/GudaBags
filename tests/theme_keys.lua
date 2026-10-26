@@ -5,15 +5,23 @@ local Stubs = dofile(os.getenv("GUDABAGS_PATH") .. "/tests/stubs.lua")
 local ns, LoadFile = Stubs.NewAddon()
 
 local currentTheme = "guda"
-local accentSetting = nil
+local windowSetting = nil
 ns:RegisterModule("Database", {GetSetting = function(_, key)
     if key == "theme" then return currentTheme end
-    if key == "flatAccentColor" then return accentSetting end
+    if key == "flatWindowColor" then return windowSetting end
 end})
+-- Every listener per event (Font and Theme both watch SETTING_CHANGED)
 local handlers = {}
-ns:RegisterModule("Events", {Register = function(_, event, fn) handlers[event] = fn end})
+ns:RegisterModule("Events", {Register = function(_, event, fn)
+    handlers[event] = handlers[event] or {}
+    table.insert(handlers[event], fn)
+end})
+local function settingChanged(key)
+    for _, fn in ipairs(handlers.SETTING_CHANGED or {}) do fn("SETTING_CHANGED", key) end
+end
 ns.ExpansionFeatures = {HasRetailFrameArt = false}
 LoadFile("Core/Theme.lua")
+LoadFile("Core/Font.lua")
 
 local Theme = ns:GetModule("Theme")
 local T = Stubs.NewChecker()
@@ -86,7 +94,7 @@ local fakeTexture = {SetVertexColor = function(_, ...) last = {...} end}
 Theme:Paint(fakeTexture, "SetVertexColor", "categoryHeaderLine", 0.3, 0.3, 0.3, 0.8)
 T.check("painted with the literal under guda", last[1] == 0.3)
 currentTheme = "flat"
-handlers.SETTING_CHANGED("SETTING_CHANGED", "theme")
+settingChanged("theme")
 T.check("repainted with flat's color on theme change", last[1] ~= 0.3)
 local order = {}
 local fakeFrame = {
@@ -96,36 +104,65 @@ local fakeFrame = {
 Theme:PaintBackdrop(fakeFrame, "panelBackdrop", {})
 Theme:Paint(fakeFrame, "SetBackdropColor", "panelBg", 0.1, 0.1, 0.1, 0.95)
 order = {}
-handlers.SETTING_CHANGED("SETTING_CHANGED", "theme")
+settingChanged("theme")
 T.check("repaint sets the backdrop before its colors", order[1] == "backdrop" and order[2] == "color")
 
-print("Flat accent color:")
+print("Flat window color:")
 currentTheme = "flat"
-accentSetting = nil
-handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
-local def = Theme:GetDefaultFlatAccent()
-local ar, ag, ab = Theme:Color("tabSelectedBorder", 0, 0, 0, 1)
-T.check("no setting -> default teal", ar == def[1] and ag == def[2] and ab == def[3])
-accentSetting = {1, 0, 0}
-handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
-local allRed = true
-for _, key in ipairs({"accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText",
-        "frameBorder", "headerLine"}) do
-    local r, g, b = Theme:Color(key, 0, 0, 0, 1)
-    if not (r == 1 and g == 0 and b == 0) then allRed = false end
-end
-T.check("picked color reaches every accent key, window border and header line included", allRed)
-local _, _, _, chipAlpha = Theme:Color("chipActiveType", 0, 0, 0, 1)
-T.check("each key keeps its own alpha (chips 0.9)", chipAlpha == 0.9)
-local nr = Theme:Color("chipBg", 0, 0, 0, 1)
-T.check("non-accent keys are untouched", nr ~= 1)
+windowSetting = nil
+settingChanged("flatWindowColor")
+local def = Theme:GetDefaultFlatWindowColor()
+local fr, fg, fb = Theme:Color("frameBg", 0, 0, 0, 1)
+T.check("no setting -> default dark background", fr == def[1] and fg == def[2] and fb == def[3])
+windowSetting = {0.5, 0.2, 0.8}
+settingChanged("flatWindowColor")
+local br = Theme:Color("frameBg", 0, 0, 0, 1)
+T.check("window background is exactly the chosen color", br == 0.5)
+local hr = Theme:Color("headerBg", 0, 0, 0, 1)
+local er, eg, eb = Theme:Color("frameBorder", 0, 0, 0, 1)
+local lr = Theme:Color("headerLine", 0, 0, 0, 1)
+T.check("title bar is a darker shade", hr < 0.5 and hr > er)
+T.check("border is a clearly darker shade of the same color",
+    er < hr and math.abs(er / eg - 0.5 / 0.2) < 1e-6 and math.abs(eb / er - 0.8 / 0.5) < 1e-6)
+T.check("header line matches the border shade", lr == er)
+local tr = Theme:Color("tabSelectedBorder", 0, 0, 0, 1)
+T.check("selected tabs keep the fixed teal", math.abs(tr - 0.247) < 1e-6)
 currentTheme = "guda"
-local gr = Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1)
-T.check("other themes ignore the accent setting", gr == 1)
-accentSetting = nil
+local gr = Theme:Color("frameBg", 0.08, 0.08, 0.08, 1)
+T.check("other themes ignore the window color", gr ~= 0.5)
+windowSetting = nil
 currentTheme = "flat"
-handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
-local rr = Theme:Color("accent", 0, 0, 0, 1)
-T.check("Reset (setting cleared) restores teal", rr == def[1])
+settingChanged("flatWindowColor")
+local rr = Theme:Color("frameBg", 0, 0, 0, 1)
+T.check("Reset (setting cleared) restores the dark default", rr == def[1])
+
+-- Text shadow: on under Flat, and leaving Flat restores each string's OWN shadow
+-- (GameFont templates ship one) rather than clearing it.
+print("Text shadow:")
+local Font = ns:GetModule("Font")
+local function FakeFontString(ox, oy)
+    local fs = {offset = {ox, oy}, color = {0, 0, 0, 0.5}}
+    function fs:SetFont() end
+    function fs:GetFont() return "font", 12, "" end
+    function fs:GetShadowOffset() return self.offset[1], self.offset[2] end
+    function fs:SetShadowOffset(x, y) self.offset = {x, y} end
+    function fs:GetShadowColor() return (table.unpack or unpack)(self.color) end
+    function fs:SetShadowColor(r, g, b, a) self.color = {r, g, b, a} end
+    return fs
+end
+currentTheme = "guda"
+local plain = FakeFontString(0, 0)
+local templated = FakeFontString(2, -2)
+Font:Apply(plain, 12, "")
+Font:Apply(templated, 12, "")
+T.check("guda leaves shadows alone", plain.offset[1] == 0 and templated.offset[1] == 2)
+currentTheme = "flat"
+settingChanged("theme")
+T.check("flat adds a shadow", plain.offset[1] == 1 and plain.offset[2] == -1 and plain.color[4] == 1)
+currentTheme = "guda"
+settingChanged("theme")
+T.check("leaving flat restores no-shadow text", plain.offset[1] == 0 and plain.offset[2] == 0)
+T.check("leaving flat restores a template's own shadow",
+    templated.offset[1] == 2 and templated.offset[2] == -2 and templated.color[4] == 0.5)
 
 T.finish("every theme defines the values the UI reads")

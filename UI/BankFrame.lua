@@ -3659,10 +3659,10 @@ local resizeSettings = {
 local accentRefreshQueued = false
 
 local function OnSettingChanged(event, key, value)
-    -- Accent color (window border + header line): one cheap appearance pass per
+    -- Window color: one cheap appearance pass per
     -- frame (tabs pick it up on their next update). The color picker fires this on
     -- every drag tick, so never reach the full Refresh.
-    if key == "flatAccentColor" then
+    if key == "flatWindowColor" then
         if not accentRefreshQueued then
             accentRefreshQueued = true
             C_Timer.After(0, function()

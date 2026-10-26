@@ -40,6 +40,28 @@ function Font:GetFont()
     return cachedFontPath
 end
 
+-- Theme-driven text shadow (Flat sets textShadow, so text stays readable on any
+-- window color). Off means "the string's own shadow": many GameFont templates
+-- ship one, so it is remembered at registration and restored, never cleared.
+local function WantShadow()
+    local Theme = ns:GetModule("Theme")
+    return Theme and Theme:GetValue("textShadow") and true or false
+end
+
+local function ApplyShadow(fontString, entry, shadow)
+    if entry.shadow == shadow then return end
+    entry.shadow = shadow
+    if not fontString.SetShadowOffset then return end
+    if shadow then
+        fontString:SetShadowOffset(1, -1)
+        fontString:SetShadowColor(0, 0, 0, 1)
+    else
+        local o = entry.origShadow
+        fontString:SetShadowOffset(o[1], o[2])
+        fontString:SetShadowColor(o[3], o[4], o[5], o[6])
+    end
+end
+
 -- Apply the selected font with an explicit size/flags. Use for numeric/text
 -- sites that own a specific (often dynamic) size. When size is omitted the
 -- string's current size/flags are kept.
@@ -51,6 +73,7 @@ function Font:Apply(fontString, size, flags)
         flags = flags or curFlags
     end
     local path = self:GetFont()
+    local shadow = WantShadow()
     -- Reuse the registry entry (no per-call allocation) and skip SetFont when
     -- the string already has exactly this path/size/flags. The repeated full
     -- sweeps (UpdateFontSize on every appearance update, ReapplyAll, per-item
@@ -60,13 +83,22 @@ function Font:Apply(fontString, size, flags)
     local entry = registry[fontString]
     if entry then
         if entry.path == path and entry.size == size and entry.flags == flags then
+            ApplyShadow(fontString, entry, shadow)
             return
         end
         entry.path, entry.size, entry.flags = path, size, flags
     else
-        registry[fontString] = { path = path, size = size, flags = flags }
+        local ox, oy, r, g, b, a = 0, 0, 0, 0, 0, 0
+        if fontString.GetShadowOffset then
+            ox, oy = fontString:GetShadowOffset()
+            r, g, b, a = fontString:GetShadowColor()
+        end
+        entry = { path = path, size = size, flags = flags, shadow = false,
+                  origShadow = { ox or 0, oy or 0, r or 0, g or 0, b or 0, a or 0 } }
+        registry[fontString] = entry
     end
     fontString:SetFont(path, size, flags)
+    ApplyShadow(fontString, entry, shadow)
 end
 
 -- Swap only the family on a string that already has its size/flags set
@@ -108,10 +140,12 @@ end
 function Font:ReapplyAll()
     cachedFontPath = nil  -- force GetFont to re-resolve the newly selected family
     local path = self:GetFont()
+    local shadow = WantShadow()
     for fs, info in pairs(registry) do
         if fs.SetFont then
             info.path = path  -- keep the Apply no-op check coherent with the new family
             fs:SetFont(path, info.size, info.flags)
+            ApplyShadow(fs, info, shadow)
         end
     end
     for frame in pairs(sweptFrames) do
@@ -128,7 +162,8 @@ end
 local Events = ns:GetModule("Events")
 if Events then
     Events:Register("SETTING_CHANGED", function(_, key)
-        if key == "fontFamily" then
+        -- theme: Flat switches the text shadow on/off
+        if key == "fontFamily" or key == "theme" then
             Font:ReapplyAll()
         end
     end, Font)

@@ -2625,11 +2625,11 @@ local QUESTBAR_DEBOUNCE_DELAY = 0.2
 local accentRefreshQueued = false
 
 local function OnSettingChanged(event, key, value)
-    -- Accent color (window border + header line): one cheap appearance pass per
+    -- Window color: one cheap appearance pass per
     -- frame. The color picker fires this on every drag tick -- falling through to
     -- the full Refresh below would rebuild the bag dozens of times a second. While
     -- hidden, the fast reopen's own appearance pass picks it up.
-    if key == "flatAccentColor" then
+    if key == "flatWindowColor" then
         if not accentRefreshQueued then
             accentRefreshQueued = true
             C_Timer.After(0, function()

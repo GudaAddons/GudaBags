@@ -97,9 +97,10 @@ local themes = {
     -- backdrop); only the close button has a flat style of its own.
     flat = {
         frameBg = {0.071, 0.071, 0.071, 1},        -- #121212
-        frameBorder = {0.247, 0.722, 0.686, 1},    -- accent: the window wears the accent color
+        frameBorder = {0.165, 0.165, 0.165, 1},    -- #2A2A2A (a chosen window color shades this)
         headerBg = {0.102, 0.102, 0.102, 1},       -- #1A1A1A
-        headerLine = {0.247, 0.722, 0.686, 1},     -- accent line under the title bar
+        headerLine = {0.165, 0.165, 0.165, 1},     -- line under the title bar
+        textShadow = true,                         -- legible text on any window color
         titleColor = {1, 1, 1, 1},
         slotBgColor = {0.055, 0.055, 0.055, 1},    -- #0E0E0E
         bankTabBg = {0.118, 0.118, 0.118, 1},      -- #1E1E1E
@@ -174,19 +175,25 @@ local classicBorderKeys = {
 local cachedTheme = nil
 local cachedThemeName = nil
 
--- Flat keys that take the player's accent color (setting "flatAccentColor").
--- Each keeps its own alpha from the theme table.
-local FLAT_ACCENT_KEYS = { "accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText",
-    "frameBorder", "headerLine" }
+-- Flat window color (setting "flatWindowColor"): the window background takes the
+-- chosen color exactly; the title bar is a slightly darker shade and the border
+-- and header line a clearly darker one, so the frame still reads as edged on any
+-- color. Text gets a shadow under Flat (textShadow) to stay legible on light picks.
+local HEADER_SHADE = 0.8
+local BORDER_SHADE = 0.55
 
--- A view of `base` with the accent keys recolored; everything else falls through
-local function ApplyFlatAccent(base, color)
+local function Shade(color, factor, alpha)
+    return { color[1] * factor, color[2] * factor, color[3] * factor, alpha or 1 }
+end
+
+-- A view of `base` with the window keys recolored; everything else falls through
+local function ApplyFlatWindowColor(base, color)
     if type(color) ~= "table" or not color[1] then return base end
     local view = setmetatable({}, { __index = base })
-    for _, key in ipairs(FLAT_ACCENT_KEYS) do
-        local alpha = base[key] and base[key][4] or 1
-        view[key] = { color[1], color[2], color[3], alpha }
-    end
+    view.frameBg = { color[1], color[2], color[3], 1 }
+    view.headerBg = Shade(color, HEADER_SHADE)
+    view.frameBorder = Shade(color, BORDER_SHADE)
+    view.headerLine = Shade(color, BORDER_SHADE)
     return view
 end
 
@@ -212,15 +219,15 @@ function Theme:Get()
     cachedThemeName = themeName
     cachedTheme = themes[themeName] or themes.guda
     if themeName == "flat" then
-        cachedTheme = ApplyFlatAccent(cachedTheme, Database:GetSetting("flatAccentColor"))
+        cachedTheme = ApplyFlatWindowColor(cachedTheme, Database:GetSetting("flatWindowColor"))
     end
     return cachedTheme
 end
 
---- Flat's default accent as {r, g, b} (the color picker's Reset target)
-function Theme:GetDefaultFlatAccent()
-    local a = themes.flat.accent
-    return { a[1], a[2], a[3] }
+--- Flat's default window color as {r, g, b} (the color picker's Reset target)
+function Theme:GetDefaultFlatWindowColor()
+    local c = themes.flat.frameBg
+    return { c[1], c[2], c[3] }
 end
 
 --- Returns a single theme property value
@@ -710,7 +717,7 @@ function Theme:ApplyHeaderChrome(headerFrame, alpha)
         end
     end
 
-    -- Optional 1px line under the title bar (Flat: the accent color). Follows the
+    -- Optional 1px line under the title bar (Flat: a dark shade of the window color). Follows the
     -- "show borders" setting like the window border does.
     local line = self:GetValue("headerLine")
     if line and Database:GetSetting("showBorders") ~= false then
@@ -855,8 +862,11 @@ end
 --- @param f table The popup frame
 function Theme:ApplyPopupTheme(f)
     if not f then return end
-    local useMetal = self:GetValue("useMetalFrame")
-    local useBlizzard = self:GetValue("useBlizzardFrame")
+    -- Flat styles the item windows only: the settings and category-editor popups
+    -- keep the Guda look (and ignore the Flat window color).
+    local t = (Database:GetSetting("theme") == "flat") and themes.guda or self:Get()
+    local useMetal = t.useMetalFrame
+    local useBlizzard = t.useBlizzardFrame
 
     self:ResetPopupChrome(f)
 
@@ -877,10 +887,10 @@ function Theme:ApplyPopupTheme(f)
         f.CloseButton:Show()
     else
         local gudaBg = self:EnsureGudaBackdrop(f)
-        gudaBg:SetBackdrop(self:GetValue("backdrop"))
-        local bg = self:GetValue("frameBg")
+        gudaBg:SetBackdrop(t.backdrop)
+        local bg = t.frameBg
         gudaBg:SetBackdropColor(bg[1], bg[2], bg[3], 1)
-        local border = self:GetValue("frameBorder")
+        local border = t.frameBorder
         gudaBg:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
         gudaBg:Show()
         f.CloseButton:SetSize(22, 22)
@@ -957,7 +967,7 @@ end
 -- Cache Invalidation
 -------------------------------------------------
 Events:Register("SETTING_CHANGED", function(event, key)
-    if key == "theme" or key == "flatAccentColor" then
+    if key == "theme" or key == "flatWindowColor" then
         cachedTheme = nil
         RepaintAll()
     end
