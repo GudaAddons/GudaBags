@@ -708,6 +708,39 @@ function Database:GetGuildBankTabInfo(guildName)
     return nil
 end
 
+-- Guild banks are saved per guild and were kept forever, so a guild you left
+-- stayed in the account file -- and in every tooltip's item counts -- for good.
+-- Drop the ones nobody has opened in GUILD_BANK_MAX_AGE. keepGuild (the current
+-- character's guild) is never dropped: its bank is viewable offline. A bank that
+-- is opened again is simply saved again. Returns how many were removed.
+local GUILD_BANK_MAX_AGE = 90 * 24 * 60 * 60
+
+function Database:PruneOldGuildBanks(keepGuild)
+    local banks = GudaBags_DB and GudaBags_DB.guildBanks
+    if not banks then return 0 end
+
+    local now = time()
+    local removed = 0
+    for guildName, data in pairs(banks) do
+        if guildName ~= keepGuild and type(data) == "table" then
+            local lastUpdate = tonumber(data.lastUpdate)
+            if not lastUpdate then
+                -- Saved before stamps existed: start its clock now rather than
+                -- deleting a bank whose age we cannot know
+                data.lastUpdate = now
+            elseif now - lastUpdate > GUILD_BANK_MAX_AGE then
+                banks[guildName] = nil
+                removed = removed + 1
+            end
+        end
+    end
+
+    if removed > 0 then
+        InvalidateItemCounts()
+    end
+    return removed
+end
+
 function Database:GetAllGuildBanks()
     if not GudaBags_DB or not GudaBags_DB.guildBanks then
         return {}
@@ -1077,6 +1110,18 @@ end, Database)
 Events:OnPlayerLogin(function()
     Database:InitializeCharacter()
     Database:ScanAndSaveEquipment()
+
+    -- Prune stale guild banks a little after login: GetGuildInfo is often still
+    -- nil at PLAYER_LOGIN, and the current guild must be known to be protected.
+    -- In a guild whose name hasn't arrived yet, skip this session entirely.
+    C_Timer.After(15, function()
+        local guildName = GetGuildInfo and GetGuildInfo("player")
+        if IsInGuild and IsInGuild() and not guildName then return end
+        local removed = Database:PruneOldGuildBanks(guildName)
+        if removed > 0 then
+            ns:Debug("Pruned", removed, "guild bank(s) not opened in 90 days")
+        end
+    end)
 end, Database)
 
 -- Also fires on /reload, just before the game writes SavedVariables
