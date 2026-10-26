@@ -256,13 +256,14 @@ local function GetSlotKey(bagID, slot)
     return Utils:GetSlotKey(bagID, slot)
 end
 
--- Helper to count keys in a hash table (# only works for array tables)
-local function TableCount(tbl)
-    local count = 0
-    for _ in pairs(tbl) do
-        count = count + 1
+-- Live "does this slot hold an item" without allocating: GetContainerItemInfo
+-- builds a fresh table per call, GetContainerItemID returns a number (nil when
+-- empty). Falls back to the info call on a client without GetContainerItemID.
+local function SlotHasItem(bagID, slot)
+    if C_Container.GetContainerItemID then
+        return C_Container.GetContainerItemID(bagID, slot) ~= nil
     end
-    return count
+    return C_Container.GetContainerItemInfo(bagID, slot) ~= nil
 end
 
 -- Lazily resolved (TooltipScanner registers its module at file load; ns:GetModule
@@ -1669,7 +1670,11 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         local CategoryManager = ns:GetModule("CategoryManager")
 
         -- Build map of current items from bag data (by item key)
-        local currentItemsByKey = {}   -- itemKey -> {itemData, bagID, slot, category}[]
+        -- Item keys present this pass. Only ever asked "does this key exist" and
+        -- "how many keys", so a set + counter -- it used to hold a per-item entry
+        -- table and a per-key array that nothing read.
+        local currentItemKeys = {}     -- itemKey -> true
+        local uniqueItemCount = 0
         local currentItemsBySlot = {}  -- slotKey -> {itemData, itemKey, category}
         local totalCurrentItems = 0
 
@@ -1712,16 +1717,10 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                             category = CategoryManager and CategoryManager:CategorizeItem(itemData, bagID, slot, false) or "Miscellaneous"
                         end
 
-                        if not currentItemsByKey[itemKey] then
-                            currentItemsByKey[itemKey] = {}
+                        if not currentItemKeys[itemKey] then
+                            currentItemKeys[itemKey] = true
+                            uniqueItemCount = uniqueItemCount + 1
                         end
-                        table.insert(currentItemsByKey[itemKey], {
-                            itemData = itemData,
-                            bagID = bagID,
-                            slot = slot,
-                            slotKey = slotKey,
-                            category = category,
-                        })
                         currentItemsBySlot[slotKey] = {
                             itemData = itemData,
                             itemKey = itemKey,
@@ -1818,8 +1817,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         end
 
         -- With item grouping, compare unique item types (keys) vs buttons, not slots vs buttons
-        -- Multiple slots with same item share one button
-        local uniqueItemCount = TableCount(currentItemsByKey)
+        -- Multiple slots with same item share one button (uniqueItemCount counted above)
 
         -- If more unique items than buttons + ghosts, need full refresh
         local totalAvailable = totalCachedButtons + #ghostSlots
@@ -1848,8 +1846,9 @@ function BagFrame:IncrementalUpdate(dirtyBags)
                 local isSoulBag = (bagType == "soul")
                 local isQuiverBag = (bagType == "quiver" or bagType == "ammo")
                 for slot = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                    if not itemInfo then
+                    -- Only "is this slot empty?" is asked here: GetContainerItemID
+                    -- answers it without building an info table per slot per pass
+                    if not SlotHasItem(bagID, slot) then
                         if isSoulBag then
                             soulEmptyCount = soulEmptyCount + 1
                             if not firstSoulBagID then
@@ -2079,7 +2078,7 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             end
             -- Also handle grouped items that disappeared entirely
             for itemKey, buttons in pairs(buttonsByItemKey) do
-                if not currentItemsByKey[itemKey] then
+                if not currentItemKeys[itemKey] then
                     for _, button in ipairs(buttons) do
                         for slotKey, btn in pairs(buttonsBySlot) do
                             if btn == button and cachedItemData[slotKey] then
@@ -3123,7 +3122,10 @@ end, BagFrame)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only
     if viewingCharacter then return end
-    if frame and frame:IsShown() and bagID and slotID then
+    -- Only this frame's own containers: bank slots are repainted by the bank
+    -- frame's handler, so each event scans the button pool once, not twice.
+    local isOwnBag = bagID and (Constants.IsPlayerBagID(bagID) or bagID == Constants.KEYRING_BAG_ID)
+    if frame and frame:IsShown() and isOwnBag and slotID then
         ItemButton:UpdateLockForItem(bagID, slotID)
         -- Only watch when this is a lock (not an unlock); the unlock is what we
         -- may never be told about. No point watching while bags are closed.
@@ -3131,10 +3133,16 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
         -- BagScanner, and a bank slot fed in there pollutes the bag cache (the
         -- bank frame has its own ITEM_LOCK_CHANGED handler).
         local info = C_Container.GetContainerItemInfo(bagID, slotID)
-        if info and info.isLocked
-            and (Constants.IsPlayerBagID(bagID) or bagID == Constants.KEYRING_BAG_ID) then
+        if info and info.isLocked then
             StartLockWatch(bagID, slotID)
         end
+    end
+
+    -- A sort fires hundreds of these; the deferred drag check below would bail
+    -- on IsSorting anyway, so don't allocate its timer closure for each one.
+    local SortEngine = ns:GetModule("SortEngine")
+    if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then
+        return
     end
 
     -- Detect drag start for showing the flyout drop bar (all views) and the

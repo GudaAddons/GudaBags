@@ -4068,7 +4068,10 @@ end, "BankFrame.CombatPoolRelease")
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only
     if viewingCharacter then return end
-    if frame and frame:IsShown() and bagID and slotID then
+    -- Player-bag slots are the bag frame's (its own handler repaints them); this
+    -- event fires for every slot touched, so don't scan the pool twice for each.
+    if frame and frame:IsShown() and bagID and slotID
+        and not Constants.IsPlayerBagID(bagID) and bagID ~= Constants.KEYRING_BAG_ID then
         ItemButton:UpdateLockForItem(bagID, slotID)
     end
 end, BankFrame)
