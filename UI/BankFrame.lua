@@ -202,16 +202,12 @@ end
 -- Container Drop Handling (empty space acts as drop zone)
 -------------------------------------------------
 
--- Handle drops on empty space in the bank container
-function BankFrame:HandleContainerDrop()
-    local infoType, itemID = GetCursorInfo()
-    if infoType ~= "item" or not itemID then return end
-
+-- Bank containers an item may be dropped into, for the bank type being viewed
+local function GetBankDropBags()
     -- Determine which bank type we're viewing (character or warband)
     local currentBankType = BankFooter and BankFooter:GetCurrentBankType() or "character"
     local isWarband = currentBankType == "warband"
 
-    -- Find an empty bank slot and place the item there
     -- Build bank bag list based on game version and bank type
     local bankBags = {}
 
@@ -245,8 +241,13 @@ function BankFrame:HandleContainerDrop()
         end
     end
 
+    return bankBags
+end
+
+-- Place the cursor item in the first empty slot of the viewed bank. Returns true if placed.
+local function PlaceCursorItemInBank()
     local placed = false
-    for _, bagID in ipairs(bankBags) do
+    for _, bagID in ipairs(GetBankDropBags()) do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
         if numSlots and numSlots > 0 then
             for slot = 1, numSlots do
@@ -261,9 +262,16 @@ function BankFrame:HandleContainerDrop()
         end
         if placed then break end
     end
+    return placed
+end
+
+-- Handle drops on empty space in the bank container
+function BankFrame:HandleContainerDrop()
+    local infoType, itemID = GetCursorInfo()
+    if infoType ~= "item" or not itemID then return end
 
     -- If no empty slot found, just clear cursor
-    if not placed then
+    if not PlaceCursorItemInBank() then
         ClearCursor()
     end
 end
@@ -372,7 +380,13 @@ local function CreateBankFrame()
 
     searchBar = SearchBar:Init(f)
     SearchBar:SetSearchCallback(f, function(text)
-        BankFrame:Refresh()
+        -- Search only dims buttons, so a live layout just needs its states re-applied.
+        -- layoutCached stays false while a progressive render is in flight.
+        if layoutCached and frame and frame:IsShown() then
+            ItemButton:ApplySearchStates(frame, itemButtons)
+        else
+            BankFrame:Refresh()
+        end
     end)
     f.searchBar = searchBar
 
@@ -2694,25 +2708,14 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
 
         -- Handle click for Empty category: place item in first empty bank slot
         header:SetScript("OnMouseDown", function(self, button)
+            if InCombatLockdown() then return end
             if button == "LeftButton" and self.categoryId == "Empty" then
                 local cursorType = GetCursorInfo()
                 if cursorType == "item" then
-                    -- Find first empty bank slot (main bank first, then bank bags)
-                    local bankBags = { BANK_CONTAINER }
-                    for i = NUM_BAG_SLOTS + 1, NUM_BAG_SLOTS + NUM_BANKBAGSLOTS do
-                        table.insert(bankBags, i)
-                    end
-                    for _, bagID in ipairs(bankBags) do
-                        local numSlots = C_Container.GetContainerNumSlots(bagID)
-                        for slot = 1, numSlots do
-                            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                            if not itemInfo then
-                                -- Empty slot found, place item here
-                                C_Container.PickupContainerItem(bagID, slot)
-                                return
-                            end
-                        end
-                    end
+                    -- Same bank-type-aware container list as a container drop: the old
+                    -- BANK_CONTAINER/NUM_BANKBAGSLOTS list is wrong on Retail tabs and
+                    -- errors where those legacy globals were removed (Forever).
+                    PlaceCursorItemInBank()
                 end
             end
         end)
@@ -2927,6 +2930,8 @@ function BankFrame:Show()
         UpdateFrameAppearance(true)
         frame:Show()
         self:IncrementalUpdate(nil)  -- requires frame shown; near-no-op when unchanged
+        -- Cooldown updates skip hidden buttons; catch up on any that started while closed
+        ItemButton:RefreshCooldowns()
         ns:ProfileStop("Bank.fastreopen")
     else
         -- First open, or the retained view is stale (view/bank-type/tab changed) —

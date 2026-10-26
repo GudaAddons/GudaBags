@@ -224,7 +224,7 @@ function Footer:Show()
     end
 
     -- Show money and currency
-    Money:Show()
+    Money:Show(frame.moneyFrame)
     Currency:Show()
 
     self:Update()
@@ -244,7 +244,7 @@ function Footer:Hide()
     if QuiverBag:GetButton() then
         QuiverBag:Hide()
     end
-    Money:Hide()
+    Money:Hide(frame.moneyFrame)
     Currency:Hide()
     if backButton then
         backButton:Hide()
@@ -255,7 +255,7 @@ function Footer:Update()
     if not frame then return end
 
     BagSlots:Update()
-    Money:Update()
+    Money:Update(frame.moneyFrame)
     Currency:Update()
     if Keyring:GetButton() then
         Keyring:UpdateState()
@@ -356,8 +356,8 @@ function Footer:UpdateBagSlots()
 end
 
 function Footer:UpdateMoney()
-    if Money then
-        Money:Update()
+    if Money and frame then
+        Money:Update(frame.moneyFrame)
     end
 end
 
@@ -463,7 +463,7 @@ function Footer:SetNarrowMode(isNarrow)
             frame.moneyFrame:ClearAllPoints()
             frame.moneyFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 1, 0)
         end
-        Money:SetFontSize(12)
+        Money:SetFontSize(frame.moneyFrame, 12)
     else
         -- Single-row layout (default)
         frame:SetHeight(Constants.FRAME.FOOTER_HEIGHT)
@@ -474,7 +474,7 @@ function Footer:SetNarrowMode(isNarrow)
             frame.moneyFrame:ClearAllPoints()
             frame.moneyFrame:SetPoint("RIGHT", frame, "RIGHT", 14, 0)
         end
-        Money:SetFontSize(14)
+        Money:SetFontSize(frame.moneyFrame, 14)
 
         -- Bag slots back to left
         if frame.bagSlotsFrame then
@@ -545,8 +545,8 @@ function Footer:ShowCached(characterFullName)
     Currency:Hide()
 
     -- Show and update money for the cached character
-    Money:Show()
-    Money:UpdateCached(characterFullName)
+    Money:Show(frame.moneyFrame)
+    Money:UpdateCached(frame.moneyFrame, characterFullName)
 
     -- Update bag slots and keyring/soul/quiver bag state
     BagSlots:Update()

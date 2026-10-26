@@ -8,6 +8,12 @@ pip install luaparser lupa
 python tests/run.py
 ```
 
+Local only — there is no CI for these. If `python` opens the Microsoft Store,
+that is the Windows app-execution alias, not a real interpreter: install one
+(`winget install Python.Python.3.12`, or python.org), turn the alias off under
+*Settings → Apps → Advanced app settings → App execution aliases*, then run the
+`pip install` above.
+
 ## What it covers
 
 **Syntax pass** — parses every `.lua` file in the addon. Catches the class of
@@ -38,6 +44,24 @@ It also asserts:
 - The font picker offers only fonts the client can actually render, with the
   client's own font first — a zhCN client must never be offered a Latin-only
   face, which would turn every string in the addon into boxes
+
+**Search parser** (`search_parser.lua`) — parses real query strings
+(`q>=rare`, `t:weapon`, `s:twohand`, quoted `tt:"..."` phrases, keywords, free
+text) with the real `Core/SearchParser.lua` and matches them against
+hand-built item records.
+
+**Category manager** (`category_manager.lua`) — loads the real
+`CategoryManager` and rule code and asserts:
+
+- The saved-categories migration runs once per saved table, not on every
+  `GetCategories()` call (it deep-copies all defaults)
+- The category result cache never serves one character's verdict to another
+  (an alt's copy of the same link answers BoE/junk/recent differently)
+- Toggling `whiteItemsJunk` re-categorizes cached items
+- "Name contains" / icon rules never throw on user text that is not a valid
+  Lua pattern (`[`, `(13`), and valid patterns keep working
+
+`stubs.lua` holds the WoW API stubs and loader these two share.
 
 ## Regression check
 

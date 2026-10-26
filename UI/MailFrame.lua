@@ -248,7 +248,7 @@ local function CreateMailRow(parent, index)
         if IsModifiedClick("CHATLINK") then
             local link = self.mailData.link
             if not link and self.mailData.itemID then
-                _, link = GetItemInfo(self.mailData.itemID)
+                link = select(2, GetItemInfo(self.mailData.itemID))
             end
             if link then
                 HandleModifiedItemClick(link)

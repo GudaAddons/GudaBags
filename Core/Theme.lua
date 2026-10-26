@@ -646,7 +646,8 @@ function Theme:ResetPopupChrome(f)
     if f.metalFrame then f.metalFrame:Hide() end
     if f._gudaBackdrop then f._gudaBackdrop:Hide() end
     if f.CloseButton then
-        local closeSize = ns.IsRetail and 22 or 32
+        -- Art, not API: WoW: Forever is IsRetail on Vanilla art
+        local closeSize = ns.ExpansionFeatures.HasRetailFrameArt and 22 or 32
         f.CloseButton:SetSize(closeSize, closeSize)
         f.CloseButton:Hide()
     end

@@ -757,7 +757,13 @@ local function CreateGuildBankFrame()
     -- Search bar
     searchBar = SearchBar:Init(f)
     SearchBar:SetSearchCallback(f, function(text)
-        GuildBankFrame:Refresh()
+        -- Search only dims buttons, so a live layout just needs its states re-applied.
+        -- layoutCached stays false while a progressive render is in flight.
+        if layoutCached and frame and frame:IsShown() then
+            ItemButton:ApplySearchStates(frame, itemButtons)
+        else
+            GuildBankFrame:Refresh()
+        end
     end)
     f.searchBar = searchBar
 

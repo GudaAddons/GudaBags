@@ -1935,6 +1935,11 @@ local function IsGlobalCooldown(start, duration)
     return start == gcdStart and math.abs(duration - gcdDuration) < 0.01
 end
 
+-- Shared with QuestBar/TrackedBar so every bag-item cooldown skips the GCD (Rule 7)
+function ItemButton:IsGlobalCooldown(start, duration)
+    return IsGlobalCooldown(start, duration)
+end
+
 -- Cached settings for batch updates (set by SetItemBatch or refreshed on demand)
 local cachedSettings = nil
 local cachedSettingsFrame = 0  -- Frame number when cached
@@ -2318,7 +2323,8 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         -- Update cooldown (skip GCD to avoid spinning every item on wand/ability use)
         ns:ProfileStart("si.cooldown")
         local isOnCooldown = false
-        if button.cooldown and not isReadOnly then
+        -- Guild-bank bagID is a tab index: the container API would read the player's bag
+        if button.cooldown and not isReadOnly and not itemData.isGuildBank then
             local start, duration, enable = C_Container.GetContainerItemCooldown(itemData.bagID, itemData.slot)
             if start and duration and enable and enable > 0 and duration > 0 and not IsGlobalCooldown(start, duration) then
                 CooldownFrame_Set(button.cooldown, start, duration, true)
@@ -2449,7 +2455,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         ns:ProfileStart("si.charges")
         if button.chargesText then
             local charges = nil
-            if settings.showCharges and not isReadOnly then
+            if settings.showCharges and not isReadOnly and not itemData.isGuildBank then
                 local TooltipScanner = ns:GetModule("TooltipScanner")
                 if TooltipScanner then
                     charges = TooltipScanner:GetCharges(itemData.bagID, itemData.slot)
@@ -2476,6 +2482,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
             local shown = false
             local wantBind = (settings.showBoeLabel or settings.showBoaLabel)
                 and not isReadOnly
+                and not itemData.isGuildBank
                 and IsWeaponOrArmor(itemData)
                 and (itemData.quality or 0) > 0
                 and itemData.bagID and itemData.slot
@@ -2648,7 +2655,8 @@ function ItemButton:UpdatePinIcon(button)
         return
     end
     local itemData = button.itemData
-    if itemData and itemData.bagID ~= nil and itemData.slot and not button.isReadOnly then
+    if itemData and itemData.bagID ~= nil and itemData.slot and not button.isReadOnly
+        and not itemData.isGuildBank then
         local Database = ns:GetModule("Database")
         if Database:IsPinnedSlot(itemData.bagID, itemData.slot) then
             button.pinIcon:Show()
@@ -3066,6 +3074,25 @@ function ItemButton:ClearSearchState(button)
     end
 end
 
+-- Re-apply search dimming to an already laid-out set of buttons. Search never
+-- changes layout (it dims, it doesn't filter), so a search/chip change can skip
+-- the full Refresh. Mirrors the render paths exactly: real items and category
+-- pseudo buttons are matched; empty slots and ghosts are dimmed.
+function ItemButton:ApplySearchStates(parent, buttons)
+    local SearchBar = ns:GetModule("SearchBar")
+    local hasSearch = SearchBar:HasActiveFilters(parent)
+    for _, button in ipairs(buttons) do
+        local itemData = button.itemData
+        if not hasSearch then
+            self:ClearSearchState(button)
+        elseif itemData and (itemData.itemID or itemData.isEmptySlots or itemData.isDropTarget) then
+            self:SetSearchState(button, SearchBar:ItemMatchesFilters(parent, itemData))
+        else
+            self:SetSearchState(button, false)
+        end
+    end
+end
+
 -- Reset all button alphas unconditionally (no search filter check)
 -- If owner is specified, only reset buttons belonging to that owner
 function ItemButton:ResetAllAlpha(owner)
@@ -3245,6 +3272,29 @@ local function RunCooldownCapture()
     end
 end
 
+-- Re-read the live cooldown of every visible container-item button.
+-- Hidden buttons are skipped: frames held across close (bag/bank persistence) stay
+-- active in the pool, and BAG_UPDATE_COOLDOWN fires on every GCD, so including them
+-- cost ~190+ API calls per cast with the bags closed. Fast reopen calls this once
+-- to catch up on cooldowns that started while hidden.
+function ItemButton:RefreshCooldowns()
+    if not buttonPool then return end
+    for button in buttonPool:EnumerateActive() do
+        local itemData = button.itemData
+        if button.cooldown and itemData and itemData.bagID and itemData.slot
+            and not button.isReadOnly and not itemData.isGuildBank
+            and not button.isEmptySlotButton and not button.isDropTargetButton
+            and not itemData.isEmptySlots and button:IsVisible() then
+            local start, duration, enable = C_Container.GetContainerItemCooldown(itemData.bagID, itemData.slot)
+            if start and duration and enable and enable > 0 and duration > 0 and not IsGlobalCooldown(start, duration) then
+                CooldownFrame_Set(button.cooldown, start, duration, true)
+            else
+                CooldownFrame_Set(button.cooldown, 0, 0, false)
+            end
+        end
+    end
+end
+
 -- Update cooldowns on all active buttons when BAG_UPDATE_COOLDOWN fires
 -- Without this, cooldowns (e.g. Hearthstone) only update during full bag refresh
 local Events = ns:GetModule("Events")
@@ -3260,18 +3310,7 @@ if Events then
                 if not ok then ns:Print("cdcheck failed: " .. tostring(err)) end
             end)
         end
-        for button in buttonPool:EnumerateActive() do
-            if button.cooldown and button.itemData and button.itemData.bagID and button.itemData.slot
-                and not button.isReadOnly and not button.isEmptySlotButton and not button.isDropTargetButton
-                and not (button.itemData.isEmptySlots) then
-                local start, duration, enable = C_Container.GetContainerItemCooldown(button.itemData.bagID, button.itemData.slot)
-                if start and duration and enable and enable > 0 and duration > 0 and not IsGlobalCooldown(start, duration) then
-                    CooldownFrame_Set(button.cooldown, start, duration, true)
-                else
-                    CooldownFrame_Set(button.cooldown, 0, 0, false)
-                end
-            end
-        end
+        ItemButton:RefreshCooldowns()
     end, ItemButton)
 end
 

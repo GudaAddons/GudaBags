@@ -90,14 +90,18 @@ function BankScanner:ScanDirtyBags(bagIDs)
                     local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
                     local cachedItem = existingBag.slots[slot]
 
-                    -- Check if slot changed by comparing itemID
+                    -- Check if slot changed by comparing itemID AND link: same-itemID
+                    -- items can differ in ilvl/bonus IDs (see BagScanner).
                     local currentItemID = itemInfo and itemInfo.itemID
                     local cachedItemID = cachedItem and cachedItem.itemID
+                    local currentLink = itemInfo and itemInfo.hyperlink
+                    local cachedLink = cachedItem and cachedItem.link
 
                     -- A record captured while the item was still loading compares
                     -- equal forever, so ask whether it is finished before
                     -- trusting "unchanged".
-                    if currentItemID ~= cachedItemID or ItemScanner:IsRecordIncomplete(cachedItem) then
+                    if currentItemID ~= cachedItemID or currentLink ~= cachedLink
+                        or ItemScanner:IsRecordIncomplete(cachedItem) then
                         -- Slot changed
                         if itemInfo then
                             -- Try fast path first (uses cached tooltip data)

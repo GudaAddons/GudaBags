@@ -4,6 +4,24 @@ local RuleEngine = ns:GetModule("RuleEngine")
 local Utils = ns:GetModule("Utils")
 
 local strfind = string.find
+local pcall = pcall
+
+-- Rule values are user-typed ("Name contains"), so one may not be a valid Lua
+-- pattern: "[" or "(" makes find() throw "malformed pattern" for every item and
+-- breaks the whole layout. Lua only notices a bad pattern once matching reaches
+-- the broken part, so it can't be validated up front: the first value that throws
+-- is remembered and matched as plain text from then on. Valid patterns keep their
+-- pattern meaning.
+local invalidPattern = {}
+
+local function MatchRuleValue(text, value)
+    if not invalidPattern[value] then
+        local ok, found = pcall(strfind, text, value)
+        if ok then return found ~= nil end
+        invalidPattern[value] = true
+    end
+    return strfind(text, value, 1, true) ~= nil
+end
 
 -------------------------------------------------
 -- Name Pattern Rule
@@ -11,12 +29,12 @@ local strfind = string.find
 -------------------------------------------------
 
 RuleEngine:RegisterEvaluator("namePattern", function(ruleValue, itemData, context)
-    if not itemData.name then
+    if not itemData.name or not ruleValue or ruleValue == "" then
         return false
     end
 
-    -- Case-insensitive search
-    return itemData.name:lower():find(ruleValue:lower()) ~= nil
+    -- Case-insensitive search. UTF8Lower for the same reason as tooltipPattern below.
+    return MatchRuleValue(Utils:UTF8Lower(itemData.name), Utils:UTF8Lower(ruleValue))
 end)
 
 -------------------------------------------------
@@ -60,10 +78,9 @@ end)
 -------------------------------------------------
 
 RuleEngine:RegisterEvaluator("texturePattern", function(ruleValue, itemData, context)
-    if not itemData.texture then
+    if not itemData.texture or not ruleValue or ruleValue == "" then
         return false
     end
 
-    local texturePath = tostring(itemData.texture)
-    return texturePath:find(ruleValue) ~= nil
+    return MatchRuleValue(tostring(itemData.texture), ruleValue)
 end)

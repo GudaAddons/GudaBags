@@ -110,9 +110,8 @@ local function IsItemRecent(itemID, durationMinutes)
     local age = now - timestamp
 
     if age > duration then
-        -- Item is no longer recent, remove it
-        items[itemID] = nil
-        SaveRecentItems()
+        -- Expired. Leave removal to CleanupExpiredItems: it also clears the category
+        -- cache and redraws, so an eviction here would leave a stale "Recent" verdict.
         return false
     end
 

@@ -1234,7 +1234,7 @@ function BankFooter:Init(parent)
         frame:RegisterEvent("ACCOUNT_MONEY")
         frame:SetScript("OnEvent", function(self, event, ...)
             if event == "ACCOUNT_MONEY" and currentBankType == "warband" and Money then
-                Money:UpdateWarband()
+                Money:UpdateWarband(frame and frame.moneyFrame)
             end
         end)
     end
@@ -1321,7 +1321,7 @@ function BankFooter:Show()
         ApplyBagSlotMode(1)
     end
 
-    Money:Show()
+    Money:Show(frame.moneyFrame)
     self:Update()
 end
 
@@ -1347,7 +1347,7 @@ function BankFooter:ShowLive(bankType)
         ApplyBagSlotMode(1)
     end
 
-    Money:Show()
+    Money:Show(frame.moneyFrame)
     self:Update()
 end
 
@@ -1362,7 +1362,7 @@ function BankFooter:Hide()
     -- Hide retail tabs too
     self:HideRetailTabs()
 
-    Money:Hide()
+    Money:Hide(frame.moneyFrame)
 
     if backButton then
         backButton:Hide()
@@ -1455,9 +1455,9 @@ function BankFooter:Update()
     if not viewingCharacter then
         -- Update money based on current bank type
         if currentBankType == "warband" and Money.UpdateWarband then
-            Money:UpdateWarband()
+            Money:UpdateWarband(frame and frame.moneyFrame)
         else
-            Money:Update()
+            Money:Update(frame and frame.moneyFrame)
         end
     end
 end
@@ -1523,9 +1523,9 @@ function BankFooter:UpdateMoney()
     if Money then
         -- Update money based on current bank type
         if currentBankType == "warband" and Money.UpdateWarband then
-            Money:UpdateWarband()
+            Money:UpdateWarband(frame and frame.moneyFrame)
         else
-            Money:Update()
+            Money:Update(frame and frame.moneyFrame)
         end
     end
 end
@@ -1578,8 +1578,8 @@ function BankFooter:ShowCached(characterFullName)
     end
 
     -- Show and update money for the cached character
-    Money:Show()
-    Money:UpdateCached(characterFullName)
+    Money:Show(frame.moneyFrame)
+    Money:UpdateCached(frame.moneyFrame, characterFullName)
 end
 
 -- Show Retail bank footer (slot info only)
@@ -1742,13 +1742,13 @@ function BankFooter:UpdateRetailActionButtons(isBankOpen, bankType)
         -- Update money display to show Warband money
         ns:Debug("About to call Money:UpdateWarband, Money exists:", Money ~= nil)
         if Money then
-            Money:UpdateWarband()
+            Money:UpdateWarband(frame and frame.moneyFrame)
         end
     end
 
     -- Update money display based on bank type
     if bankType == "character" and Money then
-        Money:Update()
+        Money:Update(frame and frame.moneyFrame)
     end
 
     -- Update slot info position based on visible buttons

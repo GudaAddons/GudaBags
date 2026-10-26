@@ -245,6 +245,11 @@ function CategoryManager:MigrateCategories(categories)
     return migrated
 end
 
+-- Saved categories table that has already been migrated. GetCategories runs per
+-- item, and MigrateCategories deep-copies every default category, so migrate each
+-- table once. Login, profile load/import and reset all swap in a new table.
+local migratedCategories = nil
+
 function CategoryManager:GetCategories()
     local Database = ns:GetModule("Database")
     local categories = Database:GetCategories()
@@ -252,11 +257,13 @@ function CategoryManager:GetCategories()
     if not categories then
         categories = DefaultCategories:GetDefaults()
         Database:SetCategories(categories)
-    else
+        migratedCategories = categories
+    elseif categories ~= migratedCategories then
         -- Check if migration is needed
         if self:MigrateCategories(categories) then
             Database:SetCategories(categories)
         end
+        migratedCategories = categories
     end
 
     return categories
@@ -303,14 +310,19 @@ function CategoryManager:InvalidatePriorityCache()
 end
 
 -- Generate cache key for item categorization
--- Uses itemLink + quality + bound status (same as GetItemKey in BagFrame)
-local function GetItemCacheKey(itemData)
+-- Uses itemLink + quality + bound status (same as GetItemKey in BagFrame), plus an
+-- other-character marker: isBoE/isWarbound/restoreTag/isRecent/isJunk answer
+-- differently for an alt's copy of the same link.
+local function GetItemCacheKey(itemData, isOtherChar)
     if not itemData then return nil end
     local link = itemData.link or ""
     local quality = itemData.quality or 0
     local isBound = itemData.isBound and "1" or "0"
-    return link .. ":" .. quality .. ":" .. isBound
+    return link .. ":" .. quality .. ":" .. isBound .. (isOtherChar and ":o" or "")
 end
+
+-- whiteItemsJunk feeds the isJunk rule, so a toggle invalidates cached verdicts
+local cachedWhiteItemsJunk = nil
 
 function CategoryManager:CategorizeItem(itemData, bagID, slotID, isOtherChar)
     -- Check item overrides first (for manually assigned items)
@@ -346,7 +358,13 @@ function CategoryManager:CategorizeItem(itemData, bagID, slotID, isOtherChar)
     end
 
     -- Try to use cached result for this item
-    local cacheKey = GetItemCacheKey(itemData)
+    local cacheKey = GetItemCacheKey(itemData, isOtherChar)
+    local Database = ns:GetModule("Database")
+    local whiteItemsJunk = Database and Database:GetSetting("whiteItemsJunk") or false
+    if whiteItemsJunk ~= cachedWhiteItemsJunk then
+        categoryResultCache = {}
+        cachedWhiteItemsJunk = whiteItemsJunk
+    end
     if cacheKey and categoryResultCacheVersion == cachedCategoryVersion then
         local cached = categoryResultCache[cacheKey]
         if cached then
