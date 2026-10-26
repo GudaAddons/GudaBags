@@ -497,6 +497,32 @@ commandHandlers["cdcheck"] = function()
     end
 end
 
+-- Diagnostic: every visible texture on the item button under the mouse, with its
+-- key, draw layer and atlas/file. Finds template art (e.g. a Retail slot
+-- background) that our code doesn't know by name. Hover a slot, then type it.
+commandHandlers["slotinfo"] = function()
+    local focus = (GetMouseFoci and GetMouseFoci()[1]) or (GetMouseFocus and GetMouseFocus())
+    if not focus then
+        ns:Print("slotinfo: hover an item slot first")
+        return
+    end
+    ns:Print("slotinfo: " .. tostring(focus:GetName() or focus:GetObjectType()))
+    local keyOf = {}
+    for k, v in pairs(focus) do
+        if type(v) == "table" and v.GetObjectType then keyOf[v] = k end
+    end
+    local shown = 0
+    for _, region in ipairs({ focus:GetRegions() }) do
+        if region:GetObjectType() == "Texture" and region:IsShown() and region:GetAlpha() > 0 then
+            shown = shown + 1
+            local layer, sub = region:GetDrawLayer()
+            ns:Print(string.format("  %s  %s/%s  %s  alpha=%.2f", tostring(keyOf[region] or region:GetName() or "?"),
+                tostring(layer), tostring(sub), tostring(region:GetAtlas() or region:GetTexture()), region:GetAlpha()))
+        end
+    end
+    if shown == 0 then ns:Print("  (no visible textures)") end
+end
+
 commandHandlers["bankdump"] = function()
     local Constants = ns.Constants
     local scanner = ns:GetModule("RetailBankScanner")
@@ -705,6 +731,7 @@ commandHandlers["help"] = function()
     ns:Print("  /guda locale [code|reset] - Test locale")
     ns:Print("  /guda status - Show expansion/feature detection")
     ns:Print("  /guda apicheck - Report which client APIs this flavor provides")
+    ns:Print("  /guda slotinfo - List visible textures on the hovered item slot")
     ns:Print("  /guda profile - Toggle performance profiler")
     ns:Print("  /guda profiledump - Print profiler timings")
     ns:Print("  /guda pool - Show item button pool usage by owner")
