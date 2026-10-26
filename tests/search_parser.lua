@@ -70,4 +70,27 @@ T.check("tt: needle matches tooltip", matches('tt:"fatal wound"', SWORD))
 T.check("tt: needle rejects others", not matches("tt:fatal", POTION))
 T.check("nil parse matches everything", SearchParser:MatchesParsed(nil, SWORD, {}))
 
+-- Every example shown in the search-box help (UI/SearchBar.lua SEARCH_HELP_*)
+-- and the README must parse as the operator it claims to be, not free text.
+print("")
+print("Help examples parse as operators:")
+local HELP_EXAMPLES = {
+    {"tt:study", "tooltip"}, {'tt:"two words"', "tooltip"},
+    {"q:epic", "quality"}, {"q>=rare", "quality"}, {"q<2", "quality"},
+    {"t:weapon", "itemClass"}, {"st:leather", "itemSubType"},
+    {"s:head", "equipSlot"}, {"s:ring", "equipSlot"}, {"s:trinket", "equipSlot"},
+    {"ilvl>200", "itemLevel"}, {"lvl<=60", "itemMinLevel"}, {"n:linen", "name"},
+}
+for _, ex in ipairs(HELP_EXAMPLES) do
+    local parsed = SearchParser:ParseSearchInput(ex[1])
+    local kind = parsed and (parsed.tooltipText and "tooltip" or (parsed.operators[1] and parsed.operators[1].type))
+    T.check(ex[1] .. " -> " .. ex[2], kind == ex[2] and parsed.textSearch == nil)
+end
+for kw in ("boe boa bop quest new usable junk openable learnable mog"):gmatch("%S+") do
+    local parsed = SearchParser:ParseSearchInput(kw)
+    T.check("keyword " .. kw, parsed and parsed.keywords[1] == kw and parsed.textSearch == nil)
+end
+local combo = SearchParser:ParseSearchInput("tt:study q:rare")
+T.check("tt:study q:rare combines", combo and combo.tooltipText and #combo.operators == 1)
+
 T.finish("SearchParser parses and matches as expected")

@@ -55,9 +55,30 @@ One click to organize everything:
 
 ### Search and Filtering
 
-- **Search Bar:** Start typing to find items by name. Only matching items are shown.
+- **Search Bar:** Start typing to find items. Matching items are highlighted and the
+  rest are dimmed. Plain text matches an item's name, type or subtype. Hover the empty
+  search box for a quick syntax reminder.
 - **Filter Chips:** Quick filter buttons under the search bar. Filter by quality, item
   type, or special tags like BoE and Recently Picked Up.
+
+#### Search syntax
+
+Mix any of these in one search. Every term has to match.
+
+| Type this | To find |
+|---|---|
+| `linen` | Items whose name, type or subtype contains "linen" |
+| `tt:study` | Items whose **tooltip** contains "study", for example "Use: Study to increase your Engineering knowledge" |
+| `tt:"chance on hit"` | A phrase in the tooltip (use quotes for more than one word) |
+| `q:epic`, `q>=rare`, `q<2` | Quality: `poor`, `common`, `uncommon`, `rare`, `epic`, `legendary`, `artifact`, `heirloom`, or 0–7 |
+| `t:weapon`, `st:leather` | Item type, or subtype |
+| `s:head`, `s:ring`, `s:trinket` | Equipment slot |
+| `ilvl>200`, `lvl<=60` | Item level, or required level (`>`, `>=`, `<`, `<=`, `=` all work) |
+| `n:linen` | Name only |
+| `boe` `boa` `bop` `quest` `new` `usable` `junk` `openable` `learnable` `mog` | Keywords. `new` means recently picked up, and `mog` means an appearance you haven't collected yet (needs CanIMogIt) |
+
+Example: `tt:study q:rare` finds rare items whose tooltip mentions "study".
+Plain text never looks inside tooltips, which keeps typing fast. Use `tt:` for that.
 
 ---
 

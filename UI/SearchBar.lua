@@ -1286,6 +1286,39 @@ local function CreateEquipSetDropdown()
 end
 
 -------------------------------------------------
+-- Search syntax help (hover the empty search box)
+-------------------------------------------------
+-- The operators were undiscoverable: users asked for tooltip search long after
+-- tt: shipped. The syntax column stays literal -- it is exactly what
+-- SearchParser accepts on every client -- and only the descriptions are localized.
+local SEARCH_HELP_LINES = {
+    { "linen",                        "SEARCH_HELP_TEXT" },
+    { 'tt:study   tt:"two words"',    "SEARCH_HELP_TOOLTIP" },
+    { "q:epic   q>=rare   q<2",       "SEARCH_HELP_QUALITY" },
+    { "t:weapon   st:leather",        "SEARCH_HELP_TYPE" },
+    { "s:head   s:ring",              "SEARCH_HELP_SLOT" },
+    { "ilvl>200   lvl<=60",           "SEARCH_HELP_LEVEL" },
+}
+local SEARCH_HELP_KEYWORDS = "boe  boa  bop  quest  new  usable  junk  openable  learnable  mog"
+local SEARCH_HELP_EXAMPLE = "tt:study q:rare"
+
+local function ShowSearchHelp(searchBox)
+    GameTooltip:SetOwner(searchBox, "ANCHOR_NONE")
+    GameTooltip:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", -20, -6)
+    GameTooltip:SetText(L["SEARCH_HELP_TITLE"], 1, 0.82, 0)
+    for _, entry in ipairs(SEARCH_HELP_LINES) do
+        GameTooltip:AddDoubleLine(entry[1], L[entry[2]], 1, 1, 1, 0.7, 0.7, 0.7)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["SEARCH_HELP_KEYWORDS"], 0.7, 0.7, 0.7)
+    GameTooltip:AddLine(SEARCH_HELP_KEYWORDS, 1, 1, 1, true)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(L["SEARCH_HELP_COMBINE"], 0.7, 0.7, 0.7)
+    GameTooltip:AddLine(SEARCH_HELP_EXAMPLE, 1, 1, 1)
+    GameTooltip:Show()
+end
+
+-------------------------------------------------
 -- CreateSearchBar (main factory)
 -------------------------------------------------
 local function CreateSearchBar(parent)
@@ -1433,6 +1466,18 @@ local function CreateSearchBar(parent)
     placeholder:SetText(L["SEARCH_PLACEHOLDER"])
     searchBox.placeholder = placeholder
 
+    -- Syntax help while the box is empty; typing hides it (OnTextChanged below)
+    searchBox:SetScript("OnEnter", function(self)
+        if self:GetText() == "" then
+            ShowSearchHelp(self)
+        end
+    end)
+    searchBox:SetScript("OnLeave", function(self)
+        if GameTooltip:IsOwned(self) then
+            GameTooltip:Hide()
+        end
+    end)
+
     searchBar.searchBox = searchBox
     searchBar.searchText = ""
     searchBar.onSearchChanged = nil
@@ -1459,6 +1504,9 @@ local function CreateSearchBar(parent)
         -- still fires OnTextChanged and was triggering a redundant second Refresh.
         local searchChanged = text ~= searchBar.searchText
         local hasEquipSet = searchBar.filterState.equipSet ~= nil
+        if text ~= "" and GameTooltip:IsOwned(self) then
+            GameTooltip:Hide()  -- the syntax help, once the user starts typing
+        end
         if text == "" and not hasEquipSet then
             placeholder:Show()
             searchIcon:SetVertexColor(0.6, 0.6, 0.6)
