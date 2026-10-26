@@ -421,10 +421,17 @@ local function GetEffectiveSlotTextures()
     return Database:GetSetting("retailEmptySlots") and RETAIL_SLOT_TEXTURES or nil
 end
 
+-- Background opacity setting (0-1). Minimal / flat slots are part of the window
+-- background, so they fade with it like the window does.
+local function BackgroundOpacity()
+    return (Database:GetSetting("bgAlpha") or 100) / 100
+end
+
 local function SetMinimalOutlineShown(button, shown)
     if not button.minimalOutline then return end
     local Theme = ns:GetModule("Theme")
     local r, g, b, a = Theme:Color("slotEmptyBorder", 0.3, 0.3, 0.3, 0.8)
+    a = a * BackgroundOpacity()
     for _, line in ipairs(button.minimalOutline) do
         if shown then line:SetVertexColor(r, g, b, a) end
         line:SetShown(shown)
@@ -477,7 +484,8 @@ local function ApplyThemeToButton(button, slotTex)
         if button.retailSlotBg then button.retailSlotBg:Hide() end
         if button.minimalSlot then
             local Theme = ns:GetModule("Theme")
-            button.minimalSlot:SetVertexColor(Theme:Color("slotEmptyFill", 0.05, 0.05, 0.05, 0.5))
+            local r, g, b, a = Theme:Color("slotEmptyFill", 0.05, 0.05, 0.05, 0.5)
+            button.minimalSlot:SetVertexColor(r, g, b, a * BackgroundOpacity())
             button.minimalSlot:Show()
         end
         SetMinimalOutlineShown(button, true)
