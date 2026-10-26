@@ -92,6 +92,73 @@ local themes = {
             highlight = "Interface\\AddOns\\GudaBags\\Assets\\Themes\\retail\\btn_highlight_strong",
         },
     },
+    -- Flat: solid panels, 1px borders, one accent color, no textures, so it looks
+    -- the same on every client. Rides the guda code paths (backdrop + header
+    -- backdrop); only the close button has a flat style of its own.
+    flat = {
+        frameBg = {0.071, 0.071, 0.071, 1},        -- #121212
+        frameBorder = {0.165, 0.165, 0.165, 1},    -- #2A2A2A (a chosen window color shades this)
+        headerBg = {0.102, 0.102, 0.102, 1},       -- #1A1A1A
+        headerLine = {0.165, 0.165, 0.165, 1},     -- line under the title bar
+        textShadow = true,                         -- legible text on any window color
+        titleColor = {1, 1, 1, 1},
+        slotBgColor = {0.055, 0.055, 0.055, 1},    -- #0E0E0E
+        bankTabBg = {0.118, 0.118, 0.118, 1},      -- #1E1E1E
+        bankTabBorder = {0.165, 0.165, 0.165, 1},
+        bankTabSelected = {0.149, 0.149, 0.149, 1},
+        footerButtonBg = {0.118, 0.118, 0.118, 1},
+        footerButtonBorder = {0.165, 0.165, 0.165, 1},
+        accent = {0.247, 0.722, 0.686, 1},         -- #3FB8AF
+        buttonHover = {0.149, 0.149, 0.149, 1},    -- #262626
+        slotEmptyBorder = {0.165, 0.165, 0.165, 1},
+        slotEmptyFill = {0.055, 0.055, 0.055, 1},  -- #0E0E0E
+        slotCommonBorder = {0.227, 0.227, 0.227, 1}, -- #3A3A3A
+        flatSlots = true,  -- empty slots use the minimal flat look (unless Masque is active)
+        -- Theme:Color keys: chrome that other themes draw with call-site literals
+        panelBg = {0.071, 0.071, 0.071, 0.98},     -- dropdowns, menus
+        panelBorder = {0.165, 0.165, 0.165, 1},
+        searchBarBg = {0.102, 0.102, 0.102, 1},
+        searchBarBorder = {0.165, 0.165, 0.165, 1},
+        chipBg = {0.118, 0.118, 0.118, 1},
+        chipHoverBg = {0.149, 0.149, 0.149, 1},
+        chipText = {0.6, 0.6, 0.6, 1},
+        chipActiveType = {0.247, 0.722, 0.686, 0.9},
+        chipActiveSpecial = {0.247, 0.722, 0.686, 0.9},
+        tabBg = {0.118, 0.118, 0.118, 1},
+        tabBorder = {0.165, 0.165, 0.165, 1},
+        tabSelectedBorder = {0.247, 0.722, 0.686, 1},
+        tabSelectedBg = {0.071, 0.071, 0.071, 1},  -- = frameBg: the selected tab joins the window
+        tabSelectedText = {0.247, 0.722, 0.686, 1},
+        sideTabBg = {0.055, 0.055, 0.055, 0.95},
+        buttonBg = {0.118, 0.118, 0.118, 1},
+        buttonBorder = {0.165, 0.165, 0.165, 1},
+        categoryHeaderText = {0.85, 0.85, 0.85, 1},
+        categoryHeaderLine = {0.165, 0.165, 0.165, 1},
+        -- Theme:Backdrop keys: the rounded tooltip border becomes a 1px line
+        panelBackdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 1, right = 1, top = 1, bottom = 1},
+        },
+        useBlizzardFrame = false,
+        useFlatCloseButton = true,
+        backdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 1, right = 1, top = 1, bottom = 1},
+        },
+        headerBackdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+        },
+        backdropSolid = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        },
+    },
 }
 -------------------------------------------------
 -- Classic border texture keys in ButtonFrameTemplate
@@ -107,6 +174,50 @@ local classicBorderKeys = {
 -------------------------------------------------
 local cachedTheme = nil
 local cachedThemeName = nil
+
+-- Flat window color (setting "flatWindowColor"): the window background takes the
+-- chosen color exactly; the title bar is a slightly darker shade and the border
+-- and header line a clearly darker one, so the frame still reads as edged on any
+-- color. Text gets a shadow under Flat (textShadow) to stay legible on light picks.
+-- Every Flat chrome key as a shade of the window color (1 = the color itself).
+-- Controls sit a step darker than the window, edges darker again, so the whole
+-- window reads as one hue. Alpha comes from the theme's own value for the key.
+local FLAT_SHADES = {
+    frameBg = 1, tabSelectedBg = 1,            -- the selected tab joins the window
+    headerBg = 0.8, searchBarBg = 0.8,
+    buttonHover = 0.9, chipHoverBg = 0.9,
+    footerButtonBg = 0.75, buttonBg = 0.75, chipBg = 0.75, tabBg = 0.75,
+    slotEmptyFill = 0.7,                       -- empty slots a step darker than the window
+    panelBg = 0.6, sideTabBg = 0.6,            -- menus and unselected side tabs
+    frameBorder = 0.55, headerLine = 0.55, categoryHeaderLine = 0.55,
+    footerButtonBorder = 0.45, buttonBorder = 0.45, tabBorder = 0.45, panelBorder = 0.45,
+    searchBarBorder = 0.45, slotEmptyBorder = 0.45, -- outlines the darkest
+}
+
+-- Flat chrome that sits on the window background and so fades with the
+-- "Background opacity" setting, like the window and its empty slots do
+local FLAT_FADE_KEYS = {
+    "searchBarBg", "searchBarBorder", "footerButtonBg", "footerButtonBorder", "buttonBg", "buttonBorder",
+}
+
+-- A view of `base` with the chrome keys recolored (window color) and faded
+-- (background opacity); everything else falls through
+local function ApplyFlatWindowColor(base, color, opacity)
+    local view = setmetatable({}, { __index = base })
+    if type(color) == "table" and color[1] then
+        for key, factor in pairs(FLAT_SHADES) do
+            local alpha = base[key] and base[key][4] or 1
+            view[key] = { color[1] * factor, color[2] * factor, color[3] * factor, alpha }
+        end
+    end
+    if opacity < 1 then
+        for _, key in ipairs(FLAT_FADE_KEYS) do
+            local c = view[key]
+            if c then view[key] = { c[1], c[2], c[3], (c[4] or 1) * opacity } end
+        end
+    end
+    return view
+end
 
 -------------------------------------------------
 -- API
@@ -129,7 +240,17 @@ function Theme:Get()
     end
     cachedThemeName = themeName
     cachedTheme = themes[themeName] or themes.guda
+    if themeName == "flat" then
+        local opacity = (Database:GetSetting("bgAlpha") or 100) / 100
+        cachedTheme = ApplyFlatWindowColor(cachedTheme, Database:GetSetting("flatWindowColor"), opacity)
+    end
     return cachedTheme
+end
+
+--- Flat's default window color as {r, g, b} (the color picker's Reset target)
+function Theme:GetDefaultFlatWindowColor()
+    local c = themes.flat.frameBg
+    return { c[1], c[2], c[3] }
 end
 
 --- Returns a single theme property value
@@ -512,6 +633,56 @@ function Theme:StyleCloseButton(btn, useMetal)
     StyleCloseButton(btn, useMetal)
 end
 
+-- Flat theme close button: a plain "x" drawn as two thin lines, so it renders on
+-- every client and in every font (a "×" glyph is missing from some CJK fonts).
+local FLAT_CLOSE_COLOR = {0.75, 0.75, 0.75, 1}
+local FLAT_CLOSE_HOVER = {1, 1, 1, 1}
+local FLAT_CLOSE_INSET = 7
+
+local function SetFlatCloseColor(btn, color)
+    for _, line in ipairs(btn._flatLines) do
+        line:SetColorTexture(color[1], color[2], color[3], color[4])
+    end
+end
+
+local function StyleFlatCloseButton(btn, on)
+    if on then
+        if not btn.CreateLine then return end  -- no Line regions: keep the default button
+        if not btn._flatLines then
+            btn._flatLines = {}
+            for i = 1, 2 do
+                local line = btn:CreateLine(nil, "ARTWORK")
+                line:SetThickness(1.5)
+                btn._flatLines[i] = line
+            end
+            local a, b = btn._flatLines[1], btn._flatLines[2]
+            a:SetStartPoint("TOPLEFT", btn, FLAT_CLOSE_INSET, -FLAT_CLOSE_INSET)
+            a:SetEndPoint("BOTTOMRIGHT", btn, -FLAT_CLOSE_INSET, FLAT_CLOSE_INSET)
+            b:SetStartPoint("TOPRIGHT", btn, -FLAT_CLOSE_INSET, -FLAT_CLOSE_INSET)
+            b:SetEndPoint("BOTTOMLEFT", btn, FLAT_CLOSE_INSET, FLAT_CLOSE_INSET)
+            -- Hooked, not set: the header's own OnEnter/OnLeave (tooltip) must keep working
+            btn:HookScript("OnEnter", function(self)
+                if self._flatStyled then SetFlatCloseColor(self, FLAT_CLOSE_HOVER) end
+            end)
+            btn:HookScript("OnLeave", function(self)
+                if self._flatStyled then SetFlatCloseColor(self, FLAT_CLOSE_COLOR) end
+            end)
+        end
+        if not btn._flatStyled then
+            btn._flatOrig = {btn:GetNormalTexture(), btn:GetPushedTexture(), btn:GetHighlightTexture()}
+            for _, tex in pairs(btn._flatOrig) do tex:SetAlpha(0) end
+            btn._flatStyled = true
+        end
+        SetFlatCloseColor(btn, FLAT_CLOSE_COLOR)
+        for _, line in ipairs(btn._flatLines) do line:Show() end
+    elseif btn._flatStyled then
+        for _, line in ipairs(btn._flatLines) do line:Hide() end
+        for _, tex in pairs(btn._flatOrig) do tex:SetAlpha(1) end
+        btn._flatOrig = nil
+        btn._flatStyled = false
+    end
+end
+
 local METAL_ICON_SIZE = 13
 local METAL_ICON_BG_W = 21
 local METAL_ICON_BG_H = 17
@@ -537,6 +708,57 @@ local function StyleButton(btn, useBlizzard, useMetal)
     end
 end
 
+--- Apply the theme's title-bar chrome: backdrop + color, anchoring inside the
+--- parent frame, close button size, and frame level above Blizzard/metal art.
+--- Shared by the bag, bank, guild bank and mail headers (it used to be copied
+--- into each one's SetBackdropAlpha).
+--- @param headerFrame table The title bar frame (child of its window)
+--- @param alpha number Background alpha for themes that draw a header backdrop
+function Theme:ApplyHeaderChrome(headerFrame, alpha)
+    local headerBackdrop = self:GetValue("headerBackdrop")
+    if headerBackdrop then
+        headerFrame:SetBackdrop(headerBackdrop)
+        local headerBg = self:GetValue("headerBg")
+        headerFrame:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], alpha)
+        headerFrame:ClearAllPoints()
+        headerFrame:SetPoint("TOPLEFT", headerFrame:GetParent(), "TOPLEFT", 4, -4)
+        headerFrame:SetPoint("TOPRIGHT", headerFrame:GetParent(), "TOPRIGHT", -4, -4)
+        if headerFrame.closeButton then headerFrame.closeButton:SetSize(22, 22) end
+    else
+        headerFrame:SetBackdrop(nil)
+        headerFrame:ClearAllPoints()
+        headerFrame:SetPoint("TOPLEFT", headerFrame:GetParent(), "TOPLEFT", 0, 1)
+        headerFrame:SetPoint("TOPRIGHT", headerFrame:GetParent(), "TOPRIGHT", 4, 0)
+        -- Art, not API: the 22px close button belongs to retail's own frame art.
+        -- WoW: Forever is IsRetail on Vanilla art, so it takes the 32px one.
+        local closeSize = ns.ExpansionFeatures.HasRetailFrameArt and 22 or 32
+        if headerFrame.closeButton then headerFrame.closeButton:SetSize(closeSize, closeSize) end
+        -- Raise header above blizzardBg's NineSlice or metalFrame overlay
+        local parent = headerFrame:GetParent()
+        if parent.blizzardBg or parent.metalFrame then
+            headerFrame:SetFrameLevel(parent:GetFrameLevel() + ns.Constants.FRAME_LEVELS.HEADER)
+        end
+    end
+
+    -- Optional 1px line under the title bar (Flat: a dark shade of the window color). Follows the
+    -- "show borders" setting like the window border does.
+    local line = self:GetValue("headerLine")
+    if line and Database:GetSetting("showBorders") ~= false then
+        if not headerFrame._themeLine then
+            local tex = headerFrame:CreateTexture(nil, "OVERLAY")
+            tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+            tex:SetHeight(1)
+            tex:SetPoint("BOTTOMLEFT", headerFrame, "BOTTOMLEFT", 0, 0)
+            tex:SetPoint("BOTTOMRIGHT", headerFrame, "BOTTOMRIGHT", 0, 0)
+            headerFrame._themeLine = tex
+        end
+        headerFrame._themeLine:SetVertexColor(line[1], line[2], line[3], line[4] or 1)
+        headerFrame._themeLine:Show()
+    elseif headerFrame._themeLine then
+        headerFrame._themeLine:Hide()
+    end
+end
+
 --- Apply theme-appropriate styling and spacing to header icon buttons.
 --- @param headerFrame table The title bar frame
 --- @param leftButtons table Ordered array of left-side icon buttons (nil entries skipped)
@@ -548,9 +770,14 @@ function Theme:ApplyHeaderButtons(headerFrame, leftButtons, rightButtons, closeB
     local gap = (useBlizzard or useMetal) and BLIZZARD_GAP or GUDA_GAP
     local firstLeftOffset = (useBlizzard or useMetal) and 13 or 4
 
-    -- Style close button for metal theme
+    -- Style close button for metal / flat themes. Flat comes off BEFORE metal goes
+    -- on (and goes on after metal comes off) so neither restores the other's
+    -- hidden textures.
     if closeButton then
+        local useFlatClose = self:GetValue("useFlatCloseButton")
+        if not useFlatClose then StyleFlatCloseButton(closeButton, false) end
         StyleCloseButton(closeButton, useMetal)
+        if useFlatClose then StyleFlatCloseButton(closeButton, true) end
     end
 
     -- Left side: first anchors to headerFrame LEFT, rest chain to previous
@@ -658,8 +885,11 @@ end
 --- @param f table The popup frame
 function Theme:ApplyPopupTheme(f)
     if not f then return end
-    local useMetal = self:GetValue("useMetalFrame")
-    local useBlizzard = self:GetValue("useBlizzardFrame")
+    -- Flat styles the item windows only: the settings and category-editor popups
+    -- keep the Guda look (and ignore the Flat window color).
+    local t = (Database:GetSetting("theme") == "flat") and themes.guda or self:Get()
+    local useMetal = t.useMetalFrame
+    local useBlizzard = t.useBlizzardFrame
 
     self:ResetPopupChrome(f)
 
@@ -680,10 +910,10 @@ function Theme:ApplyPopupTheme(f)
         f.CloseButton:Show()
     else
         local gudaBg = self:EnsureGudaBackdrop(f)
-        gudaBg:SetBackdrop(self:GetValue("backdrop"))
-        local bg = self:GetValue("frameBg")
+        gudaBg:SetBackdrop(t.backdrop)
+        local bg = t.frameBg
         gudaBg:SetBackdropColor(bg[1], bg[2], bg[3], 1)
-        local border = self:GetValue("frameBorder")
+        local border = t.frameBorder
         gudaBg:SetBackdropBorderColor(border[1], border[2], border[3], border[4])
         gudaBg:Show()
         f.CloseButton:SetSize(22, 22)
@@ -692,14 +922,82 @@ function Theme:ApplyPopupTheme(f)
 end
 
 -------------------------------------------------
+-- Themed colors with call-site defaults
+-------------------------------------------------
+-- Most UI chrome (tabs, chips, dropdowns, footer buttons) was styled with literal
+-- colors. Each literal now goes through Theme:Color(key, <the literal>): a theme
+-- that defines `key` overrides it, every other theme gets the literal unchanged --
+-- so the guda/blizzard/retail look stays exactly what it was.
+
+--- @return number r, number g, number b, number a
+function Theme:Color(key, r, g, b, a)
+    local c = self:GetValue(key)
+    if c then
+        return c[1], c[2], c[3], c[4] or a or 1
+    end
+    return r, g, b, a or 1
+end
+
+-- Regions/frames painted once at creation, repainted when the theme changes.
+-- Weak keys: a released or garbage-collected element just drops out.
+local painted = setmetatable({}, { __mode = "k" })
+
+--- A backdrop table, overridable by a theme that defines `key`.
+function Theme:Backdrop(key, default)
+    return self:GetValue(key) or default
+end
+
+local function PaintEntries(target)
+    local entries = painted[target]
+    if not entries then
+        entries = {}
+        painted[target] = entries
+    end
+    return entries
+end
+
+--- Apply a themed color now and again on every theme change.
+--- Only for static colors -- a color that also changes with state (hover,
+--- active) is set from Theme:Color in its handlers instead.
+--- @param target table Frame or texture
+--- @param method string "SetBackdropColor", "SetBackdropBorderColor", "SetVertexColor", "SetColorTexture" or "SetTextColor"
+function Theme:Paint(target, method, key, r, g, b, a)
+    PaintEntries(target)[method] = { key, r, g, b, a }
+    target[method](target, self:Color(key, r, g, b, a))
+end
+
+--- Apply a themed backdrop now and again on every theme change.
+--- Call before PaintBackdrop's colors: SetBackdrop resets them.
+function Theme:PaintBackdrop(target, key, default)
+    PaintEntries(target).backdrop = { key, default }
+    target:SetBackdrop(self:Backdrop(key, default))
+end
+
+local function RepaintAll()
+    for target, entries in pairs(painted) do
+        -- Backdrop first: SetBackdrop resets the backdrop colors painted below
+        local bd = entries.backdrop
+        if bd then target:SetBackdrop(Theme:Backdrop(bd[1], bd[2])) end
+        for method, e in pairs(entries) do
+            if method ~= "backdrop" then
+                target[method](target, Theme:Color(e[1], e[2], e[3], e[4], e[5]))
+            end
+        end
+    end
+end
+
+-------------------------------------------------
 -- Cache Invalidation
 -------------------------------------------------
 Events:Register("SETTING_CHANGED", function(event, key)
-    if key == "theme" then
+    -- bgAlpha: Flat chrome fades with the background opacity
+    if key == "theme" or key == "flatWindowColor" or key == "bgAlpha" then
         cachedTheme = nil
+        RepaintAll()
     end
 end, Theme)
 
 Events:Register("PROFILE_LOADED", function()
     cachedTheme = nil
+    RepaintAll()
 end, Theme)

@@ -1,5 +1,7 @@
 local addonName, ns = ...
 
+local Theme = ns:GetModule("Theme")
+
 -- Soul bags exist in Classic Era and TBC (Warlock class feature)
 -- Check if player is a Warlock
 local _, playerClass = UnitClass("player")
@@ -144,8 +146,8 @@ function SoulBag:Init(parent)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    button:SetBackdropColor(0.15, 0.15, 0.15, 0.7)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+    button:SetBackdropColor(Theme:Color("buttonBg", 0.15, 0.15, 0.15, 0.7))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(18, 18)
@@ -263,7 +265,7 @@ function SoulBag:UpdateState()
         button.icon:SetDesaturated(false)
         button.icon:SetAlpha(1.0)
     else
-        button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.7)
+        button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.7))
         button.icon:SetDesaturated(true)
         button.icon:SetAlpha(0.4)
     end

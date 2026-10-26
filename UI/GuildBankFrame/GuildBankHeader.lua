@@ -138,29 +138,7 @@ local lastAlpha = 1
 function GuildBankHeader:SetBackdropAlpha(alpha)
     if not frame then return end
     lastAlpha = alpha
-    local headerBackdrop = Theme:GetValue("headerBackdrop")
-    if headerBackdrop then
-        frame:SetBackdrop(headerBackdrop)
-        local headerBg = Theme:GetValue("headerBg")
-        frame:SetBackdropColor(headerBg[1], headerBg[2], headerBg[3], alpha)
-        frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 4, -4)
-        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", -4, -4)
-        if frame.closeButton then frame.closeButton:SetSize(22, 22) end
-    else
-        frame:SetBackdrop(nil)
-        frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", frame:GetParent(), "TOPLEFT", 0, 1)
-        frame:SetPoint("TOPRIGHT", frame:GetParent(), "TOPRIGHT", 4, 0)
-        -- Art, not API: WoW: Forever is IsRetail on Vanilla art (see BankHeader)
-        local closeSize = ns.ExpansionFeatures.HasRetailFrameArt and 22 or 32
-        if frame.closeButton then frame.closeButton:SetSize(closeSize, closeSize) end
-        -- Raise header above blizzardBg's NineSlice on retail
-        local parent = frame:GetParent()
-        if parent.blizzardBg or parent.metalFrame then
-            frame:SetFrameLevel(parent:GetFrameLevel() + Constants.FRAME_LEVELS.HEADER)
-        end
-    end
+    Theme:ApplyHeaderChrome(frame, alpha)
     local rightButtons = HeaderButtonVisibility:Filter({
         frame.settingsButton, frame.searchButton
     })

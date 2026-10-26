@@ -15,6 +15,8 @@ function SettingsSchema.GetGeneral()
             local opts = {
                 { value = "guda", label = L["SETTINGS_THEME_GUDA"] },
                 { value = "blizzard", label = L["SETTINGS_THEME_BLIZZARD"] },
+                -- Texture-free, so it is offered on every client
+                { value = "flat", label = L["SETTINGS_THEME_FLAT"] },
             }
             -- Offered wherever the client's own frame art is not already the
             -- modern metal look -- every Classic flavor, and WoW: Forever, which
@@ -34,9 +36,19 @@ function SettingsSchema.GetGeneral()
         { type = "row", children = {
             { type = "checkbox", key = "retailEmptySlots", label = L["SETTINGS_RETAIL_EMPTY_SLOTS"], tooltip = L["SETTINGS_RETAIL_EMPTY_SLOTS_TIP"],
               -- Same reasoning as the theme option: only pointless where the
-              -- client's own slot art is already Retail's.
-              hidden = function() return ns.ExpansionFeatures.HasRetailFrameArt end },
+              -- client's own slot art is already Retail's. Also moot under Flat,
+              -- which always draws its own flat slots.
+              hidden = function()
+                  return ns.ExpansionFeatures.HasRetailFrameArt
+                      or ns:GetModule("Database"):GetSetting("theme") == "flat"
+              end },
             { type = "checkbox", key = "minimalEmptySlots", label = L["SETTINGS_MINIMAL_EMPTY_SLOTS"], tooltip = L["SETTINGS_MINIMAL_EMPTY_SLOTS_TIP"] },
+            -- Flat only: the tab is rebuilt on every theme change, so this appears and
+            -- disappears with the theme
+            { type = "color", key = "flatWindowColor", label = L["SETTINGS_WINDOW_COLOR"],
+              tooltip = L["SETTINGS_WINDOW_COLOR_TIP"],
+              default = ns:GetModule("Theme"):GetDefaultFlatWindowColor(),
+              hidden = function() return ns:GetModule("Database"):GetSetting("theme") ~= "flat" end },
         }},
 
         { type = "separator", label = L["SETTINGS_SECTION_OPTIONS"] },

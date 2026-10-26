@@ -4,6 +4,7 @@ local CategoryHeaderPool = {}
 ns:RegisterModule("CategoryHeaderPool", CategoryHeaderPool)
 
 local Font = ns:GetModule("Font")
+local Theme = ns:GetModule("Theme")
 local LayoutEngine = nil  -- Lazy loaded to avoid circular dependency
 
 -------------------------------------------------
@@ -43,14 +44,15 @@ function CategoryHeaderPool:Acquire(parent)
         header.text = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         Font:Override(header.text)
         header.text:SetPoint("LEFT", header.icon, "RIGHT", 4, 0)
-        header.text:SetTextColor(1, 0.82, 0)
+        -- Painted: never changes with state, so a theme switch can repaint it live
+        Theme:Paint(header.text, "SetTextColor", "categoryHeaderText", 1, 0.82, 0)
 
         header.line = header:CreateTexture(nil, "ARTWORK")
         header.line:SetHeight(1)
         header.line:SetPoint("LEFT", header.text, "RIGHT", 6, 0)
         header.line:SetPoint("RIGHT", header, "RIGHT", 0, 0)
         header.line:SetTexture("Interface\\Buttons\\WHITE8x8")
-        header.line:SetVertexColor(0.3, 0.3, 0.3, 0.8)
+        Theme:Paint(header.line, "SetVertexColor", "categoryHeaderLine", 0.3, 0.3, 0.3, 0.8)
     end
 
     header:SetParent(parent)

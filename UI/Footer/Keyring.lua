@@ -122,7 +122,7 @@ end
 function Keyring:UpdateState()
     if not button then return end
     if showKeyring then
-        button:SetBackdropBorderColor(1, 0.82, 0, 1)
+        button:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))
     else
         local fb = Theme:GetValue("footerButtonBorder"); button:SetBackdropBorderColor(fb[1], fb[2], fb[3], fb[4])
     end

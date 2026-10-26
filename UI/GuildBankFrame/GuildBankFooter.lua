@@ -5,6 +5,7 @@ ns:RegisterModule("GuildBankFrame.GuildBankFooter", GuildBankFooter)
 
 local Constants = ns.Constants
 local L = ns.L
+local Theme = ns:GetModule("Theme")
 
 local frame = nil
 local mainGuildBankFrame = nil
@@ -426,8 +427,8 @@ local function CreateGuildBankPopup()
         edgeSize = 14,
         insets = {left = 3, right = 3, top = 3, bottom = 3},
     })
-    popup:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
-    popup:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    popup:SetBackdropColor(Theme:Color("panelBg", 0.08, 0.08, 0.08, 0.95))
+    popup:SetBackdropBorderColor(Theme:Color("panelBorder", 0.4, 0.4, 0.4, 1))
 
     -- Title bar (leave room for close button on right)
     local titleBar = CreateFrame("Frame", nil, popup)
@@ -492,8 +493,8 @@ local function CreateGuildBankPopup()
             edgeSize = 10,
             insets = {left = 2, right = 2, top = 2, bottom = 2},
         })
-        btn:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
-        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        btn:SetBackdropColor(Theme:Color("panelBg", 0.08, 0.08, 0.08, 0.95))
+        btn:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
         btn.tabName = tabName
 
         local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -553,8 +554,8 @@ local function CreateGuildBankPopup()
             edgeSize = 8,
             insets = {left = 1, right = 1, top = 1, bottom = 1},
         })
-        btn:SetBackdropColor(0.12, 0.12, 0.12, 0.95)
-        btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        btn:SetBackdropColor(Theme:Color("buttonBg", 0.12, 0.12, 0.12, 0.95))
+        btn:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
         btn.tabIndex = index
 
         local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -618,13 +619,13 @@ function GuildBankFooter:UpdatePopupTabs()
         ns:Debug("UpdatePopupTabs: processing tab", name)
         if name == currentPopupTab then
             btn.selected:Show()
-            btn:SetBackdropColor(0.12, 0.12, 0.12, 0.95)  -- Slightly lighter background
-            btn:SetBackdropBorderColor(1, 0.82, 0, 1)  -- Gold border
+            btn:SetBackdropColor(Theme:Color("buttonBg", 0.12, 0.12, 0.12, 0.95))  -- Slightly lighter background
+            btn:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))  -- Gold border
             btn.text:SetTextColor(1, 0.82, 0)  -- Gold text
         else
             btn.selected:Hide()
-            btn:SetBackdropColor(0.08, 0.08, 0.08, 0.95)
-            btn:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+            btn:SetBackdropColor(Theme:Color("panelBg", 0.08, 0.08, 0.08, 0.95))
+            btn:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
             btn.text:SetTextColor(0.7, 0.7, 0.7)
         end
     end
@@ -686,12 +687,12 @@ function GuildBankFooter:UpdateGuildTabSelection()
 
     for i, btn in ipairs(guildBankPopup.guildTabButtons) do
         if i == currentGuildTab then
-            btn:SetBackdropColor(0.15, 0.15, 0.15, 0.95)
-            btn:SetBackdropBorderColor(1, 0.82, 0, 1)  -- Gold border
+            btn:SetBackdropColor(Theme:Color("buttonHover", 0.15, 0.15, 0.15, 0.95))
+            btn:SetBackdropBorderColor(Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1))  -- Gold border
             btn.text:SetTextColor(1, 0.82, 0)  -- Gold text
         else
-            btn:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
-            btn:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+            btn:SetBackdropColor(Theme:Color("buttonBg", 0.1, 0.1, 0.1, 0.9))
+            btn:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.3, 0.3, 0.3, 0.8))
             btn.text:SetTextColor(0.7, 0.7, 0.7)
         end
     end

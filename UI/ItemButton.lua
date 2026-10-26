@@ -421,21 +421,81 @@ local function GetEffectiveSlotTextures()
     return Database:GetSetting("retailEmptySlots") and RETAIL_SLOT_TEXTURES or nil
 end
 
+-- Background opacity setting (0-1). Minimal / flat slots are part of the window
+-- background, so they fade with it like the window does.
+local function BackgroundOpacity()
+    return (Database:GetSetting("bgAlpha") or 100) / 100
+end
+
+local function SetMinimalOutlineShown(button, shown)
+    if not button.minimalOutline then return end
+    local Theme = ns:GetModule("Theme")
+    local r, g, b, a = Theme:Color("slotEmptyBorder", 0.3, 0.3, 0.3, 0.8)
+    a = a * BackgroundOpacity()
+    for _, line in ipairs(button.minimalOutline) do
+        if shown then line:SetVertexColor(r, g, b, a) end
+        line:SetShown(shown)
+    end
+end
+
+-- Minimal slots: the setting, or the Flat theme's own slot look. Flat steps aside
+-- for Masque, which then owns the slot skin (two skins on one button look broken);
+-- an explicit minimal setting is the player's choice and still applies.
+local function UseMinimalSlots()
+    if Database:GetSetting("minimalEmptySlots") then return true end
+    local Theme = ns:GetModule("Theme")
+    if Theme:GetValue("flatSlots") then
+        local MasqueModule = ns:GetModule("Masque")
+        return not (MasqueModule and MasqueModule:IsActive())
+    end
+    return false
+end
+
+-- Clear the item icon on an empty slot. On Retail, SetItemButtonTexture(nil)
+-- does not leave the icon blank: the template puts its empty-slot atlas
+-- ("bags-item-slot64") on it, in ARTWORK -- above the minimal fill and outline,
+-- which is why minimal slots never showed on Retail. Minimal / Flat slots want
+-- no slot art, so drop it; every other look keeps the client's own.
+local function ClearItemIcon(button)
+    SetItemButtonTexture(button, nil)
+    if UseMinimalSlots() then
+        local icon = button.icon or button.Icon
+        if icon then icon:SetTexture(nil) end
+    end
+end
+
+-- A plain empty slot (not a real item, not a category pseudo button)
+local function IsPlainEmptySlot(button)
+    local itemData = button.itemData
+    return itemData and not itemData.itemID and not itemData.isEmptySlots
+        and not itemData.isDropTarget and not button.isEmptySlotButton and not button.isDropTargetButton
+end
+
 -- Apply retail/default slot textures to a single button
 local function ApplyThemeToButton(button, slotTex)
-    local minimalMode = Database:GetSetting("minimalEmptySlots")
-
-    if minimalMode then
-        -- Minimal mode: thin border outline, no slot icon
+    -- A setting/theme switch reaches buttons that are already empty: redo their
+    -- icon so Retail's empty-slot atlas comes off (minimal) or back (otherwise)
+    if IsPlainEmptySlot(button) then ClearItemIcon(button) end
+    if UseMinimalSlots() then
+        -- Minimal mode: flat fill + thin border outline, no slot icon. The outline
+        -- is what the setting always promised; on its own the faint fill all but
+        -- vanished on a dark window (notably Retail's).
         button.slotBackground:Hide()
         if button.retailSlotBg then button.retailSlotBg:Hide() end
-        if button.minimalSlot then button.minimalSlot:Show() end
+        if button.minimalSlot then
+            local Theme = ns:GetModule("Theme")
+            local r, g, b, a = Theme:Color("slotEmptyFill", 0.05, 0.05, 0.05, 0.5)
+            button.minimalSlot:SetVertexColor(r, g, b, a * BackgroundOpacity())
+            button.minimalSlot:Show()
+        end
+        SetMinimalOutlineShown(button, true)
         button.highlight:Show()
         if button.retailHighlight then button.retailHighlight:Hide() end
     elseif slotTex then
         -- Retail-style slot textures
         button.slotBackground:Hide()
         if button.minimalSlot then button.minimalSlot:Hide() end
+        SetMinimalOutlineShown(button, false)
         button.retailSlotBg:SetTexture(slotTex.background)
         button.retailSlotBg:Show()
         button.highlight:Hide()
@@ -446,6 +506,7 @@ local function ApplyThemeToButton(button, slotTex)
         button.slotBackground:Show()
         if button.retailSlotBg then button.retailSlotBg:Hide() end
         if button.minimalSlot then button.minimalSlot:Hide() end
+        SetMinimalOutlineShown(button, false)
         button.highlight:Show()
         if button.retailHighlight then button.retailHighlight:Hide() end
     end
@@ -498,7 +559,7 @@ local function ResetButton(pool, button)
     end
 
     -- Clear visual state to prevent texture bleeding
-    SetItemButtonTexture(button, nil)
+    ClearItemIcon(button)
     SetItemButtonCount(button, 0)
     SetItemButtonDesaturated(button, false)
     if button.border then button.border:Hide() end
@@ -531,6 +592,7 @@ local function ResetButton(pool, button)
         button.dropTargetGlow:Hide()
     end
     if button.minimalSlot then button.minimalSlot:Hide() end
+    SetMinimalOutlineShown(button, false)
     if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 end
 
@@ -906,6 +968,21 @@ local function CreateButton(parent)
     minimalSlot:SetVertexColor(0.05, 0.05, 0.05, 0.5)
     minimalSlot:Hide()
     button.minimalSlot = minimalSlot
+
+    -- 1px outline for minimal / flat empty slots. BACKGROUND, under the item icon,
+    -- so it only shows on empty slots. Created here (pre-warm), never in combat.
+    local outline = {}
+    for i, edge in ipairs({ {"TOPLEFT", "TOPRIGHT", true}, {"BOTTOMLEFT", "BOTTOMRIGHT", true},
+                            {"TOPLEFT", "BOTTOMLEFT", false}, {"TOPRIGHT", "BOTTOMRIGHT", false} }) do
+        local line = button:CreateTexture(nil, "BACKGROUND", nil, 0)
+        line:SetTexture("Interface\\Buttons\\WHITE8x8")
+        line:SetPoint(edge[1], button, edge[1])
+        line:SetPoint(edge[2], button, edge[2])
+        if edge[3] then line:SetHeight(1) else line:SetWidth(1) end
+        line:Hide()
+        outline[i] = line
+    end
+    button.minimalOutline = outline
 
     -- Item icon fills button completely to match empty slot size
     local icon = button.icon or button.Icon or _G[name .. "IconTexture"]
@@ -2585,7 +2662,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
         button.wrapper:SetID(0)
         button:SetID(0)
 
-        SetItemButtonTexture(button, nil)
+        ClearItemIcon(button)
         SetItemButtonCount(button, 0)
         button.icon:SetVertexColor(1, 1, 1, 1)
         button.border:Hide()
@@ -2744,7 +2821,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     -- Exception: always hide on minimal empty slots (no Masque chrome on empties)
     local MasqueModule = ns:GetModule("Masque")
     local masqueActive = MasqueModule and MasqueModule:IsActive()
-    if not masqueActive or Database:GetSetting("minimalEmptySlots") then
+    if not masqueActive or UseMinimalSlots() then
         local normalTex = button:GetNormalTexture()
         if normalTex then normalTex:Hide() end
     end
@@ -2777,7 +2854,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
 
     button.slotBackground:SetVertexColor(0.5, 0.5, 0.5, settings.bgAlpha)
 
-    SetItemButtonTexture(button, nil)
+    ClearItemIcon(button)
     SetItemButtonCount(button, 0)
     button.border:Hide()
     if button.innerShadow then
@@ -3335,6 +3412,7 @@ if Events then
 end
 
 -- Invalidate settings cache when relevant settings change
+local slotRepaintQueued = false
 if Events then
     Events:Register("SETTING_CHANGED", function(event, key, value)
         -- Invalidate cache for any setting that affects item buttons
@@ -3346,6 +3424,16 @@ if Events then
             or key == "showBoeLabel" or key == "showBoaLabel"
             or key == "markCosmeticItems" then
             ItemButton:InvalidateSettingsCache()
+        elseif key == "flatWindowColor" then
+            -- Empty slots take darker shades of the Flat window color. The color
+            -- picker fires this on every drag tick: repaint once per frame.
+            if not slotRepaintQueued then
+                slotRepaintQueued = true
+                C_Timer.After(0, function()
+                    slotRepaintQueued = false
+                    ItemButton:ApplyThemeTextures()
+                end)
+            end
         end
     end, ItemButton)
 

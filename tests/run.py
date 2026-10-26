@@ -81,7 +81,7 @@ def main():
         # Lua writes straight to the C stdout, so flush Python's buffer first
         # or the passes interleave out of order.
         for name in ("locale_matrix", "expansion_matrix", "search_parser", "category_manager",
-                     "profile_import", "guild_prune", "bag_conflicts"):
+                     "profile_import", "guild_prune", "bag_conflicts", "theme_keys"):
             print("")
             sys.stdout.flush()
             failures += harness_pass(name)

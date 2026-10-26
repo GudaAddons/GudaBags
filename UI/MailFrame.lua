@@ -648,6 +648,10 @@ Events:Register("SETTING_CHANGED", function(event, key, value)
 
     if key == "bgAlpha" or key == "showBorders" or key == "theme" or key == "retailEmptySlots" or key == "minimalEmptySlots" then
         UpdateFrameAppearance()
+    elseif key == "flatWindowColor" then
+        -- Window border + header line. Fired on every color-picker drag tick, so
+        -- only while the mail window is actually open.
+        if frame:IsShown() then UpdateFrameAppearance() end
     elseif key == "showFooter" or key == "showSearchBar" or key == "showFilterChips" then
         UpdateFrameAppearance()
         MailFrame:Refresh()

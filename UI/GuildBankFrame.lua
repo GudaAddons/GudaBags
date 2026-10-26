@@ -213,8 +213,8 @@ local function CreateSideTab(parent, index, isAllTab)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    button:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+    button:SetBackdropColor(Theme:Color("tabBg", 0.1, 0.1, 0.1, 0.95))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetSize(TAB_SIZE - 6, TAB_SIZE - 6)
@@ -387,8 +387,8 @@ local function CreatePurchaseTab(parent)
         edgeSize = 8,
         insets = {left = 2, right = 2, top = 2, bottom = 2},
     })
-    button:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+    button:SetBackdropColor(Theme:Color("tabBg", 0.1, 0.1, 0.1, 0.95))
+    button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
 
     -- Plus icon
     local icon = button:CreateTexture(nil, "ARTWORK")
@@ -578,7 +578,7 @@ function GuildBankFrame:UpdateSideTabSelection()
                 button:SetBackdropBorderColor(0, 0.8, 0.4, 1)  -- Green
             else
                 button.selected:Hide()
-                button:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+                button:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
             end
         end
     end
@@ -590,7 +590,7 @@ function GuildBankFrame:UpdateSideTabSelection()
             frame.purchaseTab:SetBackdropBorderColor(0.3, 0.8, 0.3, 1)  -- Green
         else
             frame.purchaseTab.selected:Hide()
-            frame.purchaseTab:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+            frame.purchaseTab:SetBackdropBorderColor(Theme:Color("buttonBorder", 0.4, 0.4, 0.4, 0.8))
         end
     end
 end
@@ -1824,8 +1824,22 @@ local appearanceSettings = {
 }
 
 -- Handle setting changes (live update)
+local accentRefreshQueued = false
+
 local function OnSettingChanged(event, key, value)
     if not frame or not frame:IsShown() then return end
+    -- Window color: one cheap appearance pass per
+    -- frame -- the color picker fires this on every drag tick
+    if key == "flatWindowColor" then
+        if not accentRefreshQueued then
+            accentRefreshQueued = true
+            C_Timer.After(0, function()
+                accentRefreshQueued = false
+                if frame and frame:IsShown() then UpdateFrameAppearance(true) end
+            end)
+        end
+        return
+    end
 
     if appearanceSettings[key] then
         UpdateFrameAppearance()  -- no rebuild here, so restyle the buttons
