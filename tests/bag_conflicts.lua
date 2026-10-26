@@ -31,19 +31,17 @@ print("")
 print("Popup wiring:")
 local dialog = StaticPopupDialogs["GUDABAGS_BAG_CONFLICT"]
 T.check("dialog registered", dialog ~= nil)
-T.check("Escape does not act (it reports as a click)", dialog.hideOnEscape == false)
-T.check("disabling GudaBags is only on its own button (OnAlt)", type(dialog.OnAlt) == "function")
+T.check("Yes/No only -- no way to disable GudaBags from here", dialog.OnAlt == nil and dialog.button3 == nil)
+-- "No" (and Escape, which reports as a click) is remembered
+GudaBags_DB = {}
+dialog.OnCancel(nil, nil, "clicked")  -- pending is empty before any popup; must not error
+T.check("No with nothing pending stores nothing", next(GudaBags_DB.ignoredBagConflicts or {}) == nil)
 
--- Every key the popup uses exists in enUS (Rule 5)
-local enUS = {}
+-- The message key exists in every locale block (Rule 5)
+local count = 0
 for line in io.lines(os.getenv("GUDABAGS_PATH") .. "/Locales.lua") do
-    local key = line:match('^L%["([%w_]+)"%]')
-    if key then enUS[key] = true end
-    if line:match("^local L = Locales%.frFR") then break end
+    if line:match('^L%["BAG_CONFLICT_TEXT"%] = ".-%%s.-"') then count = count + 1 end
 end
-for _, key in ipairs({"BAG_CONFLICT_TEXT", "BAG_CONFLICT_DISABLE_OTHER",
-                      "BAG_CONFLICT_DISABLE_GUDA", "BAG_CONFLICT_KEEP_BOTH"}) do
-    T.check("enUS has " .. key, enUS[key] == true)
-end
+T.check("BAG_CONFLICT_TEXT in all 10 locale blocks, each with %s (got " .. count .. ")", count == 10)
 
 T.finish("bag addon conflicts are detected and wired safely")

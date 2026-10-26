@@ -669,10 +669,7 @@ L["SEARCH_HELP_SLOT"] = "Equipment slot"
 L["SEARCH_HELP_LEVEL"] = "Item level / required level"
 L["SEARCH_HELP_KEYWORDS"] = "Keywords"
 L["SEARCH_HELP_COMBINE"] = "Combine terms to narrow the search"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: %s also replaces your bags and bank. With both running, the windows open together and fight over clicks and item locks.\n\nKeep one of them. Disabling applies to this character and reloads the UI."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Disable the other addon"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "Disable GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Keep both"
+L["BAG_CONFLICT_TEXT"] = "Another bag addon (%s) is conflicting with GudaBags. Would you like to disable it?"
 
 -------------------------------------------------
 -- Other Languages (placeholders for translators)
@@ -1268,10 +1265,7 @@ L["SEARCH_HELP_SLOT"] = "Emplacement d'équipement"
 L["SEARCH_HELP_LEVEL"] = "Niveau d'objet / niveau requis"
 L["SEARCH_HELP_KEYWORDS"] = "Mots-clés"
 L["SEARCH_HELP_COMBINE"] = "Combinez les termes pour affiner la recherche"
-L["BAG_CONFLICT_TEXT"] = "GudaBags : %s remplace aussi vos sacs et votre banque. Avec les deux actifs, les fenêtres s'ouvrent ensemble et se disputent les clics et le verrouillage des objets.\n\nGardez-en un seul. La désactivation s'applique à ce personnage et recharge l'interface."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Désactiver l'autre addon"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "Désactiver GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Garder les deux"
+L["BAG_CONFLICT_TEXT"] = "Un autre addon de sacs (%s) entre en conflit avec GudaBags. Voulez-vous le désactiver ?"
 
 -- German
 local L = Locales.deDE
@@ -1917,10 +1911,7 @@ L["SEARCH_HELP_SLOT"] = "Ausrüstungsplatz"
 L["SEARCH_HELP_LEVEL"] = "Gegenstandsstufe / benötigte Stufe"
 L["SEARCH_HELP_KEYWORDS"] = "Schlüsselwörter"
 L["SEARCH_HELP_COMBINE"] = "Begriffe kombinieren, um die Suche einzugrenzen"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: %s ersetzt ebenfalls Taschen und Bank. Laufen beide, öffnen sich die Fenster gemeinsam und streiten um Klicks und Gegenstandssperren.\n\nBehalte nur eines. Das Deaktivieren gilt für diesen Charakter und lädt die Oberfläche neu."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Anderes Addon deaktivieren"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "GudaBags deaktivieren"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Beide behalten"
+L["BAG_CONFLICT_TEXT"] = "Ein anderes Taschen-Addon (%s) steht in Konflikt mit GudaBags. Möchtest du es deaktivieren?"
 
 -- Russian
 local L = Locales.ruRU
@@ -2510,10 +2501,7 @@ L["SEARCH_HELP_SLOT"] = "Ячейка экипировки"
 L["SEARCH_HELP_LEVEL"] = "Уровень предмета / требуемый уровень"
 L["SEARCH_HELP_KEYWORDS"] = "Ключевые слова"
 L["SEARCH_HELP_COMBINE"] = "Комбинируйте условия, чтобы сузить поиск"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: %s тоже заменяет сумки и банк. Если работают оба, окна открываются вместе и мешают друг другу при кликах и блокировке предметов.\n\nОставьте один из них. Отключение действует для этого персонажа и перезагружает интерфейс."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Отключить другой аддон"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "Отключить GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Оставить оба"
+L["BAG_CONFLICT_TEXT"] = "Другой аддон сумок (%s) конфликтует с GudaBags. Отключить его?"
 
 -- Brazilian Portuguese
 local L = Locales.ptBR
@@ -3103,10 +3091,7 @@ L["SEARCH_HELP_SLOT"] = "Espaço de equipamento"
 L["SEARCH_HELP_LEVEL"] = "Nível do item / nível necessário"
 L["SEARCH_HELP_KEYWORDS"] = "Palavras-chave"
 L["SEARCH_HELP_COMBINE"] = "Combine termos para refinar a busca"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: %s também substitui suas bolsas e o banco. Com os dois ativos, as janelas abrem juntas e disputam cliques e travas de itens.\n\nMantenha apenas um. Desativar vale para este personagem e recarrega a interface."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Desativar o outro addon"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "Desativar GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Manter os dois"
+L["BAG_CONFLICT_TEXT"] = "Outro addon de bolsas (%s) está em conflito com o GudaBags. Deseja desativá-lo?"
 
 -- Spanish (Spain)
 local L = Locales.esES
@@ -3696,10 +3681,7 @@ L["SEARCH_HELP_SLOT"] = "Ranura de equipo"
 L["SEARCH_HELP_LEVEL"] = "Nivel de objeto / nivel requerido"
 L["SEARCH_HELP_KEYWORDS"] = "Palabras clave"
 L["SEARCH_HELP_COMBINE"] = "Combina términos para afinar la búsqueda"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: %s también reemplaza tus bolsas y el banco. Con ambos activos, las ventanas se abren a la vez y compiten por los clics y el bloqueo de objetos.\n\nQuédate con uno. Desactivar se aplica a este personaje y recarga la interfaz."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Desactivar el otro addon"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "Desactivar GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Mantener ambos"
+L["BAG_CONFLICT_TEXT"] = "Otro addon de bolsas (%s) está en conflicto con GudaBags. ¿Quieres desactivarlo?"
 
 -- Spanish (Mexico) - Uses esES translations
 local L = Locales.esMX
@@ -4297,10 +4279,7 @@ L["SEARCH_HELP_SLOT"] = "裝備欄位"
 L["SEARCH_HELP_LEVEL"] = "物品等級／需求等級"
 L["SEARCH_HELP_KEYWORDS"] = "關鍵字"
 L["SEARCH_HELP_COMBINE"] = "組合多個條件以縮小搜尋範圍"
-L["BAG_CONFLICT_TEXT"] = "GudaBags：%s 也會取代你的背包和銀行。兩者同時啟用時，視窗會一起開啟，並互相搶奪點擊與物品鎖定。\n\n請只保留其中一個。停用只套用於此角色，並會重新載入介面。"
-L["BAG_CONFLICT_DISABLE_OTHER"] = "停用另一個插件"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "停用 GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "兩者都保留"
+L["BAG_CONFLICT_TEXT"] = "另一個背包插件（%s）與 GudaBags 衝突。要停用它嗎？"
 
 -- Simplified Chinese
 local L = Locales.zhCN
@@ -4891,10 +4870,7 @@ L["SEARCH_HELP_SLOT"] = "装备栏位"
 L["SEARCH_HELP_LEVEL"] = "物品等级／需求等级"
 L["SEARCH_HELP_KEYWORDS"] = "关键词"
 L["SEARCH_HELP_COMBINE"] = "组合多个条件以缩小搜索范围"
-L["BAG_CONFLICT_TEXT"] = "GudaBags：%s 也会取代你的背包和银行。两者同时启用时，窗口会一起打开，并互相争夺点击与物品锁定。\n\n请只保留其中一个。禁用只作用于此角色，并会重新载入界面。"
-L["BAG_CONFLICT_DISABLE_OTHER"] = "禁用另一个插件"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "禁用 GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "两者都保留"
+L["BAG_CONFLICT_TEXT"] = "另一个背包插件（%s）与 GudaBags 冲突。要禁用它吗？"
 
 -- Korean
 local L = Locales.koKR
@@ -5487,10 +5463,7 @@ L["SEARCH_HELP_SLOT"] = "장비 슬롯"
 L["SEARCH_HELP_LEVEL"] = "아이템 레벨 / 요구 레벨"
 L["SEARCH_HELP_KEYWORDS"] = "키워드"
 L["SEARCH_HELP_COMBINE"] = "조건을 조합해 검색 범위를 좁히세요"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: %s도 가방과 은행을 대체합니다. 둘 다 켜 두면 창이 함께 열리고 클릭과 아이템 잠금을 서로 가로챕니다.\n\n하나만 사용하세요. 비활성화는 이 캐릭터에만 적용되며 UI를 다시 불러옵니다."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "다른 애드온 비활성화"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "GudaBags 비활성화"
-L["BAG_CONFLICT_KEEP_BOTH"] = "둘 다 유지"
+L["BAG_CONFLICT_TEXT"] = "다른 가방 애드온(%s)이 GudaBags와 충돌합니다. 비활성화하시겠습니까?"
 
 -- Italian
 local L = Locales.itIT
@@ -6083,7 +6056,4 @@ L["SEARCH_HELP_SLOT"] = "Slot di equipaggiamento"
 L["SEARCH_HELP_LEVEL"] = "Livello oggetto / livello richiesto"
 L["SEARCH_HELP_KEYWORDS"] = "Parole chiave"
 L["SEARCH_HELP_COMBINE"] = "Combina i termini per restringere la ricerca"
-L["BAG_CONFLICT_TEXT"] = "GudaBags: anche %s sostituisce borse e banca. Con entrambi attivi, le finestre si aprono insieme e si contendono clic e blocco degli oggetti.\n\nTienine solo uno. La disattivazione vale per questo personaggio e ricarica l'interfaccia."
-L["BAG_CONFLICT_DISABLE_OTHER"] = "Disattiva l'altro addon"
-L["BAG_CONFLICT_DISABLE_GUDA"] = "Disattiva GudaBags"
-L["BAG_CONFLICT_KEEP_BOTH"] = "Tieni entrambi"
+L["BAG_CONFLICT_TEXT"] = "Un altro addon per le borse (%s) è in conflitto con GudaBags. Vuoi disattivarlo?"

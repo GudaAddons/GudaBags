@@ -9,7 +9,7 @@ local addonName, ns = ...
 -- EllesmereUI, whose bags are their own addon (EllesmereUIBags) and whose
 -- in-game "enhanced bags" option still leaves its bank window and OpenAllBags
 -- hook active. No setting can make them coexist, so at login we say so once and
--- offer to disable one side. Nothing here touches the other addon's code.
+-- offer to disable the other addon. Nothing here touches the other addon's code.
 -------------------------------------------------
 local BagConflicts = {}
 ns:RegisterModule("Compatibility.BagConflicts", BagConflicts)
@@ -64,18 +64,16 @@ end
 
 local pending = {}  -- conflicts the open popup is about
 
--- Escape is off on purpose: Blizzard's popup code reports Escape to OnCancel as
--- "clicked", so with it on, Escape would be indistinguishable from a button.
--- The irreversible-feeling choice (disabling GudaBags) sits on button3 / OnAlt,
--- which nothing but its own button reaches.
+-- Yes disables the other addon; No (or Escape, which Blizzard reports to OnCancel
+-- as "clicked" too) keeps both and is remembered, so the question isn't asked again.
 StaticPopupDialogs["GUDABAGS_BAG_CONFLICT"] = {
     text = "%s",
-    -- Button labels are filled in from L when the popup is shown
+    button1 = YES,
+    button2 = NO,
     OnAccept = function()
         DisableAndReload(pending)
     end,
     OnCancel = function(_, _, reason)
-        -- "Keep both": remember it so the notice doesn't return every login
         if reason == "clicked" then
             GudaBags_DB.ignoredBagConflicts = GudaBags_DB.ignoredBagConflicts or {}
             for _, name in ipairs(pending) do
@@ -83,12 +81,9 @@ StaticPopupDialogs["GUDABAGS_BAG_CONFLICT"] = {
             end
         end
     end,
-    OnAlt = function()
-        DisableAndReload({ addonName })
-    end,
     timeout = 0,
     whileDead = true,
-    hideOnEscape = false,
+    hideOnEscape = true,
     preferredIndex = 3,
 }
 
@@ -98,10 +93,6 @@ local function ShowConflictPopup()
     if #conflicts == 0 then return end
 
     pending = conflicts
-    local dialog = StaticPopupDialogs["GUDABAGS_BAG_CONFLICT"]
-    dialog.button1 = L["BAG_CONFLICT_DISABLE_OTHER"]
-    dialog.button2 = L["BAG_CONFLICT_KEEP_BOTH"]
-    dialog.button3 = L["BAG_CONFLICT_DISABLE_GUDA"]
     local names = {}
     for i, name in ipairs(conflicts) do
         names[i] = DisplayName(name)
