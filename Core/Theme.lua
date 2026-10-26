@@ -109,7 +109,9 @@ local themes = {
         accent = {0.247, 0.722, 0.686, 1},         -- #3FB8AF
         buttonHover = {0.149, 0.149, 0.149, 1},    -- #262626
         slotEmptyBorder = {0.165, 0.165, 0.165, 1},
+        slotEmptyFill = {0.055, 0.055, 0.055, 1},  -- #0E0E0E
         slotCommonBorder = {0.227, 0.227, 0.227, 1}, -- #3A3A3A
+        flatSlots = true,  -- empty slots use the minimal flat look (unless Masque is active)
         -- Theme:Color keys: chrome that other themes draw with call-site literals
         panelBg = {0.071, 0.071, 0.071, 0.98},     -- dropdowns, menus
         panelBorder = {0.165, 0.165, 0.165, 1},

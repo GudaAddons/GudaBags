@@ -421,21 +421,50 @@ local function GetEffectiveSlotTextures()
     return Database:GetSetting("retailEmptySlots") and RETAIL_SLOT_TEXTURES or nil
 end
 
+local function SetMinimalOutlineShown(button, shown)
+    if not button.minimalOutline then return end
+    local Theme = ns:GetModule("Theme")
+    local r, g, b, a = Theme:Color("slotEmptyBorder", 0.3, 0.3, 0.3, 0.8)
+    for _, line in ipairs(button.minimalOutline) do
+        if shown then line:SetVertexColor(r, g, b, a) end
+        line:SetShown(shown)
+    end
+end
+
+-- Minimal slots: the setting, or the Flat theme's own slot look. Flat steps aside
+-- for Masque, which then owns the slot skin (two skins on one button look broken);
+-- an explicit minimal setting is the player's choice and still applies.
+local function UseMinimalSlots()
+    if Database:GetSetting("minimalEmptySlots") then return true end
+    local Theme = ns:GetModule("Theme")
+    if Theme:GetValue("flatSlots") then
+        local MasqueModule = ns:GetModule("Masque")
+        return not (MasqueModule and MasqueModule:IsActive())
+    end
+    return false
+end
+
 -- Apply retail/default slot textures to a single button
 local function ApplyThemeToButton(button, slotTex)
-    local minimalMode = Database:GetSetting("minimalEmptySlots")
-
-    if minimalMode then
-        -- Minimal mode: thin border outline, no slot icon
+    if UseMinimalSlots() then
+        -- Minimal mode: flat fill + thin border outline, no slot icon. The outline
+        -- is what the setting always promised; on its own the faint fill all but
+        -- vanished on a dark window (notably Retail's).
         button.slotBackground:Hide()
         if button.retailSlotBg then button.retailSlotBg:Hide() end
-        if button.minimalSlot then button.minimalSlot:Show() end
+        if button.minimalSlot then
+            local Theme = ns:GetModule("Theme")
+            button.minimalSlot:SetVertexColor(Theme:Color("slotEmptyFill", 0.05, 0.05, 0.05, 0.5))
+            button.minimalSlot:Show()
+        end
+        SetMinimalOutlineShown(button, true)
         button.highlight:Show()
         if button.retailHighlight then button.retailHighlight:Hide() end
     elseif slotTex then
         -- Retail-style slot textures
         button.slotBackground:Hide()
         if button.minimalSlot then button.minimalSlot:Hide() end
+        SetMinimalOutlineShown(button, false)
         button.retailSlotBg:SetTexture(slotTex.background)
         button.retailSlotBg:Show()
         button.highlight:Hide()
@@ -446,6 +475,7 @@ local function ApplyThemeToButton(button, slotTex)
         button.slotBackground:Show()
         if button.retailSlotBg then button.retailSlotBg:Hide() end
         if button.minimalSlot then button.minimalSlot:Hide() end
+        SetMinimalOutlineShown(button, false)
         button.highlight:Show()
         if button.retailHighlight then button.retailHighlight:Hide() end
     end
@@ -531,6 +561,7 @@ local function ResetButton(pool, button)
         button.dropTargetGlow:Hide()
     end
     if button.minimalSlot then button.minimalSlot:Hide() end
+    SetMinimalOutlineShown(button, false)
     if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
 end
 
@@ -906,6 +937,21 @@ local function CreateButton(parent)
     minimalSlot:SetVertexColor(0.05, 0.05, 0.05, 0.5)
     minimalSlot:Hide()
     button.minimalSlot = minimalSlot
+
+    -- 1px outline for minimal / flat empty slots. BACKGROUND, under the item icon,
+    -- so it only shows on empty slots. Created here (pre-warm), never in combat.
+    local outline = {}
+    for i, edge in ipairs({ {"TOPLEFT", "TOPRIGHT", true}, {"BOTTOMLEFT", "BOTTOMRIGHT", true},
+                            {"TOPLEFT", "BOTTOMLEFT", false}, {"TOPRIGHT", "BOTTOMRIGHT", false} }) do
+        local line = button:CreateTexture(nil, "BACKGROUND", nil, 0)
+        line:SetTexture("Interface\\Buttons\\WHITE8x8")
+        line:SetPoint(edge[1], button, edge[1])
+        line:SetPoint(edge[2], button, edge[2])
+        if edge[3] then line:SetHeight(1) else line:SetWidth(1) end
+        line:Hide()
+        outline[i] = line
+    end
+    button.minimalOutline = outline
 
     -- Item icon fills button completely to match empty slot size
     local icon = button.icon or button.Icon or _G[name .. "IconTexture"]
@@ -2744,7 +2790,7 @@ function ItemButton:SetEmpty(button, bagID, slot, size, isReadOnly, isGuildBank)
     -- Exception: always hide on minimal empty slots (no Masque chrome on empties)
     local MasqueModule = ns:GetModule("Masque")
     local masqueActive = MasqueModule and MasqueModule:IsActive()
-    if not masqueActive or Database:GetSetting("minimalEmptySlots") then
+    if not masqueActive or UseMinimalSlots() then
         local normalTex = button:GetNormalTexture()
         if normalTex then normalTex:Hide() end
     end

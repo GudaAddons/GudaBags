@@ -55,7 +55,8 @@ end
 local CHROME_KEYS = {"panelBg", "panelBorder", "panelBackdrop", "searchBarBg", "searchBarBorder",
     "chipBg", "chipHoverBg", "chipText", "chipActiveType", "chipActiveSpecial", "tabBg", "tabBorder",
     "tabSelectedBorder", "tabSelectedBg", "tabSelectedText", "sideTabBg", "buttonBg", "buttonBorder",
-    "buttonHover", "categoryHeaderText", "categoryHeaderLine"}
+    "buttonHover", "categoryHeaderText", "categoryHeaderLine", "slotEmptyBorder", "slotEmptyFill",
+    "flatSlots"}
 for _, name in ipairs({"guda", "blizzard", "retail"}) do
     currentTheme = name
     local stray = {}
