@@ -933,6 +933,24 @@ function LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, 
                             -- grouped stacks; it is constant per itemID, so the
                             -- first item's value describes the whole group.
                             itemLevel = firstItem.itemData.itemLevel,
+                            -- Display/search fields, also constant per itemID. Without
+                            -- them a grouped stack lost its quest border and "?" icon,
+                            -- the unusable overlay and the crafting-quality pip, and
+                            -- fell out of usable/openable/lvl:/s: searches. Per-slot
+                            -- state (locked, location, count) stays out on purpose.
+                            itemMinLevel = firstItem.itemData.itemMinLevel,
+                            equipSlot = firstItem.itemData.equipSlot,
+                            maxStack = firstItem.itemData.maxStack,
+                            isUsable = firstItem.itemData.isUsable,
+                            isQuestItem = firstItem.itemData.isQuestItem,
+                            isQuestStarter = firstItem.itemData.isQuestStarter,
+                            hasSpecialProperties = firstItem.itemData.hasSpecialProperties,
+                            hasDuration = firstItem.itemData.hasDuration,
+                            isOpenable = firstItem.itemData.isOpenable,
+                            craftingQualityAtlas = firstItem.itemData.craftingQualityAtlas,
+                            -- dataPending deliberately NOT copied: IncrementalUpdate
+                            -- repaints a pending button from one slot's record, which
+                            -- would change how grouped stacks take that path.
                             isGroupedStack = true,
                             groupedLocations = locations,
                         },

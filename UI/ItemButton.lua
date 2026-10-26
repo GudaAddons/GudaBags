@@ -3171,11 +3171,22 @@ function ItemButton:SyncFrameLevels(owner)
 end
 
 -- Update lock state for a specific item (called on ITEM_LOCK_CHANGED)
+--
+-- Only real, live container buttons qualify (RULES Rule 1: never treat pseudo
+-- items as real slots). The first-match scan used to be able to land on:
+--   * the category Empty/Soul/Quiver pseudo button, whose itemData carries the
+--     first free slot's bagID/slot -- the unlock then cleared its intended grey;
+--   * a guild-bank button, whose bagID is a tab index that can equal a bag ID;
+--   * a read-only (other character) button showing the same bag/slot numbers.
 function ItemButton:UpdateLockForItem(bagID, slotID)
     if not buttonPool then return end
 
     for button in buttonPool:EnumerateActive() do
-        if button.itemData and button.itemData.bagID == bagID and button.itemData.slot == slotID then
+        local itemData = button.itemData
+        if itemData and itemData.bagID == bagID and itemData.slot == slotID
+            and not itemData.isEmptySlots and not itemData.isDropTarget
+            and not button.isEmptySlotButton and not button.isDropTargetButton
+            and not itemData.isGuildBank and not button.isReadOnly then
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
             local isLocked = itemInfo and itemInfo.isLocked or false
 

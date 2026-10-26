@@ -3123,7 +3123,10 @@ end, BagFrame)
 Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     -- Skip when viewing cached character - lock state is for current character only
     if viewingCharacter then return end
-    if frame and frame:IsShown() and bagID and slotID then
+    -- Only this frame's own containers: bank slots are repainted by the bank
+    -- frame's handler, so each event scans the button pool once, not twice.
+    local isOwnBag = bagID and (Constants.IsPlayerBagID(bagID) or bagID == Constants.KEYRING_BAG_ID)
+    if frame and frame:IsShown() and isOwnBag and slotID then
         ItemButton:UpdateLockForItem(bagID, slotID)
         -- Only watch when this is a lock (not an unlock); the unlock is what we
         -- may never be told about. No point watching while bags are closed.
@@ -3131,10 +3134,16 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
         -- BagScanner, and a bank slot fed in there pollutes the bag cache (the
         -- bank frame has its own ITEM_LOCK_CHANGED handler).
         local info = C_Container.GetContainerItemInfo(bagID, slotID)
-        if info and info.isLocked
-            and (Constants.IsPlayerBagID(bagID) or bagID == Constants.KEYRING_BAG_ID) then
+        if info and info.isLocked then
             StartLockWatch(bagID, slotID)
         end
+    end
+
+    -- A sort fires hundreds of these; the deferred drag check below would bail
+    -- on IsSorting anyway, so don't allocate its timer closure for each one.
+    local SortEngine = ns:GetModule("SortEngine")
+    if SortEngine and (SortEngine:IsSorting() or SortEngine:IsRestacking()) then
+        return
     end
 
     -- Detect drag start for showing the flyout drop bar (all views) and the
