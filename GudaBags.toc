@@ -45,7 +45,6 @@ Core\SlashCommands.lua
 
 # Compatibility Layer
 Compatibility\API.lua
-Compatibility\Features.lua
 Compatibility\Pawn.lua
 Compatibility\CanIMogIt.lua
 Compatibility\ItemUpgradeQualityIcons.lua
@@ -70,7 +69,6 @@ Config\SettingsSchema.lua
 
 # Data modules
 Data\ItemScanner.lua
-Data\ScannerBase.lua
 Data\BagScanner.lua
 Data\BankScanner.lua
 Data\EquipmentSets.lua
@@ -88,7 +86,6 @@ UI\Controls\Select.lua
 UI\Controls\ChipToggleList.lua
 
 # UI Components (Reusable)
-UI\Components\DragDropManager.lua
 UI\Components\CategoryDropIndicator.lua
 UI\Components\DragFlyoutBar.lua
 

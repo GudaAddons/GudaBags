@@ -90,7 +90,6 @@ end
 -- Tooltip result caching to avoid repeated expensive scans
 -- Cache by itemLink since the same item has the same properties
 local tooltipCache = {}
-local CACHE_MAX_SIZE = 500  -- Limit cache size to prevent memory bloat
 
 local function GetCacheKey(itemLink, itemID)
     -- Use itemLink if available (more specific), otherwise itemID

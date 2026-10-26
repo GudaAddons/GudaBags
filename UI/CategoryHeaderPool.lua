@@ -127,37 +127,3 @@ function CategoryHeaderPool:ReleaseAll(owner)
         wipe(activeHeadersByOwner)
     end
 end
-
--- Get count of active headers (optionally for a specific owner)
-function CategoryHeaderPool:GetActiveCount(owner)
-    if owner then
-        local headers = activeHeadersByOwner[owner]
-        return headers and #headers or 0
-    end
-    -- Count all active headers across all owners
-    local count = 0
-    for _, headers in pairs(activeHeadersByOwner) do
-        count = count + #headers
-    end
-    return count
-end
-
--- Get count of pooled (inactive) headers
-function CategoryHeaderPool:GetPooledCount()
-    return #headerPool
-end
-
--- Get all active headers (for iteration, optionally for a specific owner)
-function CategoryHeaderPool:GetActiveHeaders(owner)
-    if owner then
-        return activeHeadersByOwner[owner] or {}
-    end
-    -- Return all active headers across all owners (for backwards compatibility)
-    local allHeaders = {}
-    for _, headers in pairs(activeHeadersByOwner) do
-        for _, header in ipairs(headers) do
-            table.insert(allHeaders, header)
-        end
-    end
-    return allHeaders
-end
