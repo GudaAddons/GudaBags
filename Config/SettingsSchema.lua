@@ -15,6 +15,8 @@ function SettingsSchema.GetGeneral()
             local opts = {
                 { value = "guda", label = L["SETTINGS_THEME_GUDA"] },
                 { value = "blizzard", label = L["SETTINGS_THEME_BLIZZARD"] },
+                -- Texture-free, so it is offered on every client
+                { value = "flat", label = L["SETTINGS_THEME_FLAT"] },
             }
             -- Offered wherever the client's own frame art is not already the
             -- modern metal look -- every Classic flavor, and WoW: Forever, which

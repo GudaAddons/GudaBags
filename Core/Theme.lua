@@ -92,6 +92,43 @@ local themes = {
             highlight = "Interface\\AddOns\\GudaBags\\Assets\\Themes\\retail\\btn_highlight_strong",
         },
     },
+    -- Flat: solid panels, 1px borders, one accent color, no textures, so it looks
+    -- the same on every client. Rides the guda code paths (backdrop + header
+    -- backdrop); only the close button has a flat style of its own.
+    flat = {
+        frameBg = {0.071, 0.071, 0.071, 1},        -- #121212
+        frameBorder = {0.165, 0.165, 0.165, 1},    -- #2A2A2A
+        headerBg = {0.102, 0.102, 0.102, 1},       -- #1A1A1A
+        titleColor = {1, 1, 1, 1},
+        slotBgColor = {0.055, 0.055, 0.055, 1},    -- #0E0E0E
+        bankTabBg = {0.118, 0.118, 0.118, 1},      -- #1E1E1E
+        bankTabBorder = {0.165, 0.165, 0.165, 1},
+        bankTabSelected = {0.149, 0.149, 0.149, 1},
+        footerButtonBg = {0.118, 0.118, 0.118, 1},
+        footerButtonBorder = {0.165, 0.165, 0.165, 1},
+        -- Read by the tab/chip/slot styling that moves onto theme keys next
+        accent = {0.247, 0.722, 0.686, 1},         -- #3FB8AF
+        buttonHover = {0.149, 0.149, 0.149, 1},    -- #262626
+        slotEmptyBorder = {0.165, 0.165, 0.165, 1},
+        slotCommonBorder = {0.227, 0.227, 0.227, 1}, -- #3A3A3A
+        useBlizzardFrame = false,
+        useFlatCloseButton = true,
+        backdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 1, right = 1, top = 1, bottom = 1},
+        },
+        headerBackdrop = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+        },
+        backdropSolid = {
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        },
+    },
 }
 -------------------------------------------------
 -- Classic border texture keys in ButtonFrameTemplate
@@ -512,6 +549,56 @@ function Theme:StyleCloseButton(btn, useMetal)
     StyleCloseButton(btn, useMetal)
 end
 
+-- Flat theme close button: a plain "x" drawn as two thin lines, so it renders on
+-- every client and in every font (a "×" glyph is missing from some CJK fonts).
+local FLAT_CLOSE_COLOR = {0.75, 0.75, 0.75, 1}
+local FLAT_CLOSE_HOVER = {1, 1, 1, 1}
+local FLAT_CLOSE_INSET = 7
+
+local function SetFlatCloseColor(btn, color)
+    for _, line in ipairs(btn._flatLines) do
+        line:SetColorTexture(color[1], color[2], color[3], color[4])
+    end
+end
+
+local function StyleFlatCloseButton(btn, on)
+    if on then
+        if not btn.CreateLine then return end  -- no Line regions: keep the default button
+        if not btn._flatLines then
+            btn._flatLines = {}
+            for i = 1, 2 do
+                local line = btn:CreateLine(nil, "ARTWORK")
+                line:SetThickness(1.5)
+                btn._flatLines[i] = line
+            end
+            local a, b = btn._flatLines[1], btn._flatLines[2]
+            a:SetStartPoint("TOPLEFT", btn, FLAT_CLOSE_INSET, -FLAT_CLOSE_INSET)
+            a:SetEndPoint("BOTTOMRIGHT", btn, -FLAT_CLOSE_INSET, FLAT_CLOSE_INSET)
+            b:SetStartPoint("TOPRIGHT", btn, -FLAT_CLOSE_INSET, -FLAT_CLOSE_INSET)
+            b:SetEndPoint("BOTTOMLEFT", btn, FLAT_CLOSE_INSET, FLAT_CLOSE_INSET)
+            -- Hooked, not set: the header's own OnEnter/OnLeave (tooltip) must keep working
+            btn:HookScript("OnEnter", function(self)
+                if self._flatStyled then SetFlatCloseColor(self, FLAT_CLOSE_HOVER) end
+            end)
+            btn:HookScript("OnLeave", function(self)
+                if self._flatStyled then SetFlatCloseColor(self, FLAT_CLOSE_COLOR) end
+            end)
+        end
+        if not btn._flatStyled then
+            btn._flatOrig = {btn:GetNormalTexture(), btn:GetPushedTexture(), btn:GetHighlightTexture()}
+            for _, tex in pairs(btn._flatOrig) do tex:SetAlpha(0) end
+            btn._flatStyled = true
+        end
+        SetFlatCloseColor(btn, FLAT_CLOSE_COLOR)
+        for _, line in ipairs(btn._flatLines) do line:Show() end
+    elseif btn._flatStyled then
+        for _, line in ipairs(btn._flatLines) do line:Hide() end
+        for _, tex in pairs(btn._flatOrig) do tex:SetAlpha(1) end
+        btn._flatOrig = nil
+        btn._flatStyled = false
+    end
+end
+
 local METAL_ICON_SIZE = 13
 local METAL_ICON_BG_W = 21
 local METAL_ICON_BG_H = 17
@@ -581,9 +668,14 @@ function Theme:ApplyHeaderButtons(headerFrame, leftButtons, rightButtons, closeB
     local gap = (useBlizzard or useMetal) and BLIZZARD_GAP or GUDA_GAP
     local firstLeftOffset = (useBlizzard or useMetal) and 13 or 4
 
-    -- Style close button for metal theme
+    -- Style close button for metal / flat themes. Flat comes off BEFORE metal goes
+    -- on (and goes on after metal comes off) so neither restores the other's
+    -- hidden textures.
     if closeButton then
+        local useFlatClose = self:GetValue("useFlatCloseButton")
+        if not useFlatClose then StyleFlatCloseButton(closeButton, false) end
         StyleCloseButton(closeButton, useMetal)
+        if useFlatClose then StyleFlatCloseButton(closeButton, true) end
     end
 
     -- Left side: first anchors to headerFrame LEFT, rest chain to previous
