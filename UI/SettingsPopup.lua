@@ -7,7 +7,7 @@ local Events = ns:GetModule("Events")
 local Theme = ns:GetModule("Theme")
 
 -- Components (loaded after this file via TOC order)
-local Slider, Checkbox, ToggleButton, Select, ChipToggleList
+local Slider, Checkbox, ToggleButton, Select, ChipToggleList, ColorPicker
 local VerticalStack, HorizontalRow
 local TabPanel, SettingsSchema
 
@@ -79,6 +79,8 @@ local function CreateControl(parent, config)
         return ToggleButton:Create(parent, config)
     elseif config.type == "select" then
         return Select:Create(parent, config)
+    elseif config.type == "color" then
+        return ColorPicker:Create(parent, config)
     elseif config.type == "chiptoggles" then
         return ChipToggleList:Create(parent, config)
     elseif config.type == "description" then
@@ -1560,6 +1562,7 @@ local function InitComponents()
     ToggleButton = ns:GetModule("Controls.ToggleButton")
     Select = ns:GetModule("Controls.Select")
     ChipToggleList = ns:GetModule("Controls.ChipToggleList")
+    ColorPicker = ns:GetModule("Controls.ColorPicker")
     VerticalStack = ns:GetModule("Layout.VerticalStack")
     HorizontalRow = ns:GetModule("Layout.HorizontalRow")
     TabPanel = ns:GetModule("TabPanel")

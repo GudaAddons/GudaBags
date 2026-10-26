@@ -1826,6 +1826,8 @@ local appearanceSettings = {
 -- Handle setting changes (live update)
 local function OnSettingChanged(event, key, value)
     if not frame or not frame:IsShown() then return end
+    -- Accent color: repainted by Theme; fired on every color-picker drag tick
+    if key == "flatAccentColor" then return end
 
     if appearanceSettings[key] then
         UpdateFrameAppearance()  -- no rebuild here, so restyle the buttons

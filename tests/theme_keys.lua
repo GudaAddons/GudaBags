@@ -5,8 +5,10 @@ local Stubs = dofile(os.getenv("GUDABAGS_PATH") .. "/tests/stubs.lua")
 local ns, LoadFile = Stubs.NewAddon()
 
 local currentTheme = "guda"
+local accentSetting = nil
 ns:RegisterModule("Database", {GetSetting = function(_, key)
     if key == "theme" then return currentTheme end
+    if key == "flatAccentColor" then return accentSetting end
 end})
 local handlers = {}
 ns:RegisterModule("Events", {Register = function(_, event, fn) handlers[event] = fn end})
@@ -96,5 +98,33 @@ Theme:Paint(fakeFrame, "SetBackdropColor", "panelBg", 0.1, 0.1, 0.1, 0.95)
 order = {}
 handlers.SETTING_CHANGED("SETTING_CHANGED", "theme")
 T.check("repaint sets the backdrop before its colors", order[1] == "backdrop" and order[2] == "color")
+
+print("Flat accent color:")
+currentTheme = "flat"
+accentSetting = nil
+handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
+local def = Theme:GetDefaultFlatAccent()
+local ar, ag, ab = Theme:Color("tabSelectedBorder", 0, 0, 0, 1)
+T.check("no setting -> default teal", ar == def[1] and ag == def[2] and ab == def[3])
+accentSetting = {1, 0, 0}
+handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
+local allRed = true
+for _, key in ipairs({"accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText"}) do
+    local r, g, b = Theme:Color(key, 0, 0, 0, 1)
+    if not (r == 1 and g == 0 and b == 0) then allRed = false end
+end
+T.check("picked color reaches all five accent keys", allRed)
+local _, _, _, chipAlpha = Theme:Color("chipActiveType", 0, 0, 0, 1)
+T.check("each key keeps its own alpha (chips 0.9)", chipAlpha == 0.9)
+local nr = Theme:Color("chipBg", 0, 0, 0, 1)
+T.check("non-accent keys are untouched", nr ~= 1)
+currentTheme = "guda"
+local gr = Theme:Color("tabSelectedBorder", 1, 0.82, 0, 1)
+T.check("other themes ignore the accent setting", gr == 1)
+accentSetting = nil
+currentTheme = "flat"
+handlers.SETTING_CHANGED("SETTING_CHANGED", "flatAccentColor")
+local rr = Theme:Color("accent", 0, 0, 0, 1)
+T.check("Reset (setting cleared) restores teal", rr == def[1])
 
 T.finish("every theme defines the values the UI reads")

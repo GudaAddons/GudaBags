@@ -2623,6 +2623,11 @@ local questBarLastValue = nil
 local QUESTBAR_DEBOUNCE_DELAY = 0.2
 
 local function OnSettingChanged(event, key, value)
+    -- Accent color: Theme repaints what uses it, and the color picker fires this on
+    -- every drag tick -- falling through to the full Refresh below would rebuild the
+    -- bag dozens of times a second.
+    if key == "flatAccentColor" then return end
+
     -- Handle QuestBar toggle instantly with debounce for rapid clicks
     if key == "showQuestBar" then
         local QuestBar = ns:GetModule("QuestBar")

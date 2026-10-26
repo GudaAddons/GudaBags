@@ -3657,6 +3657,10 @@ local resizeSettings = {
 }
 
 local function OnSettingChanged(event, key, value)
+    -- Accent color: repainted by Theme (tabs pick it up on their next update); the
+    -- color picker fires this on every drag tick, so never reach the full Refresh
+    if key == "flatAccentColor" then return end
+
     -- A setting changed while holding a hidden layout invalidates the fast reopen
     -- (size/columns/view/appearance won't have been applied to the retained buttons).
     if bankHeld and not (frame and frame:IsShown()) then

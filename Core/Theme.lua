@@ -173,6 +173,21 @@ local classicBorderKeys = {
 local cachedTheme = nil
 local cachedThemeName = nil
 
+-- Flat keys that take the player's accent color (setting "flatAccentColor").
+-- Each keeps its own alpha from the theme table.
+local FLAT_ACCENT_KEYS = { "accent", "chipActiveType", "chipActiveSpecial", "tabSelectedBorder", "tabSelectedText" }
+
+-- A view of `base` with the accent keys recolored; everything else falls through
+local function ApplyFlatAccent(base, color)
+    if type(color) ~= "table" or not color[1] then return base end
+    local view = setmetatable({}, { __index = base })
+    for _, key in ipairs(FLAT_ACCENT_KEYS) do
+        local alpha = base[key] and base[key][4] or 1
+        view[key] = { color[1], color[2], color[3], alpha }
+    end
+    return view
+end
+
 -------------------------------------------------
 -- API
 -------------------------------------------------
@@ -194,7 +209,16 @@ function Theme:Get()
     end
     cachedThemeName = themeName
     cachedTheme = themes[themeName] or themes.guda
+    if themeName == "flat" then
+        cachedTheme = ApplyFlatAccent(cachedTheme, Database:GetSetting("flatAccentColor"))
+    end
     return cachedTheme
+end
+
+--- Flat's default accent as {r, g, b} (the color picker's Reset target)
+function Theme:GetDefaultFlatAccent()
+    local a = themes.flat.accent
+    return { a[1], a[2], a[3] }
 end
 
 --- Returns a single theme property value
@@ -913,7 +937,7 @@ end
 -- Cache Invalidation
 -------------------------------------------------
 Events:Register("SETTING_CHANGED", function(event, key)
-    if key == "theme" then
+    if key == "theme" or key == "flatAccentColor" then
         cachedTheme = nil
         RepaintAll()
     end

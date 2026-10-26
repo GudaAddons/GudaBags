@@ -27,6 +27,12 @@ function SettingsSchema.GetGeneral()
             end
             return opts
         end)()},
+        -- Flat only: the tab is rebuilt on every theme change, so this appears and
+        -- disappears with the theme
+        { type = "color", key = "flatAccentColor", label = L["SETTINGS_ACCENT_COLOR"],
+          tooltip = L["SETTINGS_ACCENT_COLOR_TIP"],
+          default = ns:GetModule("Theme"):GetDefaultFlatAccent(),
+          hidden = function() return ns:GetModule("Database"):GetSetting("theme") ~= "flat" end },
         -- Locale-aware: only fonts the client can actually render are offered,
         -- so a CJK/Korean player cannot pick a Latin-only font and turn every
         -- string in the addon into boxes.
