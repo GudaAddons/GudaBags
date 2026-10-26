@@ -506,21 +506,39 @@ commandHandlers["slotinfo"] = function()
         ns:Print("slotinfo: hover an item slot first")
         return
     end
-    ns:Print("slotinfo: " .. tostring(focus:GetName() or focus:GetObjectType()))
-    local keyOf = {}
-    for k, v in pairs(focus) do
-        if type(v) == "table" and v.GetObjectType then keyOf[v] = k end
-    end
-    local shown = 0
-    for _, region in ipairs({ focus:GetRegions() }) do
-        if region:GetObjectType() == "Texture" and region:IsShown() and region:GetAlpha() > 0 then
-            shown = shown + 1
-            local layer, sub = region:GetDrawLayer()
-            ns:Print(string.format("  %s  %s/%s  %s  alpha=%.2f", tostring(keyOf[region] or region:GetName() or "?"),
-                tostring(layer), tostring(sub), tostring(region:GetAtlas() or region:GetTexture()), region:GetAlpha()))
+    -- The button, its child frames (one level) and its parent (our wrapper):
+    -- slot art can live on any of them, not only on the button itself.
+    local function Dump(frame, label)
+        local keyOf = {}
+        for k, v in pairs(frame) do
+            if type(v) == "table" and v.GetObjectType then keyOf[v] = k end
+        end
+        local lines = {}
+        for _, region in ipairs({ frame:GetRegions() }) do
+            if region:GetObjectType() == "Texture" and region:IsVisible() and region:GetAlpha() > 0 then
+                local layer, sub = region:GetDrawLayer()
+                lines[#lines + 1] = string.format("    %s  %s/%s  %s  alpha=%.2f",
+                    tostring(keyOf[region] or region:GetName() or "?"), tostring(layer), tostring(sub),
+                    tostring(region:GetAtlas() or region:GetTexture()), region:GetAlpha())
+            end
+        end
+        if #lines > 0 then
+            ns:Print(string.format("  [%s] %s  level=%d", label, tostring(frame:GetName() or frame:GetObjectType()),
+                frame:GetFrameLevel()))
+            for _, line in ipairs(lines) do ns:Print(line) end
         end
     end
-    if shown == 0 then ns:Print("  (no visible textures)") end
+    ns:Print("slotinfo: " .. tostring(focus:GetName() or focus:GetObjectType()))
+    Dump(focus, "button")
+    local childKey = {}
+    for k, v in pairs(focus) do
+        if type(v) == "table" and v.GetObjectType then childKey[v] = k end
+    end
+    for _, child in ipairs({ focus:GetChildren() }) do
+        if child:IsVisible() then Dump(child, "child " .. tostring(childKey[child] or "?")) end
+    end
+    local parent = focus:GetParent()
+    if parent then Dump(parent, "parent") end
 end
 
 commandHandlers["bankdump"] = function()
