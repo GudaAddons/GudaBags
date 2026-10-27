@@ -412,7 +412,7 @@ local API_CHECK_GROUPS = {
         "IsAddOnLoaded", "IsAltKeyDown", "IsControlKeyDown", "IsInGuild",
         "IsInInstance", "IsLoggedIn", "IsModifiedClick", "IsMouseButtonDown",
         "IsShiftKeyDown", "IsSpellKnown", "MoneyFrame_Update",
-        "MoneyInputFrame_GetCopper", "MoneyInputFrame_ResetMoney", "MouseIsOver",
+        "MoneyInputFrame_GetCopper", "MoneyInputFrame_ResetMoney",
         "MuteSoundFile", "OpenStackSplitFrame", "PanelTemplates_DeselectTab",
         "PanelTemplates_SetNumTabs", "PanelTemplates_SetTab",
         "PanelTemplates_TabResize", "PickupBagFromSlot", "PickupGuildBankItem",
