@@ -820,7 +820,7 @@ local function ShowTypesDropdownMenu(searchBar, anchor)
 
     -- Close on click outside
     typesDropdownMenu:SetScript("OnUpdate", function(self)
-        if not MouseIsOver(self) and not MouseIsOver(anchor) then
+        if not self:IsMouseOver() and not anchor:IsMouseOver() then
             if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
                 self:Hide()
             end
