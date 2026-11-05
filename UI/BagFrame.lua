@@ -1301,7 +1301,9 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
         button.layoutX = itemInfo.x
         button.layoutY = itemInfo.y
         button.layoutIndex = index
-        button.containerFrame = frame.container
+        -- Not "containerFrame": the Forever template reads that field as a Blizzard bag
+        -- frame (IsCombined -> IsCombinedBagContainer) when it clears an empty slot
+        button.gudaContainer = frame.container
 
         button.wrapper:ClearAllPoints()
         button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", itemInfo.x, itemInfo.y)

@@ -2751,7 +2751,7 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
         button.layoutX = itemInfo.x
         button.layoutY = itemInfo.y
         button.layoutIndex = index
-        button.containerFrame = frame.container
+        button.gudaContainer = frame.container
 
         button.wrapper:ClearAllPoints()
         button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", itemInfo.x, itemInfo.y)

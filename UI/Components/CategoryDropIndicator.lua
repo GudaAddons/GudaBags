@@ -106,7 +106,7 @@ end
 -------------------------------------------------
 
 function CategoryDropIndicator:Show(hoveredButton)
-    if not hoveredButton or not hoveredButton.containerFrame then
+    if not hoveredButton or not hoveredButton.gudaContainer then
         return
     end
 
@@ -121,7 +121,7 @@ function CategoryDropIndicator:Show(hoveredButton)
     end
 
     local ind = CreateIndicator()
-    local container = hoveredButton.containerFrame
+    local container = hoveredButton.gudaContainer
     local iconSize = hoveredButton.iconSize or 36
 
     -- Size the indicator to match icon size
@@ -284,8 +284,8 @@ function CategoryDropIndicator:HandleDrop()
     local cursorSource = currentCursorSource or self:GetCursorItemSource()
     local targetContainer = nil
 
-    if currentHoveredButton and currentHoveredButton.containerFrame then
-        local containerName = currentHoveredButton.containerFrame:GetName()
+    if currentHoveredButton and currentHoveredButton.gudaContainer then
+        local containerName = currentHoveredButton.gudaContainer:GetName()
         if containerName == "GudaBagsSecureContainer" then
             targetContainer = "bag"
         elseif containerName == "GudaBankContainer" then
@@ -302,7 +302,7 @@ function CategoryDropIndicator:HandleDrop()
     ns:Debug("HandleDrop: cursorSource=", cursorSource, "targetContainer=", targetContainer, "categoryId=", currentCategoryId)
     ns:Debug("HandleDrop: currentHoveredButton=", currentHoveredButton and "exists" or "nil")
     if currentHoveredButton then
-        ns:Debug("HandleDrop: containerFrame=", currentHoveredButton.containerFrame and currentHoveredButton.containerFrame:GetName() or "nil")
+        ns:Debug("HandleDrop: gudaContainer=", currentHoveredButton.gudaContainer and currentHoveredButton.gudaContainer:GetName() or "nil")
     end
 
     -- Bank to Bag: cursor from bank, indicator on bag item
