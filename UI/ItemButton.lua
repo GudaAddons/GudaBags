@@ -545,7 +545,7 @@ local function ResetButton(pool, button)
     button.layoutX = nil
     button.layoutY = nil
     button.layoutIndex = nil
-    button.containerFrame = nil
+    button.gudaContainer = nil
 
     -- Hide Blizzard template's built-in textures
     if button.IconBorder then button.IconBorder:Hide() end
@@ -760,7 +760,7 @@ hoverWatcher:SetScript("OnUpdate", function(watcher)
     end
 
     -- Update drag-drop indicator position
-    if self.categoryId and self.containerFrame and self:IsMouseOver() then
+    if self.categoryId and self.gudaContainer and self:IsMouseOver() then
         local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
         if CategoryDropIndicator and CategoryDropIndicator:IsShown() then
             CategoryDropIndicator:OnItemButtonUpdate(self)
@@ -1335,7 +1335,7 @@ local function CreateButton(parent)
             end
 
             -- Show drag-drop indicator if cursor has item and this is a category view item
-            if self.categoryId and self.containerFrame then
+            if self.categoryId and self.gudaContainer then
                 local cursorType = GetCursorInfo()
                 if cursorType == "item" then
                     local CategoryDropIndicator = ns:GetModule("CategoryDropIndicator")
@@ -1700,8 +1700,8 @@ local function CreateButton(parent)
         -- Determine if this is a cross-container operation
         -- Cross-container swaps (bag↔bank) are ALLOWED
         -- Same-container swaps (bag→bag or bank→bank) are BLOCKED
-        if targetButton.containerFrame then
-            local containerName = targetButton.containerFrame:GetName()
+        if targetButton.gudaContainer then
+            local containerName = targetButton.gudaContainer:GetName()
             local cursorSource = GetCursorItemSource()
 
             if containerName == "GudaBankContainer" then
