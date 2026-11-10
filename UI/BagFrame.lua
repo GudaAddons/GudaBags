@@ -48,6 +48,18 @@ local inInteraction  = false   -- True between any interaction-open and its matc
 -- that shares the ItemButton pool (bank/guild bank/mail) opens.
 local heldHidden = false        -- frame is hidden but buttons/layout retained
 local dirtyWhileHidden = false  -- bags/settings changed since being hidden
+local heldFreeSlots = nil       -- live free-slot count when the layout was held
+
+-- Live free slots across carried bags (a handful of API calls). Fast reopen
+-- compares this against heldFreeSlots as a safety net: if the bags changed while
+-- hidden and no dirty flag caught it, the retained layout is stale.
+local function CountLiveFreeSlots()
+    local free = 0
+    for _, bagID in ipairs(Constants.BAG_IDS) do
+        free = free + (C_Container.GetContainerNumFreeSlots(bagID) or 0)
+    end
+    return free
+end
 
 -- Single/split button recycling across Refresh (mirrors BankFrame's bankRecycle)
 local bagRecycle = nil          -- array of buttons available to reuse this refresh
@@ -1448,6 +1460,7 @@ function BagFrame:ReleaseHeld()
     if not heldHidden then return end
     heldHidden = false
     dirtyWhileHidden = false
+    heldFreeSlots = nil
     if not frame then return end
     ReleaseAllBagButtons()
     ReleaseAllCategoryHeaders()
@@ -1484,7 +1497,13 @@ function BagFrame:Show()
 
     -- Fast reopen: the retained layout is still valid — just show it. This is the
     -- common rapid open/close case and skips the full scan + button rebuild.
-    if self:CanFastReopen() then
+    -- The free-slot check catches bag changes that slipped past dirtyWhileHidden.
+    local canFast = self:CanFastReopen()
+    if canFast and CountLiveFreeSlots() ~= heldFreeSlots then
+        ns:Debug("BagFrame: free slots changed while hidden, rebuilding")
+        canFast = false
+    end
+    if canFast then
         heldHidden = false
         -- Lightweight appearance pass: reconciles search-bar/container/footer state
         -- (cheap, ~4ms) while skipping the per-button restyle loops (already styled).
@@ -1527,10 +1546,13 @@ end
 function BagFrame:Hide()
     if not frame then return end
 
-    -- Must run before frame:Hide() below, while IsShown() still reads true.
-    if frame:IsShown() then
-        PlaySound(SOUNDKIT and SOUNDKIT.IG_BACKPACK_CLOSE or 863)
-    end
+    -- Already hidden: nothing to do. Blizzard's CloseAllBags/CloseBag/CloseBackpack
+    -- route here and fire while the bags are closed; re-running the hold logic then
+    -- would reset dirtyWhileHidden and wipe changes looted while hidden, so the next
+    -- open fast-reopens a stale layout.
+    if not frame:IsShown() then return end
+
+    PlaySound(SOUNDKIT and SOUNDKIT.IG_BACKPACK_CLOSE or 863)
 
     ns:ProfileStart("Hide")
 
@@ -1561,6 +1583,7 @@ function BagFrame:Hide()
         -- Keep buttons + layout so the next open is near-instant. Released later
         -- by ReleaseHeld if anything changes while hidden (see CanFastReopen).
         dirtyWhileHidden = false
+        heldFreeSlots = CountLiveFreeSlots()
     else
         -- Stale/invalid layout — tear it down so the next open rebuilds cleanly.
         self:ReleaseHeld()
