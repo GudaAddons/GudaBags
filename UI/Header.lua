@@ -244,7 +244,14 @@ local function CreateHeader(parent)
     -- Right side icons (created right-to-left for proper anchoring)
     local closeButton = IconButton:CreateCloseButton(titleBar, {
         onClick = function()
-            parent:Hide()
+            -- Close through BagFrame:Hide so the held layout and its dirty
+            -- tracking are set up; a raw frame hide skips that bookkeeping.
+            local BagFrame = ns:GetModule("BagFrame")
+            if BagFrame then
+                BagFrame:Hide()
+            else
+                parent:Hide()
+            end
         end,
         point = "RIGHT",
         offsetX = 0,
