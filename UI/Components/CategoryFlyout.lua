@@ -17,14 +17,24 @@ ns:RegisterModule("CategoryFlyout", CategoryFlyout)
 -- Layout
 -------------------------------------------------
 
-local ROW_HEIGHT = 24
-local ROW_SPACING = 2
-local ICON_SIZE = 20
-local COL_WIDTH = 150
-local COL_SPACING = 4
-local PADDING = 4
+local ROW_HEIGHT = 34
+local ROW_SPACING = 3
+local ICON_SIZE = 28
+local ICON_HOVER_SIZE = 31     -- icon grows a little under the cursor
+local COL_WIDTH = 180
+local COL_SPACING = 6
+local PADDING = 6
 local FRAME_GAP = 2
 local DEFAULT_ICON = "Interface\\AddOns\\GudaBags\\Assets\\plus.png"
+local WHITE = "Interface\\Buttons\\WHITE8x8"
+
+-- Gold accent shared by the border, the hover stripe and the hovered name.
+local ACCENT_R, ACCENT_G, ACCENT_B = 1.0, 0.82, 0.2
+local TEXT_R, TEXT_G, TEXT_B = 0.9, 0.9, 0.9
+
+local FADE_DURATION = 0.15
+local ROW_STAGGER = 0.02       -- per-row fade delay, capped by ROW_STAGGER_MAX
+local ROW_STAGGER_MAX = 0.2
 
 -------------------------------------------------
 -- State
@@ -55,38 +65,111 @@ local function CreateBar()
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
-    bar:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
-    bar:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+    bar:SetBackdropColor(0.04, 0.04, 0.05, 0.95)
+    bar:SetBackdropBorderColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.55)
+
+    -- Soft sheen across the top half
+    local sheen = bar:CreateTexture(nil, "BORDER")
+    sheen:SetTexture(WHITE)
+    sheen:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
+    sheen:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -1, -1)
+    sheen:SetPoint("BOTTOM", bar, "CENTER")
+    sheen:SetGradient("VERTICAL", CreateColor(1, 1, 1, 0), CreateColor(1, 1, 1, 0.05))
+
+    -- Fade in on every Show (built once; plays only while the bar is shown)
+    local fade = bar:CreateAnimationGroup()
+    local alpha = fade:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0)
+    alpha:SetToAlpha(1)
+    alpha:SetDuration(FADE_DURATION)
+    alpha:SetSmoothing("OUT")
+    bar.fade = fade
+
     bar:Hide()
     return bar
+end
+
+-- Hover look: gold stripe + tint, gold name, slightly larger icon.
+local function SetRowHover(row, hovered)
+    if hovered then
+        row.accent:Show()
+        row.hover:Show()
+        row.text:SetTextColor(ACCENT_R, ACCENT_G, ACCENT_B)
+        row.icon:SetSize(ICON_HOVER_SIZE, ICON_HOVER_SIZE)
+        row.iconBorder:SetVertexColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.9)
+    else
+        row.accent:Hide()
+        row.hover:Hide()
+        row.text:SetTextColor(TEXT_R, TEXT_G, TEXT_B)
+        row.icon:SetSize(ICON_SIZE, ICON_SIZE)
+        row.iconBorder:SetVertexColor(0, 0, 0, 0.9)
+    end
 end
 
 local function CreateRow(index)
     local row = CreateFrame("Button", nil, bar)
     row:SetSize(COL_WIDTH, ROW_HEIGHT)
 
+    -- Background: fades out toward the right
     local bg = row:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(1, 1, 1, 0.05)
+    bg:SetTexture(WHITE)
+    bg:SetGradient("HORIZONTAL", CreateColor(1, 1, 1, 0.09), CreateColor(1, 1, 1, 0.015))
+
+    -- Hover tint (gold, fading right) and left accent stripe
+    local hover = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+    hover:SetAllPoints()
+    hover:SetTexture(WHITE)
+    hover:SetGradient("HORIZONTAL",
+        CreateColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.28), CreateColor(ACCENT_R, ACCENT_G, ACCENT_B, 0))
+    hover:Hide()
+    row.hover = hover
+
+    local accent = row:CreateTexture(nil, "BORDER")
+    accent:SetTexture(WHITE)
+    accent:SetVertexColor(ACCENT_R, ACCENT_G, ACCENT_B, 1)
+    accent:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    accent:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 0, 0)
+    accent:SetWidth(2)
+    accent:Hide()
+    row.accent = accent
+
+    -- Framed icon: a 1px border behind a trimmed icon
+    local iconHolder = CreateFrame("Frame", nil, row)
+    iconHolder:SetSize(ICON_HOVER_SIZE + 2, ICON_HOVER_SIZE + 2)
+    iconHolder:SetPoint("LEFT", row, "LEFT", 5, 0)
+
+    local iconBorder = row:CreateTexture(nil, "BORDER", nil, 1)
+    iconBorder:SetTexture(WHITE)
+    row.iconBorder = iconBorder
 
     local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(ICON_SIZE, ICON_SIZE)
-    icon:SetPoint("LEFT", row, "LEFT", 2, 0)
+    icon:SetPoint("CENTER", iconHolder, "CENTER")
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     row.icon = icon
+    iconBorder:SetPoint("TOPLEFT", icon, "TOPLEFT", -1, 1)
+    iconBorder:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 1, -1)
 
-    local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     local Font = ns:GetModule("Font")
     if Font then Font:Override(text) end
-    text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-    text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    text:SetPoint("LEFT", iconHolder, "RIGHT", 6, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)  -- long names are cut off with "..."
     row.text = text
 
-    local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetAllPoints()
-    highlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-    highlight:SetBlendMode("ADD")
+    -- Per-row fade, staggered in Show() so the list cascades in
+    local fade = row:CreateAnimationGroup()
+    local alpha = fade:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0)
+    alpha:SetToAlpha(1)
+    alpha:SetDuration(FADE_DURATION)
+    alpha:SetSmoothing("OUT")
+    fade:SetToFinalAlpha(true)
+    row.fade, row.fadeAlpha = fade, alpha
+
+    SetRowHover(row, false)
 
     row:EnableMouse(true)
     row:RegisterForDrag("LeftButton")
@@ -95,12 +178,16 @@ local function CreateRow(index)
     end)
     row:SetScript("OnReceiveDrag", HandleDrop)
     row:SetScript("OnEnter", function(self)
+        SetRowHover(self, true)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.categoryName or "", 1, 1, 1)
         GameTooltip:AddLine(ns.L["DROP_HERE_TO_ASSIGN"], 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnLeave", function(self)
+        SetRowHover(self, false)
+        GameTooltip:Hide()
+    end)
 
     rows[index] = row
     return row
@@ -119,6 +206,7 @@ function CategoryFlyout:Show(bagFrame, targets)
     end
 
     CreateBar()
+    local animate = not bar:IsShown()  -- fade in only on open, not on re-show mid-drag
 
     -- Match the bag frame's effective scale so its height is in our units.
     bar:SetScale(bagFrame:GetEffectiveScale() / UIParent:GetEffectiveScale())
@@ -153,7 +241,16 @@ function CategoryFlyout:Show(bagFrame, targets)
         row.categoryName = target.name
         row.icon:SetTexture(target.icon or DEFAULT_ICON)
         row.text:SetText(target.name)
+        SetRowHover(row, false)  -- a row hidden while hovered never got OnLeave
         row:Show()
+        row.fade:Stop()
+        if animate then
+            row.fadeAlpha:SetStartDelay(math.min((i - 1) * ROW_STAGGER, ROW_STAGGER_MAX))
+            row:SetAlpha(0)
+            row.fade:Play()
+        else
+            row:SetAlpha(1)
+        end
     end
     for i = count + 1, #rows do
         rows[i].categoryId = nil
@@ -167,6 +264,10 @@ function CategoryFlyout:Show(bagFrame, targets)
         bar:SetPoint("TOPLEFT", bagFrame, "TOPRIGHT", FRAME_GAP, 0)
     end
     bar:Show()
+    if animate then
+        bar.fade:Stop()
+        bar.fade:Play()
+    end
 end
 
 function CategoryFlyout:Hide()
