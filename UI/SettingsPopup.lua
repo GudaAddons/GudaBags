@@ -1322,20 +1322,27 @@ end
 -------------------------------------------------
 -- Create Guide Tab
 -------------------------------------------------
-local function CreateGuideSection(parent, yOffset, imagePath, title, description)
+-- squareImage: for a plain icon instead of a 72x56 screenshot; it is drawn
+-- square and centered in the same space so the text column stays aligned.
+local function CreateGuideSection(parent, yOffset, imagePath, title, description, squareImage)
     local IMAGE_WIDTH = 72
     local IMAGE_HEIGHT = 56
     local SECTION_HEIGHT = 90
 
     -- Image
     local image = parent:CreateTexture(nil, "ARTWORK")
-    image:SetSize(IMAGE_WIDTH, IMAGE_HEIGHT)
-    image:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
+    if squareImage then
+        image:SetSize(IMAGE_HEIGHT, IMAGE_HEIGHT)
+        image:SetPoint("TOPLEFT", parent, "TOPLEFT", (IMAGE_WIDTH - IMAGE_HEIGHT) / 2, yOffset)
+    else
+        image:SetSize(IMAGE_WIDTH, IMAGE_HEIGHT)
+        image:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
+    end
     image:SetTexture(imagePath)
 
     -- Title
     local titleText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("TOPLEFT", image, "TOPRIGHT", 10, 0)
+    titleText:SetPoint("TOPLEFT", parent, "TOPLEFT", IMAGE_WIDTH + 10, yOffset)
     titleText:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
     titleText:SetJustifyH("LEFT")
     titleText:SetTextColor(1, 0.82, 0)
@@ -1353,7 +1360,21 @@ local function CreateGuideSection(parent, yOffset, imagePath, title, description
 end
 
 local function CreateGuideTab(parent)
-    local content = CreateFrame("Frame", nil, parent)
+    local outer = CreateFrame("Frame", nil, parent)
+
+    -- Scrolls: the sections no longer fit the popup height in every locale.
+    -- Same pattern as the categories list above.
+    local scrollFrame = CreateFrame("ScrollFrame", nil, outer, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", outer, "TOPLEFT", 0, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", outer, "BOTTOMRIGHT", -22, 0)
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetSize(1, 1)
+    scrollFrame:SetScrollChild(content)
+    scrollFrame:SetScript("OnSizeChanged", function(_, width)
+        content:SetWidth(width)
+    end)
+
     local yOffset = 0
 
     -- Quest Item Bar Section
@@ -1395,7 +1416,16 @@ local function CreateGuideTab(parent)
         pinTitle,
         L["GUIDE_PIN_SLOT_DESC"])
 
-    return content
+    yOffset = yOffset - 20
+
+    -- Junk Section (same coin icon as the drag bar's junk target)
+    yOffset = yOffset - CreateGuideSection(content, yOffset,
+        "Interface\\Buttons\\UI-GroupLoot-Coin-Up",
+        L["GUIDE_JUNK_TITLE"],
+        L["GUIDE_JUNK_DESC"], true)
+
+    content:SetHeight(-yOffset + 20)
+    return outer
 end
 
 -------------------------------------------------

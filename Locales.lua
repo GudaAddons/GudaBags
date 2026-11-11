@@ -565,6 +565,12 @@ The pin stays on the slot, not the item.
 A pin icon appears on the bottom-left corner.
 |cffff8800Retail and Forever:|r Requires |cff00ccccGudaBags Sort|r enabled in Settings.]]
 
+L["GUIDE_JUNK_TITLE"] = "Mark as Junk"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + Middle-Click|r (mouse wheel) an item to mark/unmark it as junk.
+Or drag it onto the |cff00cccccoin|r in the drag bar, or into the |cff00ccccJunk|r category.
+Junk items get a coin icon, sort last and are sold at vendors when auto-sell is on.
+|cff00ccccKeybind:|r GudaBags > Toggle Junk on Hovered Item]]
+
 -- Profiles
 L["TAB_PROFILES"] = "Profiles"
 L["TAB_PROFILES_TIP"] = "Save, load, export and import settings profiles"
@@ -1094,6 +1100,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Épinglez un emplacement pour le protéger du tri.
 Les emplacements épinglés sont |cff00ccccignorés|r lors du tri.
 L'épingle reste sur l'emplacement, pas sur l'objet.
 Une icône d'épingle apparaît en bas à gauche.]]
+
+L["GUIDE_JUNK_TITLE"] = "Marquer comme camelote"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + Clic milieu|r (molette) sur un objet pour le marquer/démarquer comme camelote.
+Ou glissez-le sur la |cff00ccccpièce|r de la barre de glisser, ou dans la catégorie |cff00ccccCamelote|r.
+La camelote affiche une pièce, est triée en dernier et vendue aux marchands si la vente auto est active.
+|cff00ccccRaccourci:|r GudaBags > Basculer camelote sur l'objet survolé]]
 
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Suivre cet objet"
@@ -1747,6 +1759,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Hefte einen Taschenplatz an, um ihn vor dem Sortier
 Angeheftete Plätze werden beim Sortieren |cff00ccccübersprungen|r.
 Die Nadel bleibt am Platz, nicht am Gegenstand.
 Ein Nadel-Symbol erscheint unten links.]]
+
+L["GUIDE_JUNK_TITLE"] = "Als Müll markieren"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + Mittelklick|r (Mausrad) auf einen Gegenstand markiert ihn als Müll oder hebt dies auf.
+Oder ziehe ihn auf die |cff00ccccMünze|r der Ziehleiste oder in die Kategorie |cff00ccccRamsch|r.
+Müll erhält ein Münzsymbol, wird zuletzt sortiert und bei aktivem Autoverkauf beim Händler verkauft.
+|cff00ccccTastenbelegung:|r GudaBags > Müll für Gegenstand unter Mauszeiger umschalten]]
 --@localization(locale="deDE", format="lua_additive_table")@
 
 -- Drag-Flyout Drop Targets
@@ -2342,6 +2360,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Закрепите ячейку сумки, что�
 Закреплённые ячейки |cff00ccccпропускаются|r при сортировке.
 Закрепление остаётся на ячейке, а не на предмете.
 Значок булавки появляется слева внизу.]]
+
+L["GUIDE_JUNK_TITLE"] = "Пометить как мусор"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + средний клик|r (колесо мыши) по предмету помечает его как мусор или снимает метку.
+Или перетащите его на |cff00ccccмонету|r панели перетаскивания или в категорию |cff00ccccХлам|r.
+Мусор получает значок монеты, сортируется последним и продаётся торговцу при включённой автопродаже.
+|cff00ccccКлавиша:|r GudaBags > Пометить/снять мусор с предмета под курсором]]
 
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Отслеживать предмет"
@@ -2939,6 +2963,12 @@ Slots fixados são |cff00ccccignorados|r durante a ordenação.
 A fixação fica no slot, não no item.
 Um ícone de pino aparece no canto inferior esquerdo.]]
 
+L["GUIDE_JUNK_TITLE"] = "Marcar como lixo"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + Clique do meio|r (roda do mouse) em um item para marcá-lo/desmarcá-lo como lixo.
+Ou arraste-o para a |cff00ccccmoeda|r da barra de arrastar, ou para a categoria |cff00ccccLixo|r.
+Itens de lixo ganham um ícone de moeda, ficam por último e são vendidos se a venda automática estiver ativa.
+|cff00ccccAtalho:|r GudaBags > Alternar lixo no item sob o cursor]]
+
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Rastrear este item"
 L["TOOLTIP_FLYOUT_TRACK_ON"] = "Parar de rastrear este item"
@@ -3534,6 +3564,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Fija una ranura de bolsa para protegerla al ordenar
 Las ranuras fijadas se |cff00ccccignoran|r al ordenar.
 La fijación queda en la ranura, no en el objeto.
 Un icono de pin aparece en la esquina inferior izquierda.]]
+
+L["GUIDE_JUNK_TITLE"] = "Marcar como basura"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + Clic central|r (rueda del ratón) en un objeto para marcarlo/desmarcarlo como basura.
+O arrástralo a la |cff00ccccmoneda|r de la barra de arrastre, o a la categoría |cff00ccccBasura|r.
+La basura muestra una moneda, se ordena al final y se vende al comerciante si la venta automática está activa.
+|cff00ccccAtajo:|r GudaBags > Alternar basura en el objeto bajo el cursor]]
 
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Seguir este objeto"
@@ -4139,6 +4175,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[釘選背包欄位以保護其不被排序。
 釘選綁定在欄位上，不跟隨物品。
 釘選圖示顯示在左下角。]]
 
+L["GUIDE_JUNK_TITLE"] = "標記為垃圾"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + 中鍵點擊|r（滑鼠滾輪）物品可標記/取消垃圾。
+或將其拖曳到拖曳列的|cff00cccc金幣|r上，或拖入|cff00cccc垃圾|r分類。
+垃圾物品會顯示金幣圖示、排在最後，開啟自動販賣時會賣給商人。
+|cff00cccc按鍵綁定:|r GudaBags > 切換滑鼠指向物品的垃圾標記]]
+
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "追蹤此物品"
 L["TOOLTIP_FLYOUT_TRACK_ON"] = "取消追蹤此物品"
@@ -4736,6 +4778,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[钉选背包栏位以保护其不被排序。
 钉选绑定在栏位上，不跟随物品。
 钉选图标显示在左下角。]]
 
+L["GUIDE_JUNK_TITLE"] = "标记为垃圾"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + 中键点击|r（鼠标滚轮）物品可标记/取消垃圾。
+或将其拖到拖动栏的|cff00cccc金币|r上，或拖入|cff00cccc垃圾|r分类。
+垃圾物品会显示金币图标、排在最后，开启自动出售时会卖给商人。
+|cff00cccc按键绑定:|r GudaBags > 切换鼠标指向物品的垃圾标记]]
+
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "追踪此物品"
 L["TOOLTIP_FLYOUT_TRACK_ON"] = "取消追踪此物品"
@@ -5250,6 +5298,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[가방 슬롯을 고정하여 정렬에서 보호�
 고정된 슬롯은 정렬 시 |cff00cccc건너뜁니다|r.
 고정은 슬롯에 유지되며, 아이템을 따라가지 않습니다.
 핀 아이콘이 왼쪽 하단에 표시됩니다.]]
+
+L["GUIDE_JUNK_TITLE"] = "잡템으로 표시"
+L["GUIDE_JUNK_DESC"] = [[아이템을 |cff00ccccAlt + 가운데 클릭|r(마우스 휠)하여 잡템 표시/해제합니다.
+또는 드래그 바의 |cff00cccc동전|r이나 |cff00cccc쓰레기|r 카테고리로 끌어다 놓으세요.
+잡템은 동전 아이콘이 표시되고 마지막에 정렬되며, 자동 판매가 켜져 있으면 상인에게 판매됩니다.
+|cff00cccc단축키:|r GudaBags > 마우스 아래 아이템 잡템 표시 전환]]
 
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "이 아이템 추적"
@@ -5849,6 +5903,12 @@ L["GUIDE_PIN_SLOT_DESC"] = [[Fissa uno slot borsa per proteggerlo dall'ordinamen
 Gli slot fissati vengono |cff00ccccignora|r durante l'ordinamento.
 La fissatura resta sullo slot, non sull'oggetto.
 Un'icona puntina appare in basso a sinistra.]]
+
+L["GUIDE_JUNK_TITLE"] = "Segna come spazzatura"
+L["GUIDE_JUNK_DESC"] = [[|cff00ccccAlt + Clic centrale|r (rotella) su un oggetto per segnarlo/rimuoverlo come spazzatura.
+Oppure trascinalo sulla |cff00ccccmoneta|r della barra di trascinamento o nella categoria |cff00ccccRobaccia|r.
+La spazzatura mostra una moneta, viene ordinata per ultima e venduta ai mercanti se la vendita automatica è attiva.
+|cff00ccccScorciatoia:|r GudaBags > Attiva/disattiva spazzatura sull'oggetto sotto il cursore]]
 
 -- Drag-Flyout Drop Targets
 L["TOOLTIP_FLYOUT_TRACK_OFF"] = "Traccia questo oggetto"
