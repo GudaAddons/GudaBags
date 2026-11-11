@@ -90,6 +90,7 @@ UI\Controls\ColorPicker.lua
 # UI Components (Reusable)
 UI\Components\CategoryDropIndicator.lua
 UI\Components\DragFlyoutBar.lua
+UI\Components\CategoryFlyout.lua
 
 # UI Layout
 UI\Layout\VerticalStack.lua

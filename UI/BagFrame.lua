@@ -148,12 +148,17 @@ local lastButtonByCategory = {} -- Key: categoryId -> last item button (for drop
 -- bag update took depended on which function had last written this, not on what
 -- happened to the bags. Every writer now stores occupied slots.
 local lastOccupiedSlotCount = 0
-local pseudoItemButtons = {} -- Track Empty/Soul/DropTarget pseudo-item buttons for proper release
-                             -- Keys are "Empty:<categoryId>", "Soul:<categoryId>", or "DropTarget:<categoryId>"
+local pseudoItemButtons = {} -- Track Empty/Soul/Quiver pseudo-item buttons for proper release
+                             -- Keys are "Empty:<categoryId>", "Soul:<categoryId>", or "Quiver:<categoryId>"
 
--- Drag state tracking for showing empty category drop targets
+-- Drag state tracking (drag flyout bar + CategoryFlyout). A drag never changes
+-- the layout: empty categories are offered in the CategoryFlyout bar beside the
+-- frame, so nothing jumps while the item is being moved.
 local isDraggingItem = false
 local dragCheckTicker = nil
+-- Sections of the last category render; the flyout derives its empty-category
+-- list from these (LayoutEngine:GetEmptyDropTargetCategories).
+local lastCategorySections = nil
 
 -- Category view: coalesced structural refresh.
 --
@@ -173,8 +178,9 @@ local categoryRefreshTimer = nil
 
 -- Headroom added to the item count when sizing the in-combat pool check below.
 -- A layout needs at most one button per carried item plus its pseudo slots: Empty,
--- Soul and Quiver are one each, but a drag adds a DropTarget per empty category, so
--- the margin is sized for that worst case rather than the three fixed ones. Being
+-- Soul and Quiver, one each. (A drag used to add a DropTarget per empty category,
+-- which is what this margin was sized for; empty categories now live in the
+-- CategoryFlyout bar instead.) The margin is deliberately left generous: being
 -- generous only costs a deferral, while being short would let Refresh reach
 -- CreateFrame mid-combat — the failure this check exists to prevent.
 local PSEUDO_SLOT_MARGIN = 32
@@ -1137,8 +1143,8 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
     lastLayoutWasGrouped = LayoutEngine:ShouldGroupItems()
 
     -- Build category sections (include empty slot count for "Empty" and "Soul" categories)
-    -- When dragging an item, also show empty categories as drop targets
-    local sections = LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, nil, isDraggingItem, quiverEmptyCount, firstQuiverEmptySlot)
+    local sections = LayoutEngine:BuildCategorySections(items, isViewingCached, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, nil, quiverEmptyCount, firstQuiverEmptySlot)
+    lastCategorySections = sections
 
     -- Calculate frame size
     local frameWidth, frameHeight = LayoutEngine:CalculateCategoryFrameSize(sections, settings)
@@ -1325,10 +1331,7 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
         -- But DO track it separately for proper release
         -- Use a unique key combining pseudo-item type and categoryId to avoid overwrites
         -- when multiple pseudo-items (Empty, Soul) are in the same merged group
-        if itemData.isDropTarget then
-            local pseudoKey = "DropTarget:" .. itemInfo.categoryId
-            pseudoItemButtons[pseudoKey] = button
-        elseif itemData.isEmptySlots then
+        if itemData.isEmptySlots then
             local prefix
             if itemData.isSoulSlots then
                 prefix = "Soul:"
@@ -1576,6 +1579,10 @@ function BagFrame:Hide()
     local DragFlyoutBar = ns:GetModule("DragFlyoutBar")
     if DragFlyoutBar then
         DragFlyoutBar:OnDragEnd()
+    end
+    local CategoryFlyout = ns:GetModule("CategoryFlyout")
+    if CategoryFlyout then
+        CategoryFlyout:Hide()
     end
 
     heldHidden = true
@@ -3188,7 +3195,7 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
     end
 
     -- Detect drag start for showing the flyout drop bar (all views) and the
-    -- empty-category drop targets (category view only).
+    -- CategoryFlyout of empty categories (category view only).
     -- Deferred by one frame to distinguish equip operations (cursor clears within
     -- the same frame) from actual user drags (cursor persists across frames).
     -- Without this, right-click equip triggers false drag detection because the
@@ -3215,9 +3222,14 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
                     DragFlyoutBar:OnDragStart(cursorItemID, sourceBag, sourceSlot, source)
                 end
 
+                -- Empty categories are offered beside the frame; the layout itself
+                -- is left untouched, so nothing moves under the cursor.
                 local viewType = Database:GetSetting("bagViewType") or "single"
                 if viewType == "category" then
-                    BagFrame:Refresh()
+                    local CategoryFlyout = ns:GetModule("CategoryFlyout")
+                    if CategoryFlyout then
+                        CategoryFlyout:Show(frame, LayoutEngine:GetEmptyDropTargetCategories(lastCategorySections))
+                    end
                 end
 
                 -- Poll for cursor clear (item dropped/cancelled)
@@ -3232,11 +3244,9 @@ Events:Register("ITEM_LOCK_CHANGED", function(event, bagID, slotID)
                         if DragFlyoutBar then
                             DragFlyoutBar:OnDragEnd()
                         end
-                        if frame and frame:IsShown() then
-                            local viewType = Database:GetSetting("bagViewType") or "single"
-                            if viewType == "category" then
-                                BagFrame:Refresh()
-                            end
+                        local CategoryFlyout = ns:GetModule("CategoryFlyout")
+                        if CategoryFlyout then
+                            CategoryFlyout:Hide()
                         end
                     end
                 end)
