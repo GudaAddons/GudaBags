@@ -8,6 +8,7 @@ BINDING_HEADER_GudaBags = L["BINDING_HEADER"]
 -- Binding names
 BINDING_NAME_GUDABAGS_TOGGLE = L["BINDING_TOGGLE_BAGS"]
 BINDING_NAME_GUDABAGS_TOGGLE_BANK = L["BINDING_TOGGLE_BANK"]
+BINDING_NAME_GUDABAGS_TOGGLE_JUNK = L["BINDING_TOGGLE_JUNK"]
 
 -- Click bindings for secure buttons (item usage)
 _G["BINDING_NAME_CLICK GudaQuestBarMainButton:RightButton"] = L["BINDING_USE_QUEST_ITEM"]
@@ -41,5 +42,13 @@ function GudaBags_ToggleBank()
     local BankFrame = ns:GetModule("BankFrame")
     if BankFrame then
         BankFrame:Toggle()
+    end
+end
+
+-- Mark/unmark the bag or bank item under the mouse as junk
+function GudaBags_ToggleJunkHovered()
+    local ItemButton = ns:GetModule("ItemButton")
+    if ItemButton then
+        ItemButton:ToggleJunkOnHovered()
     end
 end

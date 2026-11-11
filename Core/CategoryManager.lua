@@ -327,9 +327,23 @@ end
 local cachedWhiteItemsJunk = nil
 
 function CategoryManager:CategorizeItem(itemData, bagID, slotID, isOtherChar)
-    -- Check item overrides first (for manually assigned items)
     if itemData and itemData.itemID then
         local categories = self:GetCategories()
+
+        -- A player-marked junk item always lands in Junk (when Junk is enabled),
+        -- ahead of manual assignments and every rule-based category. Marking is
+        -- per-character, so only for the current character's own bags.
+        if not isOtherChar then
+            local Database = ns:GetModule("Database")
+            if Database and Database:IsItemMarkedJunk(itemData.itemID) then
+                local junkDef = categories.definitions["Junk"]
+                if junkDef and junkDef.enabled then
+                    return "Junk"
+                end
+            end
+        end
+
+        -- Check item overrides first (for manually assigned items)
         if categories.itemOverrides and categories.itemOverrides[itemData.itemID] then
             local overrideCategory = categories.itemOverrides[itemData.itemID]
             -- Verify the category still exists and is enabled
@@ -856,6 +870,20 @@ function CategoryManager:AssignItemToCategory(itemID, categoryId)
         return false
     end
 
+    -- Junk is not a plain assignment: putting an item in Junk marks it as junk,
+    -- so it also gets the junk icon/overlay, sorts last and is auto-sold.
+    if categoryId == "Junk" then
+        self:SetItemJunk(itemID, true)
+        return true
+    end
+
+    -- Moving a marked-junk item to any other category means it is not junk anymore
+    -- (otherwise CategorizeItem would send it straight back to Junk).
+    local Database = ns:GetModule("Database")
+    if Database and Database:IsItemMarkedJunk(itemID) then
+        Database:SetItemMarkedJunk(itemID, false)
+    end
+
     -- Use itemOverrides map instead of adding rules to categories
     -- This is checked first in CategorizeItem and doesn't interfere with category rules
     categories.itemOverrides = categories.itemOverrides or {}
@@ -869,6 +897,42 @@ function CategoryManager:AssignItemToCategory(itemID, categoryId)
 
     self:SaveCategories(categories)
     return true
+end
+
+-- Mark or unmark an item as junk. The single path for every junk toggle (drag
+-- flyout, Alt+Middle-click, key binding, dropping into the Junk category):
+-- marking also drops any manual category assignment so nothing pulls the item
+-- back out of Junk. Fires CATEGORIES_UPDATED (via SaveCategories), which
+-- re-renders bag/bank so the junk icon, overlay and category all update.
+function CategoryManager:SetItemJunk(itemID, isJunk)
+    if not itemID then return end
+    local Database = ns:GetModule("Database")
+    if not Database then return end
+
+    Database:SetItemMarkedJunk(itemID, isJunk)
+
+    local categories = self:GetCategories()
+    if isJunk then
+        if categories.itemOverrides then
+            categories.itemOverrides[itemID] = nil
+        end
+        local RecentItems = ns:GetModule("RecentItems")
+        if RecentItems then
+            RecentItems:RemoveRecent(itemID)
+        end
+    end
+
+    self:ClearCategoryCache()
+    self:SaveCategories(categories)
+end
+
+-- Toggle the junk mark; returns the new state (true = now junk).
+function CategoryManager:ToggleItemJunk(itemID)
+    if not itemID then return false end
+    local Database = ns:GetModule("Database")
+    local nowJunk = not (Database and Database:IsItemMarkedJunk(itemID))
+    self:SetItemJunk(itemID, nowJunk)
+    return nowJunk
 end
 
 -- Remove an item-specific assignment from a category

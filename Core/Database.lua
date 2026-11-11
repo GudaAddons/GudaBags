@@ -401,6 +401,12 @@ function Database:ToggleItemMarkedJunk(itemID)
     end
 end
 
+function Database:SetItemMarkedJunk(itemID, marked)
+    if not itemID or not GudaBags_CharDB then return end
+    GudaBags_CharDB.markedJunk = GudaBags_CharDB.markedJunk or {}
+    GudaBags_CharDB.markedJunk[itemID] = marked and true or nil
+end
+
 function Database:GetMarkedJunkSet()
     if not GudaBags_CharDB or not GudaBags_CharDB.markedJunk then return {} end
     return GudaBags_CharDB.markedJunk

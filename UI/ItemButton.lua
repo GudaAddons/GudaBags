@@ -763,6 +763,32 @@ hoverWatcher:SetScript("OnUpdate", function(watcher)
     end
 end)
 
+-- Mark/unmark the item on `button` as junk and say so in chat (like lock does).
+-- Shared by Alt+Middle-Click and the "Toggle junk on hovered item" key binding.
+-- Real items only: not pseudo slots, cached/read-only views or guild bank.
+function ItemButton:ToggleJunk(button)
+    local itemData = button and button.itemData
+    if not itemData or not itemData.itemID then return end
+    if button.isReadOnly or button.isEmptySlotButton
+        or itemData.isEmptySlots or itemData.isGuildBank then
+        return
+    end
+    local CategoryManager = ns:GetModule("CategoryManager")
+    if not CategoryManager then return end
+    local nowJunk = CategoryManager:ToggleItemJunk(itemData.itemID)
+    local L = ns.L
+    local itemRef = itemData.link or itemData.name or ""
+    ns:Print(string.format(nowJunk and L["ITEM_MARKED_JUNK"] or L["ITEM_UNMARKED_JUNK"], itemRef))
+end
+
+-- Key binding entry point: toggles junk on the bag/bank item under the mouse.
+function ItemButton:ToggleJunkOnHovered()
+    local button = hoveredButton
+    if button and button:IsVisible() and button:IsMouseOver() then
+        self:ToggleJunk(button)
+    end
+end
+
 local function CreateButton(parent)
     -- Count newly-created secure buttons. A high count during a bank open means the
     -- pool was too small (PreWarm) and the freeze is secure-frame creation, not render.
@@ -1577,6 +1603,16 @@ local function CreateButton(parent)
                         BankFrame:RefreshPinIcons()
                     end
                 end
+                return
+            end
+
+            -- Mark/unmark junk with Alt+Middle-Click. Blizzard routes any modified
+            -- click to OnModifiedClick, where Alt does nothing, so the item is never
+            -- used or sold. A BARE middle-click is treated like a right-click by
+            -- Blizzard (use/sell) — never bind anything to it.
+            if mouseButton == "MiddleButton" and IsAltKeyDown()
+                and not IsControlKeyDown() and not IsShiftKeyDown() then
+                ItemButton:ToggleJunk(self)
                 return
             end
 

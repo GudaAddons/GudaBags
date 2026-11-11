@@ -410,15 +410,11 @@ function DragFlyoutBar:HandleDrop(targetType)
 
     elseif targetType == "junk" then
         ClearCursor()
-        if Database then
-            Database:ToggleItemMarkedJunk(itemID)
-            local CategoryManager = ns:GetModule("CategoryManager")
-            if CategoryManager and CategoryManager.ClearCategoryCache then
-                CategoryManager:ClearCategoryCache()
-            end
-        end
-        if BagFrame then
-            BagFrame:Refresh()
+        -- Shared junk path: also moves the item into the Junk category and
+        -- re-renders bag/bank (CATEGORIES_UPDATED).
+        local CategoryManager = ns:GetModule("CategoryManager")
+        if CategoryManager then
+            CategoryManager:ToggleItemJunk(itemID)
         end
     end
 

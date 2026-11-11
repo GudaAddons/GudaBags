@@ -5,6 +5,9 @@
 	<Binding name="GUDABAGS_TOGGLE_BANK" category="GudaBags">
 		GudaBags_ToggleBank()
 	</Binding>
+	<Binding name="GUDABAGS_TOGGLE_JUNK" category="GudaBags">
+		GudaBags_ToggleJunkHovered()
+	</Binding>
 	<Binding name="CLICK GudaQuestBarMainButton:RightButton" category="GudaBags">
 	</Binding>
 	<Binding name="CLICK GudaQuestBarGridItem1:LeftButton" category="GudaBags">
