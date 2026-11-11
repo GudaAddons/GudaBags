@@ -468,7 +468,7 @@ end
 local function IsPlainEmptySlot(button)
     local itemData = button.itemData
     return itemData and not itemData.itemID and not itemData.isEmptySlots
-        and not itemData.isDropTarget and not button.isEmptySlotButton and not button.isDropTargetButton
+        and not button.isEmptySlotButton
 end
 
 -- Apply retail/default slot textures to a single button
@@ -538,7 +538,6 @@ local function ResetButton(pool, button)
     button.itemData = nil
     button.owner = nil
     button.isEmptySlotButton = nil
-    button.isDropTargetButton = nil
     button._masqueApplied = nil
     button.categoryId = nil
     button.iconSize = nil
@@ -587,10 +586,6 @@ local function ResetButton(pool, button)
     if button.pinIcon then button.pinIcon:Hide() end
     if button.pinIconShadow then button.pinIconShadow:Hide() end
     if button.searchGlow then button.searchGlow:Hide() end
-    if button.dropTargetGlow then
-        button.dropTargetGlow.animGroup:Stop()
-        button.dropTargetGlow:Hide()
-    end
     if button.minimalSlot then button.minimalSlot:Hide() end
     SetMinimalOutlineShown(button, false)
     if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
@@ -751,7 +746,7 @@ hoverWatcher:SetScript("OnUpdate", function(watcher)
             -- (Blizzard-driven for live slots) instead of a second insecure SetBagItem,
             -- which would re-taint GameTooltip's money frame. Skip with a held cursor
             -- (see the OnUpdate replay note below re: CursorUpdate desaturation).
-            if self.itemData and not self.isEmptySlotButton and not self.isDropTargetButton
+            if self.itemData and not self.isEmptySlotButton
                 and not self.itemData.isEmptySlots and not GetCursorInfo() then
                 local onEnter = self:GetScript("OnEnter")
                 if onEnter then onEnter(self) end
@@ -1249,13 +1244,13 @@ local function CreateButton(parent)
                 and not self.itemData.isGuildBank
                 and self.itemData.bagID ~= -2
                 and not Tooltip:IsBankSlot(self.itemData.bagID)
-                and not self.isEmptySlotButton and not self.isDropTargetButton
+                and not self.isEmptySlotButton
                 and not self.itemData.isEmptySlots
 
             -- Call Blizzard's handler for sell cursor, inspect cursor, etc.
-            -- Skip for pseudo-items (Empty/Soul/DropTarget) which don't have real bag slots
+            -- Skip for pseudo-items (Empty/Soul/Quiver) which don't have real bag slots
             local blizzardPopulated = false
-            if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.isDropTargetButton and not self.itemData.isEmptySlots then
+            if self.itemData and self.itemData.bagID and not self.isEmptySlotButton and not self.itemData.isEmptySlots then
                 -- ContainerFrameItemButton_OnEnter may not exist on retail
                 if ContainerFrameItemButton_OnEnter then
                     ContainerFrameItemButton_OnEnter(self)
@@ -1274,13 +1269,7 @@ local function CreateButton(parent)
 
             -- Show our custom tooltip (overrides Blizzard's if needed)
             -- Don't show tooltip for Empty/Soul pseudo-item buttons
-            -- For drop-target buttons, show a hint tooltip
-            if self.isDropTargetButton then
-                local L = ns.L
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(L["DROP_HERE_TO_ASSIGN"], 1, 1, 1)
-                GameTooltip:Show()
-            elseif blizzardPopulated then
+            if blizzardPopulated then
                 -- Blizzard owns the tooltip; only append our GudaBags track hint.
                 Tooltip:AddTrackHint(self)
                 GameTooltip:Show()
@@ -1772,11 +1761,10 @@ local function CreateButton(parent)
         if mouseButton == "RightButton" and IsShiftKeyDown()
            and not IsControlKeyDown() and not IsAltKeyDown()
            and not InCombatLockdown()
-           and not self.isReadOnly and not self.isEmptySlotButton and not self.isDropTargetButton
+           and not self.isReadOnly and not self.isEmptySlotButton
            and self.itemData and self.itemData.itemID
            and not self.itemData.isGuildBank
-           and not self.itemData.isEmptySlots and not self.itemData.isSoulSlots
-           and not self.itemData.isDropTarget then
+           and not self.itemData.isEmptySlots and not self.itemData.isSoulSlots then
             local MailBulkSend = ns:GetModule("MailBulkSend")
             if MailBulkSend and MailBulkSend:CanStart() then
                 self._mailBulkIntercept = {
@@ -1805,19 +1793,6 @@ local function CreateButton(parent)
                 UpdatePseudoItemSlot(self)
             end
             return  -- Don't check same-category for pseudo-items
-        end
-
-        -- For drop-target buttons, assign item to category on click
-        if self.isDropTargetButton and mouseButton == "LeftButton" then
-            local infoType, itemID = GetCursorInfo()
-            if infoType == "item" and itemID then
-                ClearCursor()
-                local CategoryManager = ns:GetModule("CategoryManager")
-                if CategoryManager then
-                    CategoryManager:AssignItemToCategory(itemID, self.categoryId)
-                end
-            end
-            return
         end
 
         if mouseButton == "LeftButton" and ShouldBlockSwap(self) then
@@ -1850,19 +1825,6 @@ local function CreateButton(parent)
                 if newBagID and newSlotID then
                     -- Place item in the current first empty slot
                     C_Container.PickupContainerItem(newBagID, newSlotID)
-                end
-            end
-            return
-        end
-
-        -- For drop-target buttons, assign item to category
-        if self.isDropTargetButton then
-            local infoType, itemID = GetCursorInfo()
-            if infoType == "item" and itemID then
-                ClearCursor()
-                local CategoryManager = ns:GetModule("CategoryManager")
-                if CategoryManager then
-                    CategoryManager:AssignItemToCategory(itemID, self.categoryId)
                 end
             end
             return
@@ -2077,45 +2039,6 @@ function ItemButton:InvalidateSettingsCache()
     cachedSettings = nil
 end
 
--- Drop target: create a pulsing green glow border lazily on first use
-local function EnsureDropTargetGlow(button)
-    if button.dropTargetGlow then return button.dropTargetGlow end
-
-    -- Parent to wrapper so button:SetAlpha() doesn't dim the glow
-    local glow = CreateFrame("Frame", nil, button.wrapper)
-    glow:SetPoint("TOPLEFT", button, "TOPLEFT", -5, 5)
-    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 5, -5)
-    glow:SetFrameLevel(button:GetFrameLevel() + Constants.FRAME_LEVELS.BORDER + 1)
-
-    local border = CreateFrame("Frame", nil, glow, "BackdropTemplate")
-    border:SetAllPoints(glow)
-    border:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    border:SetBackdropBorderColor(0.3, 0.9, 0.3, 0.8)
-
-    local animGroup = glow:CreateAnimationGroup()
-    local fadeOut = animGroup:CreateAnimation("Alpha")
-    fadeOut:SetFromAlpha(1)
-    fadeOut:SetToAlpha(0.2)
-    fadeOut:SetDuration(0.6)
-    fadeOut:SetOrder(1)
-    fadeOut:SetSmoothing("IN_OUT")
-    local fadeIn = animGroup:CreateAnimation("Alpha")
-    fadeIn:SetFromAlpha(0.2)
-    fadeIn:SetToAlpha(1)
-    fadeIn:SetDuration(0.6)
-    fadeIn:SetOrder(2)
-    fadeIn:SetSmoothing("IN_OUT")
-    animGroup:SetLooping("REPEAT")
-    glow.animGroup = animGroup
-    glow:Hide()
-    button.dropTargetGlow = glow
-    return glow
-end
-
 -- Register button with Masque after sizing is complete, then reapply icon anchoring
 -- Masque overrides icon anchors as part of skinning, so we must re-anchor after registration
 local function ApplyMasqueAfterSizing(button)
@@ -2212,11 +2135,10 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     -- Reset visual state from previous item (lazy cleanup)
     -- These elements might not be explicitly set below
     button:SetAlpha(1)
-    -- Clear pseudo-slot flags: a recycled Empty/DropTarget pseudo button reused for
-    -- a real item must not keep them (recycle skips ResetButton). The pseudo branches
-    -- below re-set isEmptySlotButton when applicable.
+    -- Clear pseudo-slot flags: a recycled Empty pseudo button reused for a real item
+    -- must not keep them (recycle skips ResetButton). The pseudo branch below
+    -- re-sets isEmptySlotButton when applicable.
     button.isEmptySlotButton = nil
-    button.isDropTargetButton = nil
     if button.trackedIcon then button.trackedIcon:Hide() end
     if button.trackedIconShadow then button.trackedIconShadow:Hide() end
     if button.equipSetIcon then button.equipSetIcon:Hide() end
@@ -2281,52 +2203,6 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
 
         -- Refresh tooltip in place if user is hovering this pseudo-slot
         -- (e.g. another bag-update changed the empty count).
-        -- Skip while an item is on the cursor (see note at the normal-item path).
-        if GameTooltip:IsOwned(button) and not InCombatLockdown() and not GetCursorInfo() then
-            local onEnter = button:GetScript("OnEnter")
-            if onEnter then onEnter(button) end
-        end
-
-        return
-    end
-
-    -- Special handling for empty category drop-target pseudo-items
-    if itemData and itemData.isDropTarget then
-        SetItemButtonTexture(button, itemData.texture)
-        SetItemButtonCount(button, 0)
-
-        -- Slightly dimmed icon with green-tinted slot background
-        button:SetAlpha(0.5)
-        button.slotBackground:SetVertexColor(0.4, 0.8, 0.4, 0.7)
-        SetItemButtonDesaturated(button, true)
-
-        -- Hide all overlays
-        button.border:Hide()
-        if button.innerShadow then
-            for _, tex in pairs(button.innerShadow) do tex:Hide() end
-        end
-        button.unusableOverlay:Hide()
-        button.junkOverlay:Hide()
-        button.lockOverlay:Hide()
-        if button.itemLevelText then button.itemLevelText:Hide() end
-        if button.chargesText then button.chargesText:Hide() end
-        if button.boeText then button.boeText:Hide() end
-        if button.cosmeticOverlay then button.cosmeticOverlay:Hide() end
-        if button.upgradeArrow then button.upgradeArrow:Hide() end
-        HideTransmogIcon(button)
-        HideUpgradeTrackIcon(button)
-        if button.cooldown then CooldownFrame_Set(button.cooldown, 0, 0, false) end
-
-        -- Animated glow border
-        local glow = EnsureDropTargetGlow(button)
-        glow:Show()
-        glow.animGroup:Play()
-
-        button.isDropTargetButton = true
-        button.wrapper:SetID(0)
-        button:SetID(0)
-
-        -- Refresh tooltip in place if user is hovering this drop-target slot.
         -- Skip while an item is on the cursor (see note at the normal-item path).
         if GameTooltip:IsOwned(button) and not InCombatLockdown() and not GetCursorInfo() then
             local onEnter = button:GetScript("OnEnter")
@@ -2749,8 +2625,7 @@ function ItemButton:SetItem(button, itemData, size, isReadOnly)
     if not isReadOnly
         and itemData and itemData.bagID and itemData.slot
         and not itemData.isGuildBank
-        and not itemData.isEmptySlots
-        and not itemData.isDropTarget then
+        and not itemData.isEmptySlots then
         ns:FireItemButtonUpdate(button, itemData.bagID, itemData.slot)
     end
 end
@@ -3171,7 +3046,7 @@ function ItemButton:ApplySearchStates(parent, buttons)
         local itemData = button.itemData
         if not hasSearch then
             self:ClearSearchState(button)
-        elseif itemData and (itemData.itemID or itemData.isEmptySlots or itemData.isDropTarget) then
+        elseif itemData and (itemData.itemID or itemData.isEmptySlots) then
             self:SetSearchState(button, SearchBar:ItemMatchesFilters(parent, itemData))
         else
             self:SetSearchState(button, false)
@@ -3233,8 +3108,8 @@ function ItemButton:UpdateLockForItem(bagID, slotID)
     for button in buttonPool:EnumerateActive() do
         local itemData = button.itemData
         if itemData and itemData.bagID == bagID and itemData.slot == slotID
-            and not itemData.isEmptySlots and not itemData.isDropTarget
-            and not button.isEmptySlotButton and not button.isDropTargetButton
+            and not itemData.isEmptySlots
+            and not button.isEmptySlotButton
             and not itemData.isGuildBank and not button.isReadOnly then
             local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
             local isLocked = itemInfo and itemInfo.isLocked or false
@@ -3380,7 +3255,7 @@ function ItemButton:RefreshCooldowns()
         local itemData = button.itemData
         if button.cooldown and itemData and itemData.bagID and itemData.slot
             and not button.isReadOnly and not itemData.isGuildBank
-            and not button.isEmptySlotButton and not button.isDropTargetButton
+            and not button.isEmptySlotButton
             and not itemData.isEmptySlots and button:IsVisible() then
             local start, duration, enable = C_Container.GetContainerItemCooldown(itemData.bagID, itemData.slot)
             if start and duration and enable and enable > 0 and duration > 0 and not IsGlobalCooldown(start, duration) then

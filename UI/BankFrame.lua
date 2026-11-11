@@ -2549,7 +2549,7 @@ function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, is
     -- Bank always shows soul bag items (no toggle button in bank footer)
     local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bank, isReadOnly, true, true)
 
-    local sections = LayoutEngine:BuildCategorySections(items, isReadOnly, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, true, nil, quiverEmptyCount, firstQuiverEmptySlot)
+    local sections = LayoutEngine:BuildCategorySections(items, isReadOnly, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, true, quiverEmptyCount, firstQuiverEmptySlot)
 
     local frameWidth, frameHeight = LayoutEngine:CalculateCategoryFrameSize(sections, settings)
 
