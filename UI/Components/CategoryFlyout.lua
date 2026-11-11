@@ -30,7 +30,10 @@ local WHITE = "Interface\\Buttons\\WHITE8x8"
 
 -- Gold accent shared by the border, the hover stripe and the hovered name.
 local ACCENT_R, ACCENT_G, ACCENT_B = 1.0, 0.82, 0.2
-local TEXT_R, TEXT_G, TEXT_B = 0.9, 0.9, 0.9
+-- Idle rows are dimmed (gray name, desaturated faded icon) so the row under
+-- the dragged item stands out when it lights up in color.
+local TEXT_R, TEXT_G, TEXT_B = 0.55, 0.55, 0.55
+local IDLE_ICON_ALPHA = 0.55
 
 local FADE_DURATION = 0.15
 local ROW_STAGGER = 0.02       -- per-row fade delay, capped by ROW_STAGGER_MAX
@@ -96,12 +99,16 @@ local function SetRowHover(row, hovered)
         row.hover:Show()
         row.text:SetTextColor(ACCENT_R, ACCENT_G, ACCENT_B)
         row.icon:SetSize(ICON_HOVER_SIZE, ICON_HOVER_SIZE)
+        row.icon:SetDesaturated(false)
+        row.icon:SetAlpha(1)
         row.iconBorder:SetVertexColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.9)
     else
         row.accent:Hide()
         row.hover:Hide()
         row.text:SetTextColor(TEXT_R, TEXT_G, TEXT_B)
         row.icon:SetSize(ICON_SIZE, ICON_SIZE)
+        row.icon:SetDesaturated(true)
+        row.icon:SetAlpha(IDLE_ICON_ALPHA)
         row.iconBorder:SetVertexColor(0, 0, 0, 0.9)
     end
 end
@@ -114,14 +121,14 @@ local function CreateRow(index)
     local bg = row:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetTexture(WHITE)
-    bg:SetGradient("HORIZONTAL", CreateColor(1, 1, 1, 0.09), CreateColor(1, 1, 1, 0.015))
+    bg:SetGradient("HORIZONTAL", CreateColor(1, 1, 1, 0.05), CreateColor(1, 1, 1, 0.01))
 
     -- Hover tint (gold, fading right) and left accent stripe
     local hover = row:CreateTexture(nil, "BACKGROUND", nil, 1)
     hover:SetAllPoints()
     hover:SetTexture(WHITE)
     hover:SetGradient("HORIZONTAL",
-        CreateColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.28), CreateColor(ACCENT_R, ACCENT_G, ACCENT_B, 0))
+        CreateColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.35), CreateColor(ACCENT_R, ACCENT_G, ACCENT_B, 0.04))
     hover:Hide()
     row.hover = hover
 
