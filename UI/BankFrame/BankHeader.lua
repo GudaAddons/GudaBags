@@ -90,8 +90,9 @@ local function CreateHeader(parent)
         })
         charactersButton:SetPoint("LEFT", titleBar, "LEFT", 6, 0)
         titleBar.charactersButton = charactersButton
-        HeaderButtonVisibility:SetKey(charactersButton, "showHeaderCharacters")
-        HeaderButtonVisibility:ApplyState(charactersButton)
+        -- Deliberately not tied to showHeaderCharacters: the bag header's bank button
+        -- opens the current character's bank, so this is the only way to reach another
+        -- character's bank and must stay visible. Untagged buttons always show.
         lastLeftButton = charactersButton
     end
 

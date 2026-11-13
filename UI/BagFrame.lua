@@ -664,17 +664,6 @@ local function CreateBagFrame()
         BagFrame:ViewCharacter(fullName, charData)
     end)
 
-    -- Initialize bank character dropdown callback (used by both BagFrame and BankFrame headers)
-    Header:SetBankCharacterCallback(function(fullName, charData)
-        local BankFrameModule = ns:GetModule("BankFrame")
-        if BankFrameModule:IsShown() then
-            BankFrameModule:ViewCharacter(fullName, charData)
-        else
-            BankFrameModule:Show()
-            BankFrameModule:ViewCharacter(fullName, charData)
-        end
-    end)
-
     -- Note: Responsive narrow mode is handled in Refresh() which pre-calculates
     -- expected frame width and applies narrow mode before sizing
 

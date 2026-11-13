@@ -145,18 +145,19 @@ local function CreateHeader(parent)
         local chestButton = IconButton:Create(titleBar, "chest", {
             tooltip = L["TOOLTIP_BANK"],
             onClick = function(self)
-                -- Close guild bank if open
+                -- Opens the current character's bank directly (live at a banker, the
+                -- saved copy elsewhere), same as the keybind. Other characters' banks
+                -- are picked from the characters button inside the bank header.
                 local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
                 local wasGuildBankOpen = GuildBankFrameModule and GuildBankFrameModule:GetFrame() and GuildBankFrameModule:GetFrame():IsShown()
+                local BankFrameModule = ns:GetModule("BankFrame")
                 if wasGuildBankOpen then
                     GuildBankFrameModule:Hide()
-                end
-                if wasGuildBankOpen then
                     C_Timer.After(0, function()
-                        BankCharacters:Toggle(self)
+                        BankFrameModule:Toggle()
                     end)
                 else
-                    BankCharacters:Toggle(self)
+                    BankFrameModule:Toggle()
                 end
             end,
         })
@@ -432,12 +433,6 @@ end
 function Header:SetCharacterCallback(callback)
     if Characters then
         Characters:SetCallback(callback)
-    end
-end
-
-function Header:SetBankCharacterCallback(callback)
-    if BankCharacters then
-        BankCharacters:SetCallback(callback)
     end
 end
 
