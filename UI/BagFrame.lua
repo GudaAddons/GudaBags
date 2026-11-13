@@ -1845,13 +1845,20 @@ function BagFrame:IncrementalUpdate(dirtyBags)
 
         -- Live empty slot counts over the containers the last rebuild rendered, through
         -- the same function the rebuild used (see LayoutEngine:CountLiveEmptySlots).
-        if not lastCategoryBagsToShow then
+        -- No rendered list means no trustworthy count: rebuild (deferred like every
+        -- other needsFullRefresh, so combat stays safe) and skip the pseudo checks.
+        local haveCounts = lastCategoryBagsToShow ~= nil
+        local emptyCount, firstEmptyBagID, firstEmptySlot = 0, nil, nil
+        local soulEmptyCount, firstSoulBagID, firstSoulSlot = 0, nil, nil
+        local quiverEmptyCount, firstQuiverBagID, firstQuiverSlot = 0, nil, nil
+        if haveCounts then
+            emptyCount, firstEmptyBagID, firstEmptySlot,
+                soulEmptyCount, firstSoulBagID, firstSoulSlot,
+                quiverEmptyCount, firstQuiverBagID, firstQuiverSlot =
+                LayoutEngine:CountLiveEmptySlots(lastCategoryBagsToShow)
+        else
             needsFullRefresh = true
         end
-        local emptyCount, firstEmptyBagID, firstEmptySlot,
-              soulEmptyCount, firstSoulBagID, firstSoulSlot,
-              quiverEmptyCount, firstQuiverBagID, firstQuiverSlot =
-            LayoutEngine:CountLiveEmptySlots(lastCategoryBagsToShow or {})
 
         -- Check if the Empty/Quiver pseudo-category has to appear or disappear.
         --
@@ -1863,10 +1870,16 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         -- Restack & Clean). Appearing with nothing freed this pass means the slots
         -- came from somewhere else — a larger bag was equipped — and there is no
         -- ghost standing in for them, so that still rebuilds immediately.
+        --
+        -- "Needs a button" also requires the category to be enabled (PseudoNeedsButton):
+        -- a disabled category never gets one, and without that test every event would
+        -- read it as missing and rebuild.
         local emptyButtonExists = FindPseudoItemButton("Empty") ~= nil
-        local emptyNeedsButton = emptyCount > 0
+        local emptyNeedsButton = LayoutEngine:PseudoNeedsButton("Empty", emptyCount, emptyButtonExists)
 
-        if emptyNeedsButton and not emptyButtonExists then
+        if not haveCounts then
+            -- needsFullRefresh already set; nothing to compare against
+        elseif emptyNeedsButton and not emptyButtonExists then
             if slotsFreedThisPass > 0 then
                 ns:Debug("CategoryView DEFER: Empty category owed, ghosts hold the freed slots")
                 categoryLayoutStale = true
@@ -1880,8 +1893,10 @@ function BagFrame:IncrementalUpdate(dirtyBags)
         end
 
         local quiverButtonExists = FindPseudoItemButton("Quiver") ~= nil
-        local quiverNeedsButton = quiverEmptyCount > 0
-        if quiverNeedsButton and not quiverButtonExists then
+        local quiverNeedsButton = LayoutEngine:PseudoNeedsButton("Quiver", quiverEmptyCount, quiverButtonExists)
+        if not haveCounts then
+            -- needsFullRefresh already set
+        elseif quiverNeedsButton and not quiverButtonExists then
             if slotsFreedThisPass > 0 then
                 ns:Debug("CategoryView DEFER: Quiver category owed, ghosts hold the freed slots")
                 categoryLayoutStale = true
@@ -1924,48 +1939,9 @@ function BagFrame:IncrementalUpdate(dirtyBags)
 
         -- Update pseudo-item counters and slot references directly (if no full refresh needed)
         if not needsFullRefresh then
-            local emptyBtn = FindPseudoItemButton("Empty")
-            if emptyBtn then
-                SetItemButtonCount(emptyBtn, emptyCount)
-                if emptyBtn.itemData then
-                    emptyBtn.itemData.emptyCount = emptyCount
-                    emptyBtn.itemData.count = emptyCount
-                    if firstEmptyBagID then
-                        emptyBtn.itemData.bagID = firstEmptyBagID
-                        emptyBtn.itemData.slot = firstEmptySlot
-                        emptyBtn.wrapper:SetID(firstEmptyBagID)
-                        emptyBtn:SetID(firstEmptySlot)
-                    end
-                end
-            end
-            local soulBtn = FindPseudoItemButton("Soul")
-            if soulBtn then
-                SetItemButtonCount(soulBtn, soulEmptyCount)
-                if soulBtn.itemData then
-                    soulBtn.itemData.emptyCount = soulEmptyCount
-                    soulBtn.itemData.count = soulEmptyCount
-                    if firstSoulBagID then
-                        soulBtn.itemData.bagID = firstSoulBagID
-                        soulBtn.itemData.slot = firstSoulSlot
-                        soulBtn.wrapper:SetID(firstSoulBagID)
-                        soulBtn:SetID(firstSoulSlot)
-                    end
-                end
-            end
-            local quiverBtn = FindPseudoItemButton("Quiver")
-            if quiverBtn then
-                SetItemButtonCount(quiverBtn, quiverEmptyCount)
-                if quiverBtn.itemData then
-                    quiverBtn.itemData.emptyCount = quiverEmptyCount
-                    quiverBtn.itemData.count = quiverEmptyCount
-                    if firstQuiverBagID then
-                        quiverBtn.itemData.bagID = firstQuiverBagID
-                        quiverBtn.itemData.slot = firstQuiverSlot
-                        quiverBtn.wrapper:SetID(firstQuiverBagID)
-                        quiverBtn:SetID(firstQuiverSlot)
-                    end
-                end
-            end
+            LayoutEngine:UpdatePseudoButton(FindPseudoItemButton("Empty"), emptyCount, firstEmptyBagID, firstEmptySlot)
+            LayoutEngine:UpdatePseudoButton(FindPseudoItemButton("Soul"), soulEmptyCount, firstSoulBagID, firstSoulSlot)
+            LayoutEngine:UpdatePseudoButton(FindPseudoItemButton("Quiver"), quiverEmptyCount, firstQuiverBagID, firstQuiverSlot)
         end
 
         -- totalCurrentItems is already an occupied-slot count, matching what

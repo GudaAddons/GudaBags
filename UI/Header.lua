@@ -19,7 +19,6 @@ local onDragStop = nil
 local viewingCharacterData = nil
 
 local Characters = nil
-local BankCharacters = nil
 
 -- Debounce for sort/restack button
 local lastSortTime = 0
@@ -27,9 +26,6 @@ local SORT_DEBOUNCE = 0.5  -- 500ms debounce
 
 local function LoadComponents()
     Characters = ns:GetModule("Header.Characters")
-    if Constants.FEATURES.BANK then
-        BankCharacters = ns:GetModule("BankFrame.BankCharacters")
-    end
 end
 
 local function CreateHeader(parent)
@@ -179,12 +175,9 @@ local function CreateHeader(parent)
                 -- Close bank view if open
                 local BankFrameModule = ns:GetModule("BankFrame")
                 local wasBankOpen = BankFrameModule and BankFrameModule:GetFrame() and BankFrameModule:GetFrame():IsShown()
+                -- Closing the bank also closes its characters dropdown (BankFrame OnHide)
                 if wasBankOpen then
                     BankFrameModule:Hide()
-                end
-                -- Close bank characters dropdown if open
-                if BankCharacters then
-                    BankCharacters:Hide()
                 end
                 local GuildBankFrameModule = ns:GetModule("GuildBankFrame")
                 if GuildBankFrameModule then

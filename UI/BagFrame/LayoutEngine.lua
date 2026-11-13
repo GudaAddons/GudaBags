@@ -546,11 +546,6 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                                 slot = slot,
                                 itemData = itemData,
                             })
-                        else
-                            emptyCount = emptyCount + 1
-                            if not firstEmptySlot then
-                                firstEmptySlot = {bagID = bagID, slot = slot}
-                            end
                         end
                     end
                 end
@@ -577,7 +572,9 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                             isInQuiverBag = isQuiverBag,
                         })
                     end
-                else
+                elseif isViewingCached then
+                    -- Saved data only: a live view's counts come from CountLiveEmptySlots
+                    -- below, so counting here too would be thrown away
                     if isSoulBag then
                         soulEmptyCount = soulEmptyCount + 1
                         if not firstSoulEmptySlot then
@@ -596,37 +593,11 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                     end
                 end
             end
-        elseif not isViewingCached then
-            -- No cached bag data but not viewing cached - use live data for empty count
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            if numSlots and numSlots > 0 then
-                for slot = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                    if not itemInfo then
-                        if isSoulBag then
-                            soulEmptyCount = soulEmptyCount + 1
-                            if not firstSoulEmptySlot then
-                                firstSoulEmptySlot = {bagID = bagID, slot = slot}
-                            end
-                        elseif isQuiverBag then
-                            quiverEmptyCount = quiverEmptyCount + 1
-                            if not firstQuiverEmptySlot then
-                                firstQuiverEmptySlot = {bagID = bagID, slot = slot}
-                            end
-                        elseif not isReagentBag then
-                            emptyCount = emptyCount + 1
-                            if not firstEmptySlot then
-                                firstEmptySlot = {bagID = bagID, slot = slot}
-                            end
-                        end
-                    end
-                end
-            end
         end
     end
 
-    -- When not viewing cached data, recalculate empty counts using LIVE data
-    -- This ensures counts are accurate even if cache is stale
+    -- Live view: empty counts come from live data (accurate even if the scan cache is
+    -- stale), through the same function IncrementalUpdate uses
     if not isViewingCached then
         local emptyBag, emptySlot, soulBag, soulSlot, quiverBag, quiverSlot
         emptyCount, emptyBag, emptySlot, soulEmptyCount, soulBag, soulSlot,
@@ -658,6 +629,11 @@ end
 -- firstSoulBagID, firstSoulSlot, quiverEmptyCount, firstQuiverBagID, firstQuiverSlot.
 -- Plain values rather than {bagID, slot} tables: IncrementalUpdate runs per bag
 -- event and must not allocate (Rule 2).
+--
+-- The bag TYPE is asked of BagClassifier live, not read from the bagsToShow entry's
+-- isSoulBag/isQuiverBag flags. Those flags date from the last rebuild, and swapping a
+-- soul bag or quiver for a regular bag of the same size does not change the capacity
+-- signature, so no rebuild refreshes them.
 function LayoutEngine:CountLiveEmptySlots(bagsToShow)
     local emptyCount, soulEmptyCount, quiverEmptyCount = 0, 0, 0
     local firstEmptyBagID, firstEmptySlot
@@ -667,31 +643,26 @@ function LayoutEngine:CountLiveEmptySlots(bagsToShow)
     local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
     local GetContainerNumSlots = C_Container.GetContainerNumSlots
     -- Only "is this slot empty?" is asked: GetContainerItemID answers it without
-    -- building an info table per slot
-    local GetContainerItemID = C_Container.GetContainerItemID
-    local GetContainerItemInfo = C_Container.GetContainerItemInfo
+    -- building an info table per slot. Fall back to the info call on a client without it.
+    local SlotItem = C_Container.GetContainerItemID or C_Container.GetContainerItemInfo
 
     for _, bagInfo in ipairs(bagsToShow) do
         if not bagInfo.isKeyring and not bagInfo.isReagentBag then
             local bagID = bagInfo.bagID
-            local isSoulBag = bagInfo.isSoulBag
-            local isQuiverBag = bagInfo.isQuiverBag
-            if (isSoulBag == nil or isQuiverBag == nil) and BagClassifier then
+            local isSoulBag, isQuiverBag
+            if BagClassifier then
                 local bagType = BagClassifier:GetBagType(bagID)
-                if isSoulBag == nil then isSoulBag = (bagType == "soul") end
-                if isQuiverBag == nil then isQuiverBag = (bagType == "quiver" or bagType == "ammo") end
+                isSoulBag = (bagType == "soul")
+                isQuiverBag = (bagType == "quiver" or bagType == "ammo")
+            else
+                isSoulBag = bagInfo.isSoulBag
+                isQuiverBag = bagInfo.isQuiverBag
             end
 
             local numSlots = GetContainerNumSlots(bagID)
             if numSlots and numSlots > 0 then
                 for slot = 1, numSlots do
-                    local occupied
-                    if GetContainerItemID then
-                        occupied = GetContainerItemID(bagID, slot) ~= nil
-                    else
-                        occupied = GetContainerItemInfo(bagID, slot) ~= nil
-                    end
-                    if not occupied then
+                    if SlotItem(bagID, slot) == nil then
                         if isSoulBag then
                             soulEmptyCount = soulEmptyCount + 1
                             if not firstSoulBagID then
@@ -716,6 +687,52 @@ function LayoutEngine:CountLiveEmptySlots(bagsToShow)
 
     return emptyCount, firstEmptyBagID, firstEmptySlot, soulEmptyCount, firstSoulBagID, firstSoulSlot,
         quiverEmptyCount, firstQuiverBagID, firstQuiverSlot
+end
+
+-- True when BuildCategorySections would give this pseudo category ("Empty", "Soul",
+-- "Quiver") a section: the category is enabled and in the order list. A pseudo button
+-- only ever exists for an enabled category, so IncrementalUpdate must ask this before
+-- treating "count > 0 but no button" as a layout change -- otherwise a disabled
+-- category reads as permanently out of date and every bag event forces a rebuild.
+-- Callers check it only when count > 0 and no button exists (an existing button proves
+-- the category is enabled), so the short order walk runs only while a category with
+-- free slots is disabled -- and allocates nothing.
+function LayoutEngine:IsPseudoCategoryEnabled(categoryId)
+    local CategoryManager = ns:GetModule("CategoryManager")
+    if not CategoryManager then return false end
+    local categories = CategoryManager:GetCategories()
+    local def = categories.definitions and categories.definitions[categoryId]
+    if not (def and def.enabled) then return false end
+    for _, id in ipairs(categories.order or {}) do
+        if id == categoryId then return true end
+    end
+    return false
+end
+
+-- Whether a pseudo category needs a button for this count: the same test
+-- BuildCategorySections applies (count > 0 and the category is enabled).
+function LayoutEngine:PseudoNeedsButton(categoryId, count, buttonExists)
+    if count <= 0 then return false end
+    return buttonExists or self:IsPseudoCategoryEnabled(categoryId)
+end
+
+-- Repaint an existing Empty / Soul / Quiver pseudo button in place: new count, and
+-- the first free slot it routes clicks and drops to. Both frames' IncrementalUpdate
+-- use this; keep it in step with the pseudo-item fields BuildCategorySections sets.
+function LayoutEngine:UpdatePseudoButton(button, count, bagID, slot)
+    if not button then return end
+    SetItemButtonCount(button, count)
+    local itemData = button.itemData
+    if itemData then
+        itemData.emptyCount = count
+        itemData.count = count
+        if bagID then
+            itemData.bagID = bagID
+            itemData.slot = slot
+            button.wrapper:SetID(bagID)
+            button:SetID(slot)
+        end
+    end
 end
 
 -- Build category sections from items

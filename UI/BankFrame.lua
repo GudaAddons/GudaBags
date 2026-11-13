@@ -3257,73 +3257,33 @@ function BankFrame:IncrementalUpdate(dirtyBags)
               quiverEmptyCount, firstQuiverBagID, firstQuiverSlot =
             LayoutEngine:CountLiveEmptySlots(lastCategoryBagsToShow)
 
-        -- Check if Empty/Soul/Quiver categories need to appear or disappear
-        local emptyButtonExists = FindPseudoItemButton("Empty") ~= nil
-        local soulButtonExists = FindPseudoItemButton("Soul") ~= nil
-        local quiverButtonExists = FindPseudoItemButton("Quiver") ~= nil
-        local emptyNeedsButton = emptyCount > 0
-        local soulNeedsButton = soulEmptyCount > 0
-        local quiverNeedsButton = quiverEmptyCount > 0
-
-        if (emptyNeedsButton and not emptyButtonExists) or (not emptyNeedsButton and emptyButtonExists) then
+        -- Check if Empty/Soul/Quiver categories need to appear or disappear.
+        -- "Needs a button" also requires the category to be enabled (PseudoNeedsButton):
+        -- a disabled category never gets one, and without that test every bank event
+        -- would read it as missing and rebuild.
+        local emptyBtn = FindPseudoItemButton("Empty")
+        local soulBtn = FindPseudoItemButton("Soul")
+        local quiverBtn = FindPseudoItemButton("Quiver")
+        if LayoutEngine:PseudoNeedsButton("Empty", emptyCount, emptyBtn ~= nil) ~= (emptyBtn ~= nil) then
             ns:Debug("Bank CategoryView REFRESH: Empty category visibility changed")
             self:Refresh()
             return
         end
-        if (soulNeedsButton and not soulButtonExists) or (not soulNeedsButton and soulButtonExists) then
+        if LayoutEngine:PseudoNeedsButton("Soul", soulEmptyCount, soulBtn ~= nil) ~= (soulBtn ~= nil) then
             ns:Debug("Bank CategoryView REFRESH: Soul category visibility changed")
             self:Refresh()
             return
         end
-        if quiverNeedsButton ~= quiverButtonExists then
+        if LayoutEngine:PseudoNeedsButton("Quiver", quiverEmptyCount, quiverBtn ~= nil) ~= (quiverBtn ~= nil) then
             ns:Debug("Bank CategoryView REFRESH: Quiver category visibility changed")
             self:Refresh()
             return
         end
 
         -- Update pseudo-item counters and slot references directly
-        local emptyBtn = FindPseudoItemButton("Empty")
-        if emptyBtn then
-            SetItemButtonCount(emptyBtn, emptyCount)
-            if emptyBtn.itemData then
-                emptyBtn.itemData.emptyCount = emptyCount
-                emptyBtn.itemData.count = emptyCount
-                if firstEmptyBagID then
-                    emptyBtn.itemData.bagID = firstEmptyBagID
-                    emptyBtn.itemData.slot = firstEmptySlot
-                    emptyBtn.wrapper:SetID(firstEmptyBagID)
-                    emptyBtn:SetID(firstEmptySlot)
-                end
-            end
-        end
-        local soulBtn = FindPseudoItemButton("Soul")
-        if soulBtn then
-            SetItemButtonCount(soulBtn, soulEmptyCount)
-            if soulBtn.itemData then
-                soulBtn.itemData.emptyCount = soulEmptyCount
-                soulBtn.itemData.count = soulEmptyCount
-                if firstSoulBagID then
-                    soulBtn.itemData.bagID = firstSoulBagID
-                    soulBtn.itemData.slot = firstSoulSlot
-                    soulBtn.wrapper:SetID(firstSoulBagID)
-                    soulBtn:SetID(firstSoulSlot)
-                end
-            end
-        end
-        local quiverBtn = FindPseudoItemButton("Quiver")
-        if quiverBtn then
-            SetItemButtonCount(quiverBtn, quiverEmptyCount)
-            if quiverBtn.itemData then
-                quiverBtn.itemData.emptyCount = quiverEmptyCount
-                quiverBtn.itemData.count = quiverEmptyCount
-                if firstQuiverBagID then
-                    quiverBtn.itemData.bagID = firstQuiverBagID
-                    quiverBtn.itemData.slot = firstQuiverSlot
-                    quiverBtn.wrapper:SetID(firstQuiverBagID)
-                    quiverBtn:SetID(firstQuiverSlot)
-                end
-            end
-        end
+        LayoutEngine:UpdatePseudoButton(emptyBtn, emptyCount, firstEmptyBagID, firstEmptySlot)
+        LayoutEngine:UpdatePseudoButton(soulBtn, soulEmptyCount, firstSoulBagID, firstSoulSlot)
+        LayoutEngine:UpdatePseudoButton(quiverBtn, quiverEmptyCount, firstQuiverBagID, firstQuiverSlot)
 
         local totalSlots, freeSlots = BankScanner:GetTotalSlots()
         local regularTotal, regularFree, specialBags = BankScanner:GetDetailedSlotCounts()
