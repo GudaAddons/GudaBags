@@ -138,6 +138,10 @@ local buttonsByItemKey = {}  -- Key: itemKey -> {button1, button2, ...} (array f
 local buttonPositions = {}   -- Key: button -> {x, y, index} for reflow detection
 local categoryViewItems = {} -- Array of {itemKey, bagID, slot, categoryId, count} for current layout
 local lastCategoryLayout = nil -- Previous categoryViewItems for comparison
+-- Containers the last category rebuild rendered. IncrementalUpdate counts Empty/Soul/
+-- Quiver over this same list (LayoutEngine:CountLiveEmptySlots) so its count cannot
+-- disagree with the rebuild's. A container change rebuilds via the capacity guard.
+local lastCategoryBagsToShow = nil
 local lastButtonByCategory = {} -- Key: categoryId -> last item button (for drop indicator anchor)
 -- Occupied bag slots as of the last category layout or incremental pass.
 --
@@ -272,16 +276,6 @@ end
 
 local function GetSlotKey(bagID, slot)
     return Utils:GetSlotKey(bagID, slot)
-end
-
--- Live "does this slot hold an item" without allocating: GetContainerItemInfo
--- builds a fresh table per call, GetContainerItemID returns a number (nil when
--- empty). Falls back to the info call on a client without GetContainerItemID.
-local function SlotHasItem(bagID, slot)
-    if C_Container.GetContainerItemID then
-        return C_Container.GetContainerItemID(bagID, slot) ~= nil
-    end
-    return C_Container.GetContainerItemInfo(bagID, slot) ~= nil
 end
 
 -- Lazily resolved (TooltipScanner registers its module at file load; ns:GetModule
@@ -1067,6 +1061,7 @@ end
 
 function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isViewingCached)
     local iconSize = settings.iconSize
+    lastCategoryBagsToShow = bagsToShow
 
     -- Collect items and count empty slots (including soul bag slots)
     local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCached)
@@ -1859,48 +1854,15 @@ function BagFrame:IncrementalUpdate(dirtyBags)
             needsFullRefresh = true
         end
 
-        -- Calculate empty slot counts and first empty slots using LIVE data (not cached)
-        local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
-        local emptyCount = 0
-        local soulEmptyCount = 0
-        local quiverEmptyCount = 0
-        local firstEmptyBagID, firstEmptySlot = nil, nil
-        local firstSoulBagID, firstSoulSlot = nil, nil
-        local firstQuiverBagID, firstQuiverSlot = nil, nil
-
-        -- BAG_IDS, so the Empty pseudo-category counts free slots in the reagent bag
-        -- and in any extra equipped bag. 0..NUM_BAG_SLOTS stopped at 4 and made the
-        -- count disagree with what the layout actually renders.
-        for _, bagID in ipairs(Constants.BAG_IDS) do
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            if numSlots and numSlots > 0 then
-                local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
-                local isSoulBag = (bagType == "soul")
-                local isQuiverBag = (bagType == "quiver" or bagType == "ammo")
-                for slot = 1, numSlots do
-                    -- Only "is this slot empty?" is asked here: GetContainerItemID
-                    -- answers it without building an info table per slot per pass
-                    if not SlotHasItem(bagID, slot) then
-                        if isSoulBag then
-                            soulEmptyCount = soulEmptyCount + 1
-                            if not firstSoulBagID then
-                                firstSoulBagID, firstSoulSlot = bagID, slot
-                            end
-                        elseif isQuiverBag then
-                            quiverEmptyCount = quiverEmptyCount + 1
-                            if not firstQuiverBagID then
-                                firstQuiverBagID, firstQuiverSlot = bagID, slot
-                            end
-                        elseif bagType == "regular" or bagID == 0 then
-                            emptyCount = emptyCount + 1
-                            if not firstEmptyBagID then
-                                firstEmptyBagID, firstEmptySlot = bagID, slot
-                            end
-                        end
-                    end
-                end
-            end
+        -- Live empty slot counts over the containers the last rebuild rendered, through
+        -- the same function the rebuild used (see LayoutEngine:CountLiveEmptySlots).
+        if not lastCategoryBagsToShow then
+            needsFullRefresh = true
         end
+        local emptyCount, firstEmptyBagID, firstEmptySlot,
+              soulEmptyCount, firstSoulBagID, firstSoulSlot,
+              quiverEmptyCount, firstQuiverBagID, firstQuiverSlot =
+            LayoutEngine:CountLiveEmptySlots(lastCategoryBagsToShow or {})
 
         -- Check if the Empty/Quiver pseudo-category has to appear or disappear.
         --

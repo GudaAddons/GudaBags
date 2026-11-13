@@ -628,19 +628,52 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
     -- When not viewing cached data, recalculate empty counts using LIVE data
     -- This ensures counts are accurate even if cache is stale
     if not isViewingCached then
-        emptyCount = 0
-        soulEmptyCount = 0
-        quiverEmptyCount = 0
-        firstEmptySlot = nil
-        firstSoulEmptySlot = nil
-        firstQuiverEmptySlot = nil
+        local emptyBag, emptySlot, soulBag, soulSlot, quiverBag, quiverSlot
+        emptyCount, emptyBag, emptySlot, soulEmptyCount, soulBag, soulSlot,
+            quiverEmptyCount, quiverBag, quiverSlot = self:CountLiveEmptySlots(bagsToShow)
+        firstEmptySlot = emptyBag and {bagID = emptyBag, slot = emptySlot} or nil
+        firstSoulEmptySlot = soulBag and {bagID = soulBag, slot = soulSlot} or nil
+        firstQuiverEmptySlot = quiverBag and {bagID = quiverBag, slot = quiverSlot} or nil
+    end
 
-        -- Get BagClassifier for accurate bag type detection
-        local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
+    return items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot
+end
 
-        for _, bagInfo in ipairs(bagsToShow) do
+-- Live free-slot counts behind the category view's Empty / Soul / Quiver pseudo items,
+-- taken over exactly the containers a full rebuild rendered (its bagsToShow).
+--
+-- The full rebuild and both frames' IncrementalUpdate all count through here. They
+-- used to keep their own loops, and the copies drifted: the bank's incremental loop
+-- walked BANK_MAIN_BAG..BANK_BAG_MAX instead of the rendered containers, so on clients
+-- where container -1 is not part of the bank view it added that container's free
+-- slots to Empty on every deposit, and the bag loop disagreed with the rebuild about
+-- profession bags. One function, one container list: the count can no longer change
+-- just because a different path computed it.
+--
+-- Keyring and reagent bag free slots are never Empty (reagent slots only take
+-- reagents; the keyring only takes keys). Profession bags count as Empty, as they
+-- always have on a rebuild.
+--
+-- Returns emptyCount, firstEmptyBagID, firstEmptySlot, soulEmptyCount,
+-- firstSoulBagID, firstSoulSlot, quiverEmptyCount, firstQuiverBagID, firstQuiverSlot.
+-- Plain values rather than {bagID, slot} tables: IncrementalUpdate runs per bag
+-- event and must not allocate (Rule 2).
+function LayoutEngine:CountLiveEmptySlots(bagsToShow)
+    local emptyCount, soulEmptyCount, quiverEmptyCount = 0, 0, 0
+    local firstEmptyBagID, firstEmptySlot
+    local firstSoulBagID, firstSoulSlot
+    local firstQuiverBagID, firstQuiverSlot
+
+    local BagClassifier = ns:GetModule("BagFrame.BagClassifier")
+    local GetContainerNumSlots = C_Container.GetContainerNumSlots
+    -- Only "is this slot empty?" is asked: GetContainerItemID answers it without
+    -- building an info table per slot
+    local GetContainerItemID = C_Container.GetContainerItemID
+    local GetContainerItemInfo = C_Container.GetContainerItemInfo
+
+    for _, bagInfo in ipairs(bagsToShow) do
+        if not bagInfo.isKeyring and not bagInfo.isReagentBag then
             local bagID = bagInfo.bagID
-            -- Use bagInfo.isSoulBag if set, otherwise check via BagClassifier
             local isSoulBag = bagInfo.isSoulBag
             local isQuiverBag = bagInfo.isQuiverBag
             if (isSoulBag == nil or isQuiverBag == nil) and BagClassifier then
@@ -649,28 +682,30 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
                 if isQuiverBag == nil then isQuiverBag = (bagType == "quiver" or bagType == "ammo") end
             end
 
-            -- Reagent bag skipped for the same reason as in the pass above
-            if not bagInfo.isKeyring and not bagInfo.isReagentBag then  -- Keyring already uses live data above
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                if numSlots and numSlots > 0 then
-                    for slot = 1, numSlots do
-                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                        if not itemInfo then
-                            if isSoulBag then
-                                soulEmptyCount = soulEmptyCount + 1
-                                if not firstSoulEmptySlot then
-                                    firstSoulEmptySlot = {bagID = bagID, slot = slot}
-                                end
-                            elseif isQuiverBag then
-                                quiverEmptyCount = quiverEmptyCount + 1
-                                if not firstQuiverEmptySlot then
-                                    firstQuiverEmptySlot = {bagID = bagID, slot = slot}
-                                end
-                            else
-                                emptyCount = emptyCount + 1
-                                if not firstEmptySlot then
-                                    firstEmptySlot = {bagID = bagID, slot = slot}
-                                end
+            local numSlots = GetContainerNumSlots(bagID)
+            if numSlots and numSlots > 0 then
+                for slot = 1, numSlots do
+                    local occupied
+                    if GetContainerItemID then
+                        occupied = GetContainerItemID(bagID, slot) ~= nil
+                    else
+                        occupied = GetContainerItemInfo(bagID, slot) ~= nil
+                    end
+                    if not occupied then
+                        if isSoulBag then
+                            soulEmptyCount = soulEmptyCount + 1
+                            if not firstSoulBagID then
+                                firstSoulBagID, firstSoulSlot = bagID, slot
+                            end
+                        elseif isQuiverBag then
+                            quiverEmptyCount = quiverEmptyCount + 1
+                            if not firstQuiverBagID then
+                                firstQuiverBagID, firstQuiverSlot = bagID, slot
+                            end
+                        else
+                            emptyCount = emptyCount + 1
+                            if not firstEmptyBagID then
+                                firstEmptyBagID, firstEmptySlot = bagID, slot
                             end
                         end
                     end
@@ -679,7 +714,8 @@ function LayoutEngine:CollectItemsForCategoryView(bagsToShow, bags, isViewingCac
         end
     end
 
-    return items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot
+    return emptyCount, firstEmptyBagID, firstEmptySlot, soulEmptyCount, firstSoulBagID, firstSoulSlot,
+        quiverEmptyCount, firstQuiverBagID, firstQuiverSlot
 end
 
 -- Build category sections from items

@@ -100,6 +100,11 @@ end
 local buttonsByItemKey = {}
 local categoryViewItems = {}
 local lastCategoryLayout = nil
+-- Containers the last category rebuild rendered. IncrementalUpdate counts Empty/Soul/
+-- Quiver over this same list (LayoutEngine:CountLiveEmptySlots) so its count cannot
+-- include containers the view never drew. A container change rebuilds via the
+-- capacity guard; a bank-type or tab switch rebuilds through Refresh.
+local lastCategoryBagsToShow = nil
 local lastButtonByCategory = {} -- Key: categoryId -> last item button (for drop indicator anchor)
 local pseudoItemButtons = {} -- Track Empty/Soul pseudo-item buttons for proper release
                              -- Keys are "Empty:<categoryId>" or "Soul:<categoryId>" to avoid overwrites in merged groups
@@ -2545,6 +2550,7 @@ end
 
 function BankFrame:RefreshCategoryView(bank, bagsToShow, settings, hasSearch, isReadOnly)
     local iconSize = settings.iconSize
+    lastCategoryBagsToShow = bagsToShow
 
     -- Bank always shows soul bag items (no toggle button in bank footer)
     local items, emptyCount, firstEmptySlot, soulEmptyCount, firstSoulEmptySlot, quiverEmptyCount, firstQuiverEmptySlot = LayoutEngine:CollectItemsForCategoryView(bagsToShow, bank, isReadOnly, true, true)
@@ -3238,43 +3244,26 @@ function BankFrame:IncrementalUpdate(dirtyBags)
             cachedItemCount[slotKey] = update.count
         end
 
-        -- Calculate empty slot counts and first empty slots using LIVE data
-        local emptyCount = 0
-        local soulEmptyCount = 0
-        local firstEmptyBagID, firstEmptySlot = nil, nil
-        local firstSoulBagID, firstSoulSlot = nil, nil
-
-        for bagID = Constants.BANK_MAIN_BAG, Constants.BANK_BAG_MAX do
-            if bagID == Constants.BANK_MAIN_BAG or (bagID >= Constants.BANK_BAG_MIN and bagID <= Constants.BANK_BAG_MAX) then
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                if numSlots and numSlots > 0 then
-                    local bagType = BagClassifier and BagClassifier:GetBagType(bagID) or "regular"
-                    local isSoulBag = (bagType == "soul")
-                    for slot = 1, numSlots do
-                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-                        if not itemInfo then
-                            if isSoulBag then
-                                soulEmptyCount = soulEmptyCount + 1
-                                if not firstSoulBagID then
-                                    firstSoulBagID, firstSoulSlot = bagID, slot
-                                end
-                            else
-                                emptyCount = emptyCount + 1
-                                if not firstEmptyBagID then
-                                    firstEmptyBagID, firstEmptySlot = bagID, slot
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+        -- Live empty slot counts over the containers the last rebuild rendered, through
+        -- the same function the rebuild used (see LayoutEngine:CountLiveEmptySlots).
+        -- Walking BANK_MAIN_BAG..BANK_BAG_MAX here instead added container -1's free
+        -- slots to Empty on clients where the bank view does not include it.
+        if not lastCategoryBagsToShow then
+            self:Refresh()
+            return
         end
+        local emptyCount, firstEmptyBagID, firstEmptySlot,
+              soulEmptyCount, firstSoulBagID, firstSoulSlot,
+              quiverEmptyCount, firstQuiverBagID, firstQuiverSlot =
+            LayoutEngine:CountLiveEmptySlots(lastCategoryBagsToShow)
 
-        -- Check if Empty/Soul categories need to appear or disappear
+        -- Check if Empty/Soul/Quiver categories need to appear or disappear
         local emptyButtonExists = FindPseudoItemButton("Empty") ~= nil
         local soulButtonExists = FindPseudoItemButton("Soul") ~= nil
+        local quiverButtonExists = FindPseudoItemButton("Quiver") ~= nil
         local emptyNeedsButton = emptyCount > 0
         local soulNeedsButton = soulEmptyCount > 0
+        local quiverNeedsButton = quiverEmptyCount > 0
 
         if (emptyNeedsButton and not emptyButtonExists) or (not emptyNeedsButton and emptyButtonExists) then
             ns:Debug("Bank CategoryView REFRESH: Empty category visibility changed")
@@ -3283,6 +3272,11 @@ function BankFrame:IncrementalUpdate(dirtyBags)
         end
         if (soulNeedsButton and not soulButtonExists) or (not soulNeedsButton and soulButtonExists) then
             ns:Debug("Bank CategoryView REFRESH: Soul category visibility changed")
+            self:Refresh()
+            return
+        end
+        if quiverNeedsButton ~= quiverButtonExists then
+            ns:Debug("Bank CategoryView REFRESH: Quiver category visibility changed")
             self:Refresh()
             return
         end
@@ -3313,6 +3307,20 @@ function BankFrame:IncrementalUpdate(dirtyBags)
                     soulBtn.itemData.slot = firstSoulSlot
                     soulBtn.wrapper:SetID(firstSoulBagID)
                     soulBtn:SetID(firstSoulSlot)
+                end
+            end
+        end
+        local quiverBtn = FindPseudoItemButton("Quiver")
+        if quiverBtn then
+            SetItemButtonCount(quiverBtn, quiverEmptyCount)
+            if quiverBtn.itemData then
+                quiverBtn.itemData.emptyCount = quiverEmptyCount
+                quiverBtn.itemData.count = quiverEmptyCount
+                if firstQuiverBagID then
+                    quiverBtn.itemData.bagID = firstQuiverBagID
+                    quiverBtn.itemData.slot = firstQuiverSlot
+                    quiverBtn.wrapper:SetID(firstQuiverBagID)
+                    quiverBtn:SetID(firstQuiverSlot)
                 end
             end
         end
