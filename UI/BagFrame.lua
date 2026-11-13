@@ -103,11 +103,49 @@ local function ParkBagRecycleLeftovers()
     bagRecycleIdx = 0
 end
 
+-- Progressive category render. A full category rebuild sets up every item button
+-- (SetItem plus addon decorations, Masque re-skin on fresh buttons). Done in one
+-- frame, a full bag on a busy client trips the "script ran too long" watchdog --
+-- reliably in dungeons, where loot invalidates the fast reopen on almost every
+-- open. RefreshCategoryView lays everything out and draws headers at once, then
+-- RunCategoryRender draws items for CATEGORY_RENDER_FIRST_BUDGET_MS and finishes
+-- the rest at CATEGORY_RENDER_BUDGET_MS per frame. Ordinary bags still finish in
+-- the first call. layoutCached stays false until the last item is drawn, so the
+-- fast reopen and IncrementalUpdate never see a half-built layout.
+--
+-- Declared up here because ReleaseAllBagButtons must drop it: a render still in
+-- flight holds buttons that the release hands back to the pool.
+local CATEGORY_RENDER_FIRST_BUDGET_MS = 25
+local CATEGORY_RENDER_BUDGET_MS = 8     -- same per-frame budget as BankFrame's render
+local categoryRender = nil              -- state of the render in flight, or nil
+local categoryRenderNeedsUpdate = false -- bags changed mid-render; reconcile at finish
+local categoryRenderDriver = CreateFrame("Frame")
+categoryRenderDriver:Hide()
+local RenderCategoryItem, RunCategoryRender  -- defined after RefreshCategoryView
+
+-- Stop a render in flight before a new rebuild. Kept buttons it had not reached
+-- yet are in none of the tracking tables, so release them here or they leak.
+local function CancelCategoryRender()
+    local st = categoryRender
+    if not st then return end
+    categoryRender = nil
+    categoryRenderNeedsUpdate = false  -- the rebuild that cancels this supersedes it
+    categoryRenderDriver:Hide()
+    for key, kept in pairs(st.buttonsToKeep) do
+        for i = st.usedKept[key] + 1, #kept do
+            ItemButton:Release(kept[i])
+        end
+    end
+end
+
 -- One owner for "hand every bag button back to the shared pool": releasing without
 -- also dropping itemButtons/bagParked would leave this file holding freed buttons
 -- that the next single/split Refresh would try to recycle.
 local function ReleaseAllBagButtons()
     if not frame then return end
+    categoryRender = nil
+    categoryRenderNeedsUpdate = false
+    categoryRenderDriver:Hide()
     ItemButton:ReleaseAll(frame.container)
     itemButtons = {}
     bagParked = {}
@@ -695,6 +733,9 @@ function BagFrame:Refresh()
 
     ns:ProfileStart("Refresh")
 
+    -- A category render still drawing the previous layout is superseded.
+    CancelCategoryRender()
+
     -- A rebuild is happening now, so a queued one is redundant — and so is the
     -- one owed by any ghost slots this rebuild is about to collapse.
     if categoryRefreshTimer then
@@ -1120,6 +1161,11 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
     categoryViewItems = {}
     itemButtons = {}
 
+    -- Occupied slots, NOT #categoryViewItems: see the declaration. Read now, from
+    -- the same scanner cache this layout is built from: the item render below can
+    -- finish frames later, after the cache has moved on.
+    local occupiedSlotCount = CountBaggedItems()
+
     -- Remember whether this render merges identical items. IncrementalUpdate has
     -- to know: a grouped layout renders one button per item key, so most slots
     -- legitimately have no button, and the state can flip under it at any time
@@ -1251,140 +1297,212 @@ function BagFrame:RefreshCategoryView(bags, bagsToShow, settings, hasSearch, isV
         table.insert(categoryHeaders, header)
     end
 
-    -- Render item buttons with key-based reuse
-    -- Track which kept buttons we've used per key
+    -- Render item buttons with key-based reuse, spread across frames by
+    -- RunCategoryRender. Track which kept buttons we've used per key.
     local usedKeptButtons = {}
     for key in pairs(buttonsToKeep) do
         usedKeptButtons[key] = 0
     end
 
-    local reusedCount = 0
-    local acquiredCount = 0
-
     -- Reset last button tracking for drop indicator
     lastButtonByCategory = {}
 
-    for index, itemInfo in ipairs(layout.items) do
-        local itemData = itemInfo.item.itemData
-        local slotKey = GetSlotKey(itemData.bagID, itemData.slot)
-        local itemKey = GetItemKey(itemData)
+    categoryRender = {
+        items = layout.items,
+        cursor = 1,
+        buttonsToKeep = buttonsToKeep,
+        usedKept = usedKeptButtons,
+        reused = 0,
+        acquired = 0,
+        released = #buttonsToRelease,
+        occupied = occupiedSlotCount,
+        iconSize = iconSize,
+        hasSearch = hasSearch,
+        isViewingCached = isViewingCached,
+    }
+    -- This render draws from the current scanner cache, so it already covers any
+    -- change a cancelled render was holding back.
+    categoryRenderNeedsUpdate = false
+    RunCategoryRender(CATEGORY_RENDER_FIRST_BUDGET_MS)
+end
 
-        -- Try to reuse existing button for this item key
-        local button
-        if itemKey and buttonsToKeep[itemKey] then
-            local used = usedKeptButtons[itemKey]
-            if used < #buttonsToKeep[itemKey] then
-                button = buttonsToKeep[itemKey][used + 1]
-                usedKeptButtons[itemKey] = used + 1
-                reusedCount = reusedCount + 1
-            end
-        end
+-- Draw one item of the category layout: reuse a kept button for its item key or
+-- acquire one, then record it in the incremental-update tables. Pseudo items
+-- (Empty/Soul/Quiver) go into pseudoItemButtons only, exactly as before (Rule 1).
+RenderCategoryItem = function(st, index)
+    local itemInfo = st.items[index]
+    local iconSize = st.iconSize
+    local itemData = itemInfo.item.itemData
+    local slotKey = GetSlotKey(itemData.bagID, itemData.slot)
+    local itemKey = GetItemKey(itemData)
 
-        -- Acquire new button if no reusable one found
-        if not button then
-            button = ItemButton:Acquire(frame.container)
-            acquiredCount = acquiredCount + 1
-        end
-
-        -- Store category info before SetItem so it can use it for display logic
-        button.categoryId = itemInfo.categoryId
-
-        ItemButton:SetItem(button, itemData, iconSize, isViewingCached)
-
-        -- Apply spotlight search highlighting
-        if hasSearch then
-            ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, itemData))
-        else
-            ItemButton:ClearSearchState(button)
-        end
-
-        -- Store layout position for drag-drop indicator
-        button.iconSize = iconSize
-        button.layoutX = itemInfo.x
-        button.layoutY = itemInfo.y
-        button.layoutIndex = index
-        -- Not "containerFrame": the Forever template reads that field as a Blizzard bag
-        -- frame (IsCombined -> IsCombinedBagContainer) when it clears an empty slot
-        button.gudaContainer = frame.container
-
-        button.wrapper:ClearAllPoints()
-        button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", itemInfo.x, itemInfo.y)
-
-        -- Don't track Empty/Soul category pseudo-item in incremental update structures
-        -- It represents aggregated empty slots, not a real item slot
-        -- But DO track it separately for proper release
-        -- Use a unique key combining pseudo-item type and categoryId to avoid overwrites
-        -- when multiple pseudo-items (Empty, Soul) are in the same merged group
-        if itemData.isEmptySlots then
-            local prefix
-            if itemData.isSoulSlots then
-                prefix = "Soul:"
-            elseif itemData.isQuiverSlots then
-                prefix = "Quiver:"
-            else
-                prefix = "Empty:"
-            end
-            local pseudoKey = prefix .. itemInfo.categoryId
-            pseudoItemButtons[pseudoKey] = button
-        else
-            -- Store button by slot key for incremental updates (legacy)
-            buttonsBySlot[slotKey] = button
-            cachedItemData[slotKey] = itemData.itemID
-            cachedItemCount[slotKey] = itemData.count
-            cachedItemCategory[slotKey] = itemInfo.categoryId
-            CacheChargesForSlot(slotKey, itemData.bagID, itemData.slot)
-
-            -- Store by bagID for fast bag-specific lookups
-            local bagID = itemData.bagID
-            if not buttonsByBag[bagID] then
-                buttonsByBag[bagID] = {}
-            end
-            buttonsByBag[bagID][itemData.slot] = button
-
-            -- Store by item key for smart button reuse
-            if itemKey then
-                if not buttonsByItemKey[itemKey] then
-                    buttonsByItemKey[itemKey] = {}
-                end
-                table.insert(buttonsByItemKey[itemKey], button)
-            end
-        end
-
-        -- Store button position for reflow detection
-        buttonPositions[button] = {x = itemInfo.x, y = itemInfo.y, index = index}
-
-        -- Store item info for incremental comparison
-        table.insert(categoryViewItems, {
-            itemKey = itemKey,
-            bagID = itemData.bagID,
-            slot = itemData.slot,
-            slotKey = slotKey,
-            categoryId = itemInfo.categoryId,
-            count = itemData.count,
-            x = itemInfo.x,
-            y = itemInfo.y,
-            index = index,
-        })
-
-        table.insert(itemButtons, button)
-
-        -- Track last button per category (for drop indicator anchor)
-        if itemInfo.categoryId then
-            lastButtonByCategory[itemInfo.categoryId] = button
+    -- Try to reuse existing button for this item key
+    local button
+    local kept = itemKey and st.buttonsToKeep[itemKey]
+    if kept then
+        local used = st.usedKept[itemKey]
+        if used < #kept then
+            button = kept[used + 1]
+            st.usedKept[itemKey] = used + 1
+            st.reused = st.reused + 1
         end
     end
 
+    -- Acquire new button if no reusable one found
+    if not button then
+        button = ItemButton:Acquire(frame.container)
+        st.acquired = st.acquired + 1
+    end
+
+    -- Store category info before SetItem so it can use it for display logic
+    button.categoryId = itemInfo.categoryId
+
+    ItemButton:SetItem(button, itemData, iconSize, st.isViewingCached)
+
+    -- Apply spotlight search highlighting
+    if st.hasSearch then
+        ItemButton:SetSearchState(button, SearchBar:ItemMatchesFilters(frame, itemData))
+    else
+        ItemButton:ClearSearchState(button)
+    end
+
+    -- Store layout position for drag-drop indicator
+    button.iconSize = iconSize
+    button.layoutX = itemInfo.x
+    button.layoutY = itemInfo.y
+    button.layoutIndex = index
+    -- Not "containerFrame": the Forever template reads that field as a Blizzard bag
+    -- frame (IsCombined -> IsCombinedBagContainer) when it clears an empty slot
+    button.gudaContainer = frame.container
+
+    button.wrapper:ClearAllPoints()
+    button.wrapper:SetPoint("TOPLEFT", frame.container, "TOPLEFT", itemInfo.x, itemInfo.y)
+
+    -- Don't track Empty/Soul category pseudo-item in incremental update structures
+    -- It represents aggregated empty slots, not a real item slot
+    -- But DO track it separately for proper release
+    -- Use a unique key combining pseudo-item type and categoryId to avoid overwrites
+    -- when multiple pseudo-items (Empty, Soul) are in the same merged group
+    if itemData.isEmptySlots then
+        local prefix
+        if itemData.isSoulSlots then
+            prefix = "Soul:"
+        elseif itemData.isQuiverSlots then
+            prefix = "Quiver:"
+        else
+            prefix = "Empty:"
+        end
+        local pseudoKey = prefix .. itemInfo.categoryId
+        pseudoItemButtons[pseudoKey] = button
+    else
+        -- Store button by slot key for incremental updates (legacy)
+        buttonsBySlot[slotKey] = button
+        cachedItemData[slotKey] = itemData.itemID
+        cachedItemCount[slotKey] = itemData.count
+        cachedItemCategory[slotKey] = itemInfo.categoryId
+        CacheChargesForSlot(slotKey, itemData.bagID, itemData.slot)
+
+        -- Store by bagID for fast bag-specific lookups
+        local bagID = itemData.bagID
+        if not buttonsByBag[bagID] then
+            buttonsByBag[bagID] = {}
+        end
+        buttonsByBag[bagID][itemData.slot] = button
+
+        -- Store by item key for smart button reuse
+        if itemKey then
+            if not buttonsByItemKey[itemKey] then
+                buttonsByItemKey[itemKey] = {}
+            end
+            table.insert(buttonsByItemKey[itemKey], button)
+        end
+    end
+
+    -- Store button position for reflow detection
+    buttonPositions[button] = {x = itemInfo.x, y = itemInfo.y, index = index}
+
+    -- Store item info for incremental comparison
+    table.insert(categoryViewItems, {
+        itemKey = itemKey,
+        bagID = itemData.bagID,
+        slot = itemData.slot,
+        slotKey = slotKey,
+        categoryId = itemInfo.categoryId,
+        count = itemData.count,
+        x = itemInfo.x,
+        y = itemInfo.y,
+        index = index,
+    })
+
+    table.insert(itemButtons, button)
+
+    -- Track last button per category (for drop indicator anchor)
+    if itemInfo.categoryId then
+        lastButtonByCategory[itemInfo.categoryId] = button
+    end
+end
+
+-- Every item is drawn: publish the layout to IncrementalUpdate and the fast reopen.
+local function FinishCategoryRender(st)
+    categoryRender = nil
+    categoryRenderDriver:Hide()
+
     ns:Debug(string.format("Category refresh: %d reused, %d acquired, %d released",
-        reusedCount, acquiredCount, #buttonsToRelease))
+        st.reused, st.acquired, st.released))
 
     -- Save current layout for next incremental update comparison
     lastCategoryLayout = categoryViewItems
-    -- Occupied slots, NOT #categoryViewItems: see the declaration. Read from the
-    -- same scanner cache this layout was built from, so the two agree.
-    lastOccupiedSlotCount = CountBaggedItems()
+    lastOccupiedSlotCount = st.occupied
 
     layoutCached = true
+
+    -- Bags changed while this render was drawing an older snapshot. Run the update
+    -- now, through the same view-aware gate a live BAG_UPDATE takes.
+    if categoryRenderNeedsUpdate then
+        categoryRenderNeedsUpdate = false
+        if frame and frame:IsShown() then
+            ns.OnBagsUpdated(nil)
+        end
+    end
 end
+
+-- Draw items until budgetMs is spent, then let the driver resume next frame.
+-- In combat, finish in one go rather than moving buttons across combat frames.
+RunCategoryRender = function(budgetMs)
+    local st = categoryRender
+    if not st then
+        categoryRenderDriver:Hide()
+        return
+    end
+    ns:ProfileStart("Refresh.categoryChunk")
+    local drainAll = InCombatLockdown()
+    local startT = debugprofilestop()
+    local n = #st.items
+    while st.cursor <= n do
+        RenderCategoryItem(st, st.cursor)
+        st.cursor = st.cursor + 1
+        -- Check the clock every few items to amortise the timer call.
+        if not drainAll and st.cursor % 4 == 0 and st.cursor <= n
+            and debugprofilestop() - startT > budgetMs then
+            categoryRenderDriver:Show()
+            ns:ProfileStop("Refresh.categoryChunk")
+            return
+        end
+    end
+    ns:ProfileStop("Refresh.categoryChunk")
+    FinishCategoryRender(st)
+end
+
+categoryRenderDriver:SetScript("OnUpdate", function()
+    RunCategoryRender(CATEGORY_RENDER_BUDGET_MS)
+end)
+
+-- PLAYER_REGEN_DISABLED fires before lockdown starts, so a render in flight can
+-- still finish on the outside of combat (Rule 3: don't acquire buttons once
+-- combat has started).
+Events:Register("PLAYER_REGEN_DISABLED", function()
+    if categoryRender then RunCategoryRender(math.huge) end
+end, categoryRenderDriver)
 
 -- Register for combat end event to execute pending actions and refresh open bags
 RegisterCombatEndCallback = function()
@@ -1630,6 +1748,13 @@ function BagFrame:IncrementalUpdate(dirtyBags)
     -- Never do incremental updates while viewing a cached character
     -- Live bag events should not affect cached character display
     if viewingCharacter then return end
+
+    -- A category render is still drawing: its tables are half-built. Let it finish,
+    -- then FinishCategoryRender runs the update against the complete layout.
+    if categoryRender then
+        categoryRenderNeedsUpdate = true
+        return
+    end
 
     -- Recent items removal is now handled by ghost slots in incremental update
     -- Just clear the flag so it doesn't accumulate
@@ -2402,6 +2527,13 @@ ns.OnBagsUpdated = function(dirtyBags)
     end
     -- Only auto-refresh when viewing current character
     if not viewingCharacter then
+        -- Mid-render, layoutCached is false, so the gate below would restart the
+        -- whole rebuild on every bag event (constant while looting). Defer to the
+        -- render's finish instead.
+        if categoryRender and frame and frame:IsShown() then
+            categoryRenderNeedsUpdate = true
+            return
+        end
         if frame and frame:IsShown() then
             local viewType = Database:GetSetting("bagViewType") or "single"
             ns:Debug("OnBagsUpdated refreshing, viewType:", viewType)
