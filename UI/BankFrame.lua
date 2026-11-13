@@ -2958,6 +2958,14 @@ end
 function BankFrame:Hide()
     if not frame then return end
 
+    -- Already hidden AND already holding the retained layout: nothing to do. Re-running
+    -- the hold logic would reset bankDirtyWhileHidden and drop a change made while
+    -- hidden (a setting, a profile load), so the next open fast-reopens a stale layout
+    -- (the bag frame's #177 bug). Hidden but NOT yet held must still fall through:
+    -- ESC / X / UISpecialFrames hide the frame directly and ns.OnBankClosed relies on
+    -- this call to start holding the layout.
+    if bankHeld and not frame:IsShown() then return end
+
     -- Must run before frame:Hide() below, while IsShown() still reads true.
     if frame:IsShown() then
         PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_CLOSE or 851)
