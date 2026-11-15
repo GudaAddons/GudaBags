@@ -180,6 +180,37 @@ end
 local hiddenParent = CreateFrame("Frame")
 hiddenParent:Hide()
 
+-- WoW: Forever's free first bank tab. The main bank IS character bank tab 1 there, so a
+-- character that owns no tab has no bank at all ("your bank is full"). That tab is free
+-- and Blizzard's bank buys it from its own OnShow (Camelot BankFrameMixin:PurchaseFirstSlot),
+-- but C_Bank.PurchaseBankTab is protected: only that secure path, or a click on Blizzard's
+-- secure purchase template, can buy it. So for such a character HideDefaultBankFrame lends
+-- Blizzard's frame to lentParent -- shown but invisible -- and it buys the tab unseen
+-- (the 48-slot "Page 1", as in the default UI). NeedsFirstBankTab is the fallback prompt.
+--
+-- No parent, so hiding UIParent (Alt+Z) cannot hide the lent frame and end the session;
+-- tiny as well as transparent, so it catches no clicks.
+local lentParent = CreateFrame("Frame")
+lentParent:SetAlpha(0)
+lentParent:SetScale(0.001)
+
+local firstTabPromptShown = false  -- the purchase prompt on screen was raised by NeedsFirstBankTab
+
+local function OwnsNoBankTab()
+    if ns.ExpansionFeatures.HasTabbedBank or not Constants.CHARACTER_BANK_TABS_ACTIVE then
+        return false
+    end
+    local bankType = Enum and Enum.BankType and Enum.BankType.Character
+    if not (bankType and C_Bank and C_Bank.FetchNumPurchasedBankTabs) then return false end
+    return C_Bank.FetchNumPurchasedBankTabs(bankType) == 0
+end
+
+-- Blizzard's own (invisible) bank is open and buying the free first tab right now.
+local function BlizzardBuysFirstTab()
+    local blizz = _G.BankFrame
+    return blizz and blizz:GetParent() == lentParent and blizz:IsShown() or false
+end
+
 local function LoadComponents()
     BankHeader = ns:GetModule("BankFrame.BankHeader")
     BankFooter = ns:GetModule("BankFrame.BankFooter")
@@ -883,6 +914,7 @@ end
 -- Hide purchase prompt and restore normal content
 function BankFrame:HidePurchasePrompt()
     showingPurchasePrompt = false
+    firstTabPromptShown = false
     if not frame then return end
     if frame.purchasePrompt then
         frame.purchasePrompt:Hide()
@@ -1791,6 +1823,20 @@ local function ProcessBankRenderChunk()
 end
 bankRenderDriver:SetScript("OnUpdate", ProcessBankRenderChunk)
 
+-- Fallback for Forever's free first tab (see lentParent): the character still owns no
+-- tab and Blizzard's frame is not buying it -- e.g. the tab count was unknown before the
+-- banker opened. Refresh then shows the purchase prompt, whose button is Blizzard's
+-- secure purchase template: one click buys the tab.
+local function NeedsFirstBankTab()
+    if viewingCharacter or not BankScanner:IsBankOpen() then return false end
+    if not OwnsNoBankTab() or BlizzardBuysFirstTab() then return false end
+    if ((BankFooter and BankFooter:GetCurrentBankType()) or "character") ~= "character" then
+        return false
+    end
+    return C_Bank.CanPurchaseBankTab and C_Bank.CanPurchaseBankTab(Enum.BankType.Character)
+        and true or false
+end
+
 function BankFrame:Refresh()
     if not frame then return end
 
@@ -1810,6 +1856,21 @@ function BankFrame:Refresh()
 
     -- Stop any in-flight progressive render before rebuilding.
     CancelBankRender()
+
+    -- No bank tab owned on a Forever-style bank: offer the first one (see NeedsFirstBankTab).
+    -- BANK_TABS_CHANGED after the purchase hides the prompt and refreshes
+    -- (ns.OnRetailBankTabsUpdated), and this check is then false.
+    -- A prompt raised here is also taken down here once it no longer applies (bank
+    -- closed without buying, then viewed offline), or it would block every rebuild.
+    if NeedsFirstBankTab() then
+        if not showingPurchasePrompt then
+            showingPurchasePrompt = true
+            self:ShowPurchasePrompt(Enum.BankType.Character)
+            firstTabPromptShown = true  -- after: HidePurchasePrompt clears it
+        end
+    elseif firstTabPromptShown then
+        self:HidePurchasePrompt()
+    end
 
     -- If purchase prompt is active, don't rebuild bank content
     if showingPurchasePrompt then
@@ -3478,16 +3539,31 @@ end
 
 -- Disable the default Blizzard bank frame completely
 -- Must be called when bank opens since _G.BankFrame may not exist at addon load time
-local blizzBankDisabled = false
+-- except on Forever while the character owns no bank tab: then it is lent to lentParent
+-- to buy the free first tab (see lentParent). The parent only changes while the frame is
+-- closed: moving it while open would run its OnHide, which ends the bank session
+-- (C_Bank.CloseBankFrame).
+local blizzBankHooked = false
 local function HideDefaultBankFrame()
-    if blizzBankDisabled then return end
-    if _G.BankFrame then
-        blizzBankDisabled = true
-        _G.BankFrame:SetParent(hiddenParent)
-        _G.BankFrame:UnregisterAllEvents()
+    local blizz = _G.BankFrame
+    if not blizz then return end
+    if not blizzBankHooked then
+        blizzBankHooked = true
+        blizz:UnregisterAllEvents()
+        -- Re-place after each lent session, once the tab is bought.
+        blizz:HookScript("OnHide", function()
+            C_Timer.After(0, HideDefaultBankFrame)
+        end)
+    end
+    if blizz:IsShown() then return end
+    local parent = OwnsNoBankTab() and lentParent or hiddenParent
+    if blizz:GetParent() ~= parent then
+        blizz:SetParent(parent)
     end
 end
 HideDefaultBankFrame()
+-- The tab count may not be known at load yet; settle again once in the world.
+Events:Register("PLAYER_ENTERING_WORLD", HideDefaultBankFrame, BankFrame)
 
 ns.OnBankOpened = function()
     HideDefaultBankFrame()
