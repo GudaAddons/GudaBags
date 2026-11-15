@@ -215,7 +215,7 @@ local function AfterAttach()
 
     -- A stack that is still sitting in its bag slot never attached (soulbound or
     -- otherwise unmailable). Counting it here keeps the summary honest instead of
-    -- assuming every UseContainerItem call succeeded.
+    -- assuming every attach succeeded.
     for _, entry in ipairs(pendingRound) do
         local info = C_Container.GetContainerItemInfo(entry.bagID, entry.slot)
         if info and info.itemID == batchItemID then
@@ -258,18 +258,39 @@ Step = function()
         return
     end
 
-    local free = MaxAttachments() - CountAttachments()
+    -- Attach by pick-up + drop into an empty attachment slot, not UseContainerItem:
+    -- the client blocks UseContainerItem from addon code here (ADDON_ACTION_FORBIDDEN,
+    -- even inside the click), while ClickSendMailItemButton is what Blizzard's own
+    -- Send Mail slots call. Free slots are listed up front because an attach is not
+    -- guaranteed to read back on the next line (see SETTLE_DELAY).
+    local freeSlots = {}
+    for i = 1, MaxAttachments() do
+        if not GetSendMailItem(i) then
+            freeSlots[#freeSlots + 1] = i
+        end
+    end
     pendingRound = {}
+    -- An item already on the cursor would be swapped into the first stack's bag slot.
+    if CursorHasItem() then
+        ClearCursor()
+    end
 
-    while free > 0 and #queue > 0 do
+    local nextFree = 1
+    while nextFree <= #freeSlots and #queue > 0 do
         local entry = table.remove(queue, 1)
 
         -- Verify the slot still holds what we planned to send before acting on it.
         local info = C_Container.GetContainerItemInfo(entry.bagID, entry.slot)
         if info and info.itemID == batchItemID and not info.isLocked then
-            C_Container.UseContainerItem(entry.bagID, entry.slot)
+            C_Container.PickupContainerItem(entry.bagID, entry.slot)
+            ClickSendMailItemButton(freeSlots[nextFree])
+            -- Refused (soulbound etc.): put it back rather than leave it on the cursor.
+            -- AfterAttach counts it as skipped because it is still in its bag slot.
+            if CursorHasItem() then
+                ClearCursor()
+            end
             pendingRound[#pendingRound + 1] = entry
-            free = free - 1
+            nextFree = nextFree + 1
         else
             skippedStacks = skippedStacks + 1
         end
