@@ -2,9 +2,11 @@ local addonName, ns = ...
 
 ns.addonName = addonName
 
--- Read version from TOC file (compatible with all WoW versions)
+-- Read version from TOC file (compatible with all WoW versions). The packager fills
+-- @project-version@ in from the git tag; an unpackaged checkout still holds the raw token.
 local GetAddOnMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
-ns.version = GetAddOnMetadata(addonName, "Version") or "1.0.0"
+local tocVersion = GetAddOnMetadata(addonName, "Version")
+ns.version = (tocVersion and not tocVersion:find("@", 1, true)) and tocVersion or "dev"
 
 ns.Modules = {}
 
