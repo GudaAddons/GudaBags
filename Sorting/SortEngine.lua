@@ -334,14 +334,19 @@ local REAGENT_BAG_MARKER = -1
 -- (e.g. Mining Sack) instead, and then nothing should prefer "reagent".
 local hasReagentMarkerBag = false
 
--- Heuristic: is this item a crafting reagent that belongs in the reagent bag?
--- Uses classID 7 (Trade Goods) but excludes non-reagent subcategories.
--- subClassID 2 = Explosives, 3 = Devices (engineering gadgets, not reagents)
--- If a false positive slips through, ExecuteMoves_Yielding's safety net skips it.
+-- Is this item accepted by the reagent bag? The client decides by the item's
+-- crafting-reagent flag (GetItemInfo return 17), so trust it whenever it is
+-- reported -- a wrong guess here makes the client reject a planned move, and the
+-- rest of the offline plan (laid out as if it succeeded) ends up misaligned.
+-- Fallback when the flag is absent: classID 7 (Trade Goods) minus
+-- subClassID 2 = Explosives, 3 = Devices.
 local function IsReagentItem(itemID)
     if not itemID then return false end
     local cached = itemInfoCache[itemID]
     if not cached then return false end
+    if cached.isCraftingReagent ~= nil then
+        return cached.isCraftingReagent == true
+    end
     if cached.classID == 7 and cached.subClassID ~= 2 and cached.subClassID ~= 3 then
         return true
     end
@@ -524,7 +529,7 @@ local function SnapshotSlots(bagIDs)
                 local info = itemInfoCache[itemID]
                 if not info then
                     local itemLink = itemInfo.hyperlink
-                    local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, _, itemEquipLoc, _, _, classID, subClassID = GetItemInfo(itemLink)
+                    local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, _, itemEquipLoc, _, _, classID, subClassID, _, _, _, isCraftingReagent = GetItemInfo(itemLink)
                     info = {
                         itemName = itemName or "",
                         quality = tonumber(itemQuality or itemInfo.quality or 0) or 0,
@@ -535,7 +540,8 @@ local function SnapshotSlots(bagIDs)
                         classID = classID or 15,
                         subClassID = subClassID or 0,
                         itemFamily = C_Item_GetItemFamily(itemID) or 0,
-                        isCraftingReagent = itemInfo.isCraftingReagent or false,
+                        -- nil when the client doesn't report it; IsReagentItem then falls back
+                        isCraftingReagent = isCraftingReagent,
                     }
                     itemInfoCache[itemID] = info
                 end
