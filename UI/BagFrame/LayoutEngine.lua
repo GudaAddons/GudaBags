@@ -23,6 +23,39 @@ local function ResolveKeyringIcon(itemInfo, itemTexture)
     return itemInfo.iconFileID or itemTexture
 end
 
+-- How many keyring slots single/split view draws: up to the last slot holding a
+-- key, so a 32-slot keyring with 2 keys is not a wall of empty cells. Gaps before
+-- the last key stay (slot positions are real container slots). An empty keyring
+-- still shows one slot, so opening it shows something to drop a key into.
+-- 0 when the container has no slots at all. Category view needs none of this: it
+-- never draws empty keyring slots.
+function LayoutEngine:GetKeyringShownSlots(bagID, bagData, isViewingCached)
+    local last = 0
+    if isViewingCached then
+        local numSlots = bagData and bagData.numSlots or 0
+        if numSlots <= 0 then return 0 end
+        local slots = bagData.slots
+        if slots then
+            for slot = numSlots, 1, -1 do
+                if slots[slot] then
+                    last = slot
+                    break
+                end
+            end
+        end
+    else
+        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        if numSlots <= 0 then return 0 end
+        for slot = numSlots, 1, -1 do
+            if C_Container.GetContainerItemInfo(bagID, slot) then
+                last = slot
+                break
+            end
+        end
+    end
+    return math.max(last, 1)
+end
+
 -- Check if an interaction window is open (bank, trade, mail, merchant, auction)
 -- When these are open, items should be shown ungrouped for easier interaction
 local function IsInteractionWindowOpen()
@@ -234,7 +267,7 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
             local bagID = keyringInfo.bagID
             local bagData = bags[bagID]
             if isViewingCached and bagData then
-                for slot = 1, bagData.numSlots do
+                for slot = 1, self:GetKeyringShownSlots(bagID, bagData, true) do
                     local needsSpacing = (slot == 1)
                     table.insert(allSlots, {
                         bagID = bagID,
@@ -244,8 +277,8 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                     })
                 end
             else
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                if numSlots and numSlots > 0 then
+                local numSlots = self:GetKeyringShownSlots(bagID, nil, false)
+                if numSlots > 0 then
                     for slot = 1, numSlots do
                         local needsSpacing = (slot == 1)
                         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
@@ -291,7 +324,7 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
         if bagInfo.isKeyring then
             if isViewingCached and bagData then
                 -- Use cached keyring data
-                for slot = 1, bagData.numSlots do
+                for slot = 1, self:GetKeyringShownSlots(bagID, bagData, true) do
                     local needsSpacing = bagInfo.needsSpacing and (slot == 1)
                     table.insert(allSlots, {
                         bagID = bagID,
@@ -302,8 +335,8 @@ function LayoutEngine:CollectAllSlots(bagsToShow, bags, isViewingCached, unified
                 end
             else
                 -- Use live keyring data
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                if numSlots and numSlots > 0 then
+                local numSlots = self:GetKeyringShownSlots(bagID, nil, false)
+                if numSlots > 0 then
                     for slot = 1, numSlots do
                         local needsSpacing = bagInfo.needsSpacing and (slot == 1)
                         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
@@ -1495,6 +1528,9 @@ function LayoutEngine:BuildSplitViewLayout(bagsToShow, bags, settings, isViewing
         local bagID = bagInfo.bagID
         local bagData = bags[bagID]
         local numSlots = bagData and bagData.numSlots or (not isViewingCached and C_Container.GetContainerNumSlots(bagID) or 0)
+        if bagInfo.isKeyring then
+            numSlots = self:GetKeyringShownSlots(bagID, bagData, isViewingCached)
+        end
         if numSlots <= 0 then return end
 
         local displayInfo = self:GetBagDisplayInfo(bagID, bagData, isViewingCached)
@@ -1533,6 +1569,9 @@ function LayoutEngine:BuildSplitViewLayout(bagsToShow, bags, settings, isViewing
         local bagID = bagInfo.bagID
         local bagData = bags[bagID]
         local numSlots = bagData and bagData.numSlots or (not isViewingCached and C_Container.GetContainerNumSlots(bagID) or 0)
+        if bagInfo.isKeyring then
+            numSlots = self:GetKeyringShownSlots(bagID, bagData, isViewingCached)
+        end
         if numSlots > 0 then
             local displayInfo = self:GetBagDisplayInfo(bagID, bagData, isViewingCached)
             local rows = math.ceil(numSlots / blockColumns)

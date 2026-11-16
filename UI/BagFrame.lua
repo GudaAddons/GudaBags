@@ -1804,6 +1804,31 @@ function BagFrame:IncrementalUpdate(dirtyBags)
     -- If no dirty bags specified, check all (fallback behavior)
     local checkAllBags = not dirtyBags or not next(dirtyBags)
 
+    -- Single/split view draw the keyring only up to its last key
+    -- (LayoutEngine:GetKeyringShownSlots). A key landing past that, or the last key
+    -- leaving, changes how many cells it needs, and the per-slot repaint below only
+    -- touches cells that exist. Rebuild, with the same combat guard as a capacity
+    -- change above.
+    local keyringID = Constants.KEYRING_BAG_ID
+    if keyringID and not isCategoryView and Footer:IsKeyringVisible()
+        and (checkAllBags or dirtyBags[keyringID]) then
+        local drawn = 0
+        if buttonsByBag[keyringID] then
+            for _ in pairs(buttonsByBag[keyringID]) do drawn = drawn + 1 end
+        end
+        if drawn ~= LayoutEngine:GetKeyringShownSlots(keyringID, nil, false) then
+            if not CanRebuildCategoryInCombat() then
+                ns:Debug("Keyring size changed - deferred to combat end")
+                RegisterCombatEndCallback()
+            else
+                ns:Debug("Keyring size changed - full refresh")
+                layoutCached = false
+                self:Refresh()
+                return
+            end
+        end
+    end
+
     -- Category view: Item-key-based button reuse for efficiency
     -- Buttons are tracked by item key, not by slot
     -- When items move, the SAME button follows - no expensive SetItem call needed
