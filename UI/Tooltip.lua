@@ -242,10 +242,12 @@ local function GetBankSlotSet()
     local Constants = ns.Constants
     bankSlotSet = {}
 
-    -- The main bank container exists on every flavor, and is seeded explicitly:
-    -- on modern retail BANK_BAG_IDS is built purely from CharacterBankTab_*
-    -- indices and does NOT contain -1.
-    bankSlotSet[(Constants and Constants.BANK_MAIN_BAG) or -1] = true
+    -- The main bank container is seeded explicitly: on modern retail BANK_BAG_IDS
+    -- is built purely from CharacterBankTab_* indices and does NOT contain -1.
+    -- BANK_MAIN_BAG is nil on WoW: Forever, where -1 is the keyring.
+    if Constants and Constants.BANK_MAIN_BAG then
+        bankSlotSet[Constants.BANK_MAIN_BAG] = true
+    end
 
     -- Flavor-correct bank bag range, or the retail character bank tabs.
     if Constants and Constants.BANK_BAG_IDS then
@@ -291,7 +293,8 @@ function Tooltip:ShowForItem(button)
     local slot = button.itemData.slot
     local link = button.itemData.link or button.itemData.itemLink
     local itemID = button.itemData.itemID
-    local isKeyring = bagID == -2
+    local keyringID = ns.Constants and ns.Constants.KEYRING_BAG_ID
+    local isKeyring = keyringID ~= nil and bagID == keyringID
     local isGuildBank = button.itemData.isGuildBank
 
     -- Check if this is a bank item (main bank container, bank bags, or retail bank tabs)

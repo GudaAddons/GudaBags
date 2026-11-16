@@ -336,13 +336,13 @@ end}
 -- Loads the real Core/Constants.lua against a stubbed client. Only the globals the
 -- bag-id derivation reads are varied; the rest are the minimum needed to reach the
 -- end of the file.
-local function DiscoverBags(iface, projectID, numBagSlots, numTotalEquipped, reagentID, bankTabs)
+local function DiscoverBags(iface, projectID, numBagSlots, numTotalEquipped, reagentID, bankTabs, keyringEnum)
     local E, ns = Detect(iface, projectID, true)
 
     NUM_BAG_SLOTS = numBagSlots
     NUM_TOTAL_EQUIPPED_BAG_SLOTS = numTotalEquipped
-    if reagentID or bankTabs then
-        local bagIndex = { ReagentBag = reagentID }
+    if reagentID or bankTabs or keyringEnum then
+        local bagIndex = { ReagentBag = reagentID, Keyring = keyringEnum }
         for i = 1, (bankTabs or 0) do
             bagIndex["CharacterBankTab_" .. i] = 20 + i
             bagIndex["AccountBankTab_" .. i] = 40 + i
@@ -374,16 +374,22 @@ local BAG_CASES = {
     -- Forever's real layout, confirmed in game 2026-09-21: main bag + FOUR ordinary
     -- bags + a reagent bag at 5 + a keyring. Identical to Retail except for the
     -- keyring -- which is why there is no Forever branch in DiscoverCarriedBags.
+    -- Its enum numbers the keyring -1 (and the character bank tab -2), unlike the
+    -- Classic flavors' -2. A hardcoded -2 made the keyring never show on Forever.
     {name = "FOREVER",      iface = 16001,  pid = 1,  numBag = 4,   total = 5,
      reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5,
-     playerMax = 4, keyring = -2},
+     playerMax = 4, keyringEnum = -1, keyring = -1, bankMain = nil},
+    -- Classic flavor that ships the enum: its own -2 is used, bank stays at -1.
+    {name = "Classic Era (enum)", iface = 11509, pid = 2, numBag = nil, total = nil,
+     reagent = nil, tabs = nil, ids = "0, 1, 2, 3, 4",          reagentOut = nil,
+     playerMax = 4, keyringEnum = -2, keyring = -2, bankMain = -1},
     -- NUM_TOTAL_EQUIPPED_BAG_SLOTS absent: reconstruct from NUM_BAG_SLOTS plus the
     -- reagent bag the enum reports. The regression guard for the bug this replaced,
     -- which built the list from NUM_BAG_SLOTS alone and so dropped id 5 entirely --
     -- the reagent bag was never scanned and IsPlayerBagID(5) rejected its updates.
     {name = "FOREVER (no total)", iface = 16001, pid = 1, numBag = 4, total = nil,
      reagent = 5,   tabs = 9,   ids = "0, 1, 2, 3, 4, 5",       reagentOut = 5,
-     playerMax = 4, keyring = -2},
+     playerMax = 4, keyringEnum = -1, keyring = -1, bankMain = nil},
     -- A Retail-path client that reports no reagent bag must not get one invented.
     -- An earlier draft defaulted REAGENT_BAG to 5 and appended that id to BAG_IDS,
     -- which made the addon scan a container the client does not have.
@@ -394,7 +400,7 @@ local BAG_CASES = {
 
 for _, case in ipairs(BAG_CASES) do
     local C = DiscoverBags(case.iface, case.pid, case.numBag, case.total,
-                           case.reagent, case.tabs)
+                           case.reagent, case.tabs, case.keyringEnum)
     local got = table.concat(C.BAG_IDS, ", ")
     print(string.format("  %-20s BAG_IDS = {%s}  REAGENT_BAG = %s  PLAYER_BAG_MAX = %s",
           case.name, got, tostring(C.REAGENT_BAG), tostring(C.PLAYER_BAG_MAX)))
@@ -409,6 +415,10 @@ for _, case in ipairs(BAG_CASES) do
     -- bag", and callers size loops off it.
     Check(case.name .. " PLAYER_BAG_MAX", C.PLAYER_BAG_MAX, case.playerMax)
     Check(case.name .. " KEYRING_BAG_ID", C.KEYRING_BAG_ID, case.keyring)
+    -- The keyring and the main bank must never share an id.
+    if case.keyringEnum then
+        Check(case.name .. " BANK_MAIN_BAG", C.BANK_MAIN_BAG, case.bankMain)
+    end
     -- The keyring is never a carried bag: IsPlayerBag pairs the two on purpose.
     if case.keyring then
         Check(case.name .. " IsPlayerBagID(keyring)", C.IsPlayerBagID(case.keyring), false)

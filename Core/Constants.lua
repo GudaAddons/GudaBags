@@ -192,9 +192,25 @@ function Constants.IsPlayerBagID(bagID)
     return bagID ~= nil and BAG_ID_SET[bagID] == true
 end
 
--- Keyring bag ID: -2 on every flavor that has one, nil elsewhere. Gated by
--- Features.HasKeyring so the list of keyring flavors has a single owner.
-Constants.KEYRING_BAG_ID = Expansion and Expansion.Features.HasKeyring and -2 or nil
+-- Keyring bag ID, nil on flavors without one. Gated by Features.HasKeyring so the
+-- list of keyring flavors has a single owner.
+--
+-- The id is the client's to give: Classic Era, TBC and MoP number the keyring -2
+-- (with the main bank at -1), but the modern enum WoW: Forever uses moved it to -1
+-- and gave -2 to the character bank tab. A hardcoded -2 scanned the wrong container
+-- on Forever, found no slots, and the keyring never appeared. -2 stays the fallback
+-- for clients whose Enum.BagIndex lacks the member.
+Constants.KEYRING_BAG_ID = Expansion and Expansion.Features.HasKeyring
+    and ((Enum and Enum.BagIndex and Enum.BagIndex.Keyring) or -2)
+    or nil
+
+-- Where the keyring took -1, there is no main bank container at -1 (that client's
+-- bank is CharacterBankTab_N), so -1 must not be read as "the bank": a keyring item
+-- would otherwise be treated as a bank slot by every BANK_MAIN_BAG test.
+if Constants.KEYRING_BAG_ID ~= nil and Constants.KEYRING_BAG_ID == Constants.BANK_MAIN_BAG then
+    Constants.BANK_MAIN_BAG = nil
+    Constants.BANK_BAG_ID = nil
+end
 
 Constants.HEARTHSTONE_ID = 6948
 

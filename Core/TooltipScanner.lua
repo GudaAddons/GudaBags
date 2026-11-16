@@ -42,7 +42,8 @@ function TooltipScanner:SetBagItem(bagID, slotID)
     tooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
     tooltip:ClearLines()
 
-    if bagID == -1 then
+    -- BANK_MAIN_BAG, not a literal -1: on WoW: Forever -1 is the keyring.
+    if bagID == ns.Constants.BANK_MAIN_BAG then
         -- BANK_CONTAINER's 28 main slots use inventory slot IDs, not bag/slot.
         -- tooltip:SetBagItem(-1, slot) does not reliably return per-slot data
         -- (e.g. "X Charges") in Classic. Mirrors UI/Tooltip.lua:208-219.
