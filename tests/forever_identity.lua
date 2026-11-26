@@ -38,8 +38,18 @@ local function Login(p, isForever)
     LoadFile("Core/Constants.lua")
     LoadFile("Core/Database.lua")
     local Database = ns:GetModule("Database")
+    printed = {}
+    ns.Print = function(_, msg) printed[#printed + 1] = msg end
     Database:InitializeCharacter()
     return Database
+end
+
+-- Whether the "data rebuilt" notice was printed at the last login
+function Notified()
+    for _, msg in ipairs(printed) do
+        if msg == "CMD_FOREVER_DATA_RESET" then return true end
+    end
+    return false
 end
 
 local function Count(t)
@@ -79,6 +89,9 @@ T.check("their exclusion entry removed", GudaBags_DB.goldBlacklist["Mo-CAMWOW EU
 T.check("new record is not excluded", not GudaBags_DB.goldBlacklist[MoMao.guid])
 T.check("different class with the same first name kept", chars["Mo-Other"] ~= nil)
 T.check("other characters' old records kept", chars["Jin-CAMWOW EU4 Realm 4 PvP"] ~= nil)
+T.check("player told the data was rebuilt", Notified())
+Login(MoMao, true)
+T.check("not told again on the next login", not Notified())
 
 print("Forever, two characters sharing a first name:")
 Login(JinVo, true)
@@ -135,6 +148,7 @@ T.check("name has no surname", chars["Mo-Classic"].name == "Mo")
 T.check("realm is the realm name", chars["Mo-Classic"].realm == "Classic")
 T.check("no guid stored", chars["Mo-Classic"].guid == nil)
 T.check("no records removed", chars["Mo-Old"] ~= nil)
+T.check("no rebuilt notice", not Notified())
 T.check("mail lookup adds the realm", Database:FindCharacterKey("Mo") == "Mo-Classic")
 T.check("mail lookup by Name-Realm", Database:FindCharacterKey("Mo-Old") == "Mo-Old")
 T.check("unknown recipient is nil", Database:FindCharacterKey("Zed") == nil)

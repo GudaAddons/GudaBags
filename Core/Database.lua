@@ -8,6 +8,7 @@ local Events = ns:GetModule("Events")
 
 local playerFullName
 local isFreshInstall = false
+local legacyRecordsRemoved = false
 
 local function DeepCopy(orig)
     if type(orig) ~= "table" then
@@ -244,6 +245,7 @@ local function RemoveLegacyForeverRecords(fullName, charData)
             if blacklist then
                 blacklist[key] = nil
             end
+            legacyRecordsRemoved = true
             ns:Debug("Removed legacy Forever record", key, "for", fullName)
         end
     end
@@ -351,6 +353,12 @@ end
 function Database:InitializeCharacter()
     if not InitializeCharacterData() then
         ns:Print("Warning: Could not initialize character data")
+    end
+    -- Once per character: its old records are gone after the first login. The bank
+    -- is not scanned at login, so it stays empty until the next bank visit.
+    if legacyRecordsRemoved then
+        legacyRecordsRemoved = false
+        ns:Print(ns.L["CMD_FOREVER_DATA_RESET"])
     end
 end
 
