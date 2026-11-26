@@ -326,24 +326,16 @@ local function InitializeSendMailHook()
     hooksecurefunc("SendMail", function(recipient, subject, body)
         if not recipient or recipient == "" then return end
 
-        -- Normalize recipient: add realm if not present
-        local realm = GetRealmName()
-        local recipientFullName = recipient
-        if not recipient:find("-") then
-            recipientFullName = recipient .. "-" .. realm
-        end
-
-        -- Check if recipient is a known alt
-        local charData = GudaBags_DB and GudaBags_DB.characters and GudaBags_DB.characters[recipientFullName]
-        if not charData then return end
+        -- Record key of the recipient, if it is a known alt
+        local recipientFullName = Database:FindCharacterKey(recipient)
+        if not recipientFullName then return end
 
         -- Don't track mail to self
-        local playerName = UnitName("player")
-        if recipient == playerName or recipientFullName == (playerName .. "-" .. realm) then return end
+        if recipientFullName == Database:GetPlayerFullName() then return end
 
         ns:Debug("MailScanner: SendMail to known alt", recipientFullName)
 
-        local senderName = playerName
+        local senderName = Database:GetPlayerDisplayName()
         local rows = {}
 
         -- Scan send mail attachments (slots 1-ATTACHMENTS_MAX_SEND)

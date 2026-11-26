@@ -221,7 +221,12 @@ commandHandlers["chars"] = function()
             end
 
             local current = (fullName == currentFullName) and " " .. L["CMD_YOU"] or ""
-            ns:Print("  " .. fullName .. current)
+            -- On Forever the key is a GUID, so lead with the stored name
+            local label = fullName
+            if data.guid and data.name then
+                label = data.name .. " (" .. fullName .. ")"
+            end
+            ns:Print("  " .. label .. current)
             ns:Print("    " .. L["CMD_BAGS"] .. bagCount .. L["CMD_CONTAINERS"] .. bagItemCount .. L["CMD_ITEMS"])
             ns:Print("    " .. L["CMD_BANK"] .. bankCount .. L["CMD_CONTAINERS"] .. bankItemCount .. L["CMD_ITEMS"])
         end
@@ -249,7 +254,7 @@ commandHandlers["save"] = function()
     end
     ns:Print(string.format(L["CMD_SCANNED"], bagCount, itemCount))
 
-    ns:Print(L["CMD_SAVING_TO"] .. Database:GetPlayerFullName())
+    ns:Print(L["CMD_SAVING_TO"] .. Database:GetPlayerDisplayName())
     BagScanner:SaveToDatabase()
     ns:Print(L["CMD_DONE"])
 end

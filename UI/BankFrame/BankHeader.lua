@@ -96,7 +96,7 @@ local function CreateHeader(parent)
         lastLeftButton = charactersButton
     end
 
-    local playerName = UnitName("player")
+    local playerName = Database:GetPlayerDisplayName()
     local title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     Font:Override(title)
     title:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
@@ -246,7 +246,7 @@ function BankHeader:SetViewingCharacter(fullName, charData)
         frame.title:SetText(charData.name .. L["TITLE_BANK"])
         frame.title:SetTextColor(r, g, b)
     else
-        local playerName = UnitName("player")
+        local playerName = Database:GetPlayerDisplayName()
         frame.title:SetText(playerName .. L["TITLE_BANK"])
         frame.title:SetTextColor(1, 0.82, 0)
     end

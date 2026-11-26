@@ -225,7 +225,7 @@ local function CreateHeader(parent)
     end
 
     -- Center title with character name
-    local playerName = UnitName("player")
+    local playerName = Database:GetPlayerDisplayName()
     local title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     Font:Override(title)
     title:SetPoint("CENTER", titleBar, "CENTER", 0, 0)
@@ -406,7 +406,7 @@ function Header:SetViewingCharacter(fullName, charData)
         frame.title:SetTextColor(r, g, b)
     else
         -- Back to current character
-        local playerName = UnitName("player")
+        local playerName = Database:GetPlayerDisplayName()
         frame.title:SetText(playerName .. L["TITLE_BAGS"])
         frame.title:SetTextColor(1, 0.82, 0)
     end

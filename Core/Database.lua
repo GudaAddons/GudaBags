@@ -20,21 +20,84 @@ local function DeepCopy(orig)
     return copy
 end
 
+-- WoW: Forever splits a character name into a first name and a surname, and
+-- UnitName returns them as its two values (the second is NOT a realm there).
+-- GetRealmName is not stable either: one character has reported two different
+-- realm names and an empty one. A "Name-Realm" key therefore split one character
+-- into several frozen records and merged characters sharing a first name, so on
+-- Forever each record is keyed by the character's GUID instead.
+local function HasSurnames()
+    return ns.IsForever and RegionalUniqueNamesEnabled ~= nil and RegionalUniqueNamesEnabled() == true
+end
+
+local function SurnameSeparator()
+    local consts = _G.Constants and _G.Constants.CharacterNameSeparatorConsts
+    return consts and consts.CHARACTERNAME_SURNAME_SEPARATOR or " "
+end
+
+-- First name and surname, or nil while the client has no name yet
+local function GetPlayerNameParts()
+    local name, surname = UnitName("player")
+    if not name or name == "" or name == "Unknown" then
+        return nil
+    end
+    if HasSurnames() and type(surname) == "string" and surname ~= "" then
+        return name, surname
+    end
+    return name, nil
+end
+
+-- The name a player sees: first name plus surname where the client has surnames
+local function GetPlayerDisplayName()
+    local name, surname = GetPlayerNameParts()
+    if name and surname then
+        return name .. SurnameSeparator() .. surname
+    end
+    return name
+end
+
+-- With surnames there are no realms to tell apart, only rulesets, and the realm
+-- name itself changes between sessions. Store the ruleset as the realm so the
+-- same-realm filter and the per-realm gold grouping stay stable.
+local function GetRulesetName()
+    local rules, isActive = Enum and Enum.GameRule, C_GameRules and C_GameRules.IsGameRuleActive
+    if not (rules and isActive) then return nil end
+    local function Active(rule) return rule ~= nil and isActive(rule) == true end
+    local pvp, rp = Active(rules.PvPRuleset), Active(rules.RPRuleset)
+    if pvp and rp then return "RPPvP" end
+    if pvp then return "PvP" end
+    if rp then return "RP" end
+    if Active(rules.HardcoreRuleset) then return "HC" end
+    return "PvE"
+end
+
+local function GetCharacterRealm()
+    return HasSurnames() and GetRulesetName() or GetRealmName()
+end
+
 local function GetPlayerFullName()
     -- Don't use cached value if it was set incorrectly (nil name)
     if playerFullName and not playerFullName:match("^nil%-") then
         return playerFullName
     end
 
-    local name = UnitName("player")
-    local realm = GetRealmName()
+    local name = GetPlayerNameParts()
 
     -- Don't cache if name is not available yet
-    if not name or name == "" or name == "Unknown" then
+    if not name then
         return nil
     end
 
-    playerFullName = name .. "-" .. realm
+    if ns.IsForever then
+        local guid = UnitGUID("player")
+        if type(guid) ~= "string" or guid == "" then
+            return nil
+        end
+        playerFullName = guid
+        return playerFullName
+    end
+
+    playerFullName = name .. "-" .. GetRealmName()
     return playerFullName
 end
 
@@ -159,39 +222,30 @@ local function InitializeCharDB()
     end
 end
 
--- WoW: Forever reports a character name containing a space truncated at the space
--- ("Dampa Lee" -> "Dampa"), and older sessions saved under the full name. The
--- same character then owns two records: the live one and a frozen one that the
--- dropdowns offer as if it were current, showing week-old bags and no bank. Fold
--- the frozen record away. Matched on realm + class + race and one name being the
--- other plus " <more>", in either direction in case the client ever reverts.
-local function IsNameAlias(a, b)
-    if not a or not b or a == b then return false end
-    return a:sub(1, #b + 1) == b .. " " or b:sub(1, #a + 1) == a .. " "
-end
-
-local function FoldForeverNameAliases(fullName, charData)
+-- Forever records saved before the GUID key carry no guid. The ones that could be
+-- this character (same first name, class and race, on any realm string) are frozen
+-- copies or were shared with another character of the same first name, so their
+-- data is not trusted: they are dropped, with their exclusion entries, and the live
+-- scan rebuilds this character's record. Alts' old records stay until they log in.
+-- Old records hold either the bare first name or "First Surname" with a space.
+local function RemoveLegacyForeverRecords(fullName, charData)
     if not ns.IsForever then return end
     local characters = GudaBags_DB.characters
-    local folded = false
+    local blacklist = GudaBags_DB.goldBlacklist
+    local firstName = GetPlayerNameParts()
+    if not firstName then return end
     for key, other in pairs(characters) do
-        if key ~= fullName and type(other) == "table"
-            and other.realm == charData.realm
+        if key ~= fullName and type(other) == "table" and not other.guid
             and other.class == charData.class
             and other.race == charData.race
-            and IsNameAlias(other.name, charData.name) then
+            and type(other.name) == "string"
+            and other.name:match("^[^ ]+") == firstName then
             characters[key] = nil
-            if GudaBags_DB.goldBlacklist then
-                GudaBags_DB.goldBlacklist[key] = nil
+            if blacklist then
+                blacklist[key] = nil
             end
-            folded = true
-            ns:Debug("Removed stale Forever name alias", key, "of", fullName)
+            ns:Debug("Removed legacy Forever record", key, "for", fullName)
         end
-    end
-    -- The live record was typically hidden as "the duplicate"; with the frozen
-    -- copy gone it is the only entry for this character, so show it again.
-    if folded and GudaBags_DB.goldBlacklist then
-        GudaBags_DB.goldBlacklist[fullName] = nil
     end
 end
 
@@ -210,8 +264,11 @@ local function InitializeCharacterData()
     end
 
     local charData = GudaBags_DB.characters[fullName]
-    charData.name = UnitName("player")
-    charData.realm = GetRealmName()
+    charData.name = GetPlayerDisplayName()
+    charData.realm = GetCharacterRealm()
+    if ns.IsForever then
+        charData.guid = fullName
+    end
     charData.class = classToken
     charData.faction = faction
     charData.level = UnitLevel("player")
@@ -235,7 +292,7 @@ local function InitializeCharacterData()
         charData.mailbox = {}
     end
 
-    FoldForeverNameAliases(fullName, charData)
+    RemoveLegacyForeverRecords(fullName, charData)
 
     ns:Debug("Character data initialized for", fullName)
     return true
@@ -454,8 +511,40 @@ function Database:GetCurrentCharacter()
     return GudaBags_DB.characters[fullName]
 end
 
+-- Record key of the current character ("Name-Realm", or the GUID on Forever)
 function Database:GetPlayerFullName()
     return GetPlayerFullName()
+end
+
+-- Current character's name for display (with surname on Forever)
+function Database:GetPlayerDisplayName()
+    return GetPlayerDisplayName() or UnitName("player")
+end
+
+-- Record key of a known character from a typed name (mail recipient), or nil
+function Database:FindCharacterKey(typedName)
+    if type(typedName) ~= "string" or typedName == "" then return nil end
+    local characters = GudaBags_DB and GudaBags_DB.characters
+    if not characters then return nil end
+
+    if ns.IsForever then
+        -- Typed as "First Surname", stored with the client's surname separator
+        local separator = SurnameSeparator():gsub("%p", "%%%0")
+        local wanted = (typedName:gsub("%-.*$", "")):lower()
+        for key, data in pairs(characters) do
+            if type(data) == "table" and data.guid and type(data.name) == "string"
+                and data.name:gsub(separator, " ", 1):lower() == wanted then
+                return key
+            end
+        end
+        return nil
+    end
+
+    local key = typedName
+    if not typedName:find("-", 1, true) then
+        key = typedName .. "-" .. GetRealmName()
+    end
+    return characters[key] and key or nil
 end
 
 -- Tooltip item counts (CountItemAcrossCharacters), memoized per itemID. Counting
@@ -828,7 +917,7 @@ end
 function Database:GetAllCharacters(sameFactionOnly, sameRealmOnly)
     local characters = {}
     local currentFaction = UnitFactionGroup("player")
-    local currentRealm = GetRealmName()
+    local currentRealm = GetCharacterRealm()
 
     for fullName, data in pairs(GudaBags_DB.characters) do
         local factionMatch = not sameFactionOnly or data.faction == currentFaction
